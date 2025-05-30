@@ -1,20 +1,20 @@
-# Queueable Lib
+# Async Lib
 
 ---
 
-The Queueable Lib provides service classes for easy queueable chaining in respects to Salesforce Governance Limits.
+The Async Lib provides easy way for managing asynchronous processes in Salesforce.
 
 ## Deploy to Salesforce
 
-<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=queueable-lib&ref=main">
+<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=main">
   <img alt="Deploy to Salesforce"
        src="https://raw.githubusercontent.com/afawcett/githubsfdeploy/master/deploy.png">
 </a>
 
 ## Contributors
 
-<a href="https://github.com/beyond-the-cloud-dev/queueable-lib/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=beyond-the-cloud-dev/queueable-lib" />
+<a href="https://github.com/beyond-the-cloud-dev/async-lib/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=beyond-the-cloud-dev/async-lib" />
 </a>
 
 # License notes:

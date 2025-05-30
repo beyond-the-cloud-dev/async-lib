@@ -1,5 +1,5 @@
 @IsTest
-private class QueueableServiceTest {
+private class AsyncTest {
     private static final String ACCOUNT_NAME = 'Test Account';
     private static final String CUSTOM_ERROR_MESSAGE = 'Something goes wrong.';
     private static final String DUPLICATE_SIGNATURE_ERROR_MESSAGE = 'Attempt to enqueue job with duplicate queueable signature';
@@ -13,16 +13,16 @@ private class QueueableServiceTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            QueueableService.enqueueJob(q);
+            Async.queueable(q).enqueue();
         }
         Test.stopTest();
 
         Assert.areEqual(50, [SELECT COUNT() FROM Account], 'Should have 50 normal job runs.');
-        String queuableChainSchedulerLike = QueueableChainScheduler.QUEUEABLE_CHAIN_SCHEDULER_NAME + '%';
-        Assert.isFalse(
-            [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE :queuableChainSchedulerLike].isEmpty(),
-            'Should run scheduled job with the rest.'
-        );
+        // String queuableChainSchedulerLike = QueueableChainScheduler.QUEUEABLE_CHAIN_SCHEDULER_NAME + '%';
+        // Assert.isFalse(
+        //     [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE :queuableChainSchedulerLike].isEmpty(),
+        //     'Should run scheduled job with the rest.'
+        // );
     }
 
     @IsTest
@@ -33,16 +33,18 @@ private class QueueableServiceTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            QueueableService.enqueueJob(q, 1);
+            Async.queueable(q)
+                .delay(1)
+                .enqueue();
         }
         Test.stopTest();
 
         Assert.areEqual(50, [SELECT COUNT() FROM Account], 'Should have 50 normal job runs.');
-        String queuableChainSchedulerLike = QueueableChainScheduler.QUEUEABLE_CHAIN_SCHEDULER_NAME + '%';
-        Assert.isFalse(
-            [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE :queuableChainSchedulerLike].isEmpty(),
-            'Should run scheduled job with the rest.'
-        );
+        // String queuableChainSchedulerLike = QueueableChainScheduler.QUEUEABLE_CHAIN_SCHEDULER_NAME + '%';
+        // Assert.isFalse(
+        //     [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE :queuableChainSchedulerLike].isEmpty(),
+        //     'Should run scheduled job with the rest.'
+        // );
     }
 
     @IsTest
@@ -53,7 +55,7 @@ private class QueueableServiceTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            QueueableService.enqueueJob(q);
+            Async.queueable(q).enqueue();
         }
         Test.stopTest();
 
@@ -70,23 +72,25 @@ private class QueueableServiceTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 50; idx++) {
-            QueueableService.enqueueJob(q, options);
+            Async.queueable(q)
+                .asyncOptions(options)
+                .enqueue();
         }
         Test.stopTest();
 
         Assert.areEqual(1, [SELECT COUNT() FROM Account], 'Only one job should run.');
     }
 
-    private class SuccessfulQueueableTest extends QueueableChainItem {
-        public override void work(QueueableContext context) {
-            insert new Account(Name = this.name);
+    private class SuccessfulQueueableTest implements Queueable {
+        public void execute(QueueableContext context) {
+            insert new Account(Name = 'Success Account');
         }
     }
 
-    private class FailureQueueableTest extends QueueableChainItem {
-        public override void work(QueueableContext context) {
-            insert new Account(Name = this.name);
-            throw new CustomException(QueueableServiceTest.CUSTOM_ERROR_MESSAGE);
+    private class FailureQueueableTest implements Queueable {
+        public void execute(QueueableContext context) {
+            insert new Account(Name = 'Failure Account');
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
     }
 

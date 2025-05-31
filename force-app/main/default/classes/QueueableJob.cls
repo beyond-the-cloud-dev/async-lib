@@ -8,10 +8,6 @@ public virtual class QueueableJob {
     public Boolean failChainOnJobExecuteFail = false;
     public Boolean doNotRollbackDatabaseOnFail = false;
 
-    public QueueableJob() {
-        // Default constructor extending class
-    }
-
     public QueueableJob(Queueable job) {
         if (job == null) {
             throw new IllegalArgumentException('Queueable job cannot be null');
@@ -19,8 +15,8 @@ public virtual class QueueableJob {
         this.job = job;
     }
 
-    public virtual void execute(Async.AsyncContext ctx) {
-        job.execute(ctx.qc);
+    public void execute(QueueableContext ctx) {
+        job.execute(ctx);
     }
 
     public void enqueue(QueueableChain chain) {
@@ -33,8 +29,8 @@ public virtual class QueueableJob {
         }
     }
 
-    public void setNames(Object job) {
-        this.className = getClassName(job);
+    public void setNames() {
+        this.className = getClassName();
         this.uniqueName = className + '::' + System.now().formatGMT('yyyy-MM-dd\'T\'HH:mm:ss.SSSZ');
     }
 
@@ -42,7 +38,7 @@ public virtual class QueueableJob {
         this.uniqueName = this.uniqueName + '::' + String.valueOf(chainCounter);
     }
 
-    private String getClassName(Object job) {
+    private String getClassName() {
         return String.valueOf(job).substringBefore(':');
     }
 }

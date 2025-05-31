@@ -149,15 +149,15 @@ private class AsyncTest {
         }
     }
 
-    private class SuccessfulQueueableTest extends QueueableJob {
-        public override void execute(Async.AsyncContext ctx) {
-            insert new Account(Name = ctx.currentJob.uniqueName);
+    private class SuccessfulQueueableTest implements Queueable {
+        public void execute(QueueableContext ctx) {
+            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
         }
     }
 
     private class FailureQueueableTest implements Queueable {
         public void execute(QueueableContext ctx) {
-            insert new Account(Name = 'Failure Account');
+            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
     }

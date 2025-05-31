@@ -4,6 +4,7 @@ public with sharing class QueueableChain implements Queueable, Database.AllowsCa
     private Id initialQueuableChainBatchJobId;
     private Boolean isChainedContext = false;
     private Integer chainCounter = 0;
+    private QueueableJob currentJob;
 
     public void execute(QueueableContext ctx) {
         QueueableManager.get().setChain(this);
@@ -16,12 +17,12 @@ public with sharing class QueueableChain implements Queueable, Database.AllowsCa
             return;
         }
 
-        QueueableJob currentJob = jobs.remove(0);
+        currentJob = jobs.remove(0);
         currentJob.setChainCounterToName(++chainCounter);
         Savepoint sp = currentJob.doNotRollbackDatabaseOnFail ? null : Database.setSavepoint();
         try {
             System.debug(currentJob.uniqueName);
-            currentJob.execute(new Async.AsyncContext(ctx, currentJob));
+            currentJob.execute(ctx);
         } catch (Exception ex) {
             if (currentJob.failChainOnJobExecuteFail) {
                 throw ex;
@@ -57,7 +58,7 @@ public with sharing class QueueableChain implements Queueable, Database.AllowsCa
     }
 
     public void addJob(QueueableJob job) {
-        job.setNames(job);
+        job.setNames();
         jobs.add(job);
     }
 
@@ -67,5 +68,9 @@ public with sharing class QueueableChain implements Queueable, Database.AllowsCa
         }
         QueueableChainBatch.removeInitialQueuableChainBatchJobIfExists(initialQueuableChainBatchJobId);
         initialQueuableChainBatchJobId = Database.executeBatch(new QueueableChainBatch(this));
+    }
+
+    public QueueableJob getCurrentJob() {
+        return currentJob;
     }
 }

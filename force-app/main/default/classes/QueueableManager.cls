@@ -12,18 +12,14 @@ public inherited sharing class QueueableManager {
         this.chain = chain;
     }
 
-    public QueueableManager setJob(Queueable job) {
-        if (job == null) {
-            throw new Async.IllegalArgumentException('Queueable job cannot be null');
-        }
-        return setJob(new QueueableJob(job));
+    public Async.QueueableJobContext getQueueableJobContext() {
+        Async.QueueableJobContext ctx = new Async.QueueableJobContext();
+        ctx.currentJob = chain.getCurrentJob();
+        return ctx;
     }
 
-    public QueueableManager setJob(QueueableJob job) {
-        if (job == null) {
-            throw new Async.IllegalArgumentException('Queueable job cannot be null');
-        }
-        currentJob = job;
+    public QueueableManager setJob(Queueable job) {
+        currentJob = new QueueableJob(job);
         return this;
     }
 

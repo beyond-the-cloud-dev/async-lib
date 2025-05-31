@@ -1,12 +1,12 @@
 public inherited sharing class Async {
-    public static QueueableManager queueable(Queueable job) {
+    public static QueueableManager of(Queueable job) {
         return QueueableManager.get()
-            .queueable(job);
+            .setJob(job);
     }
 
-    public static QueueableManager queueable(QueueableJob job) {
+    public static QueueableManager of(QueueableJob job) {
         return QueueableManager.get()
-            .queueable(job);
+            .setJob(job);
     }
 
     public class AsyncContext {

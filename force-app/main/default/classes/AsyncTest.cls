@@ -13,7 +13,7 @@ private class AsyncTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.queueable(q).enqueue();
+            Async.of(q).enqueue();
         }
         Test.stopTest();
 
@@ -33,7 +33,7 @@ private class AsyncTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.queueable(q)
+            Async.of(q)
                 .delay(1)
                 .enqueue();
         }
@@ -55,7 +55,7 @@ private class AsyncTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.queueable(q).enqueue();
+            Async.of(q).enqueue();
         }
         Test.stopTest();
 
@@ -72,7 +72,7 @@ private class AsyncTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 50; idx++) {
-            Async.queueable(q)
+            Async.of(q)
                 .asyncOptions(options)
                 .enqueue();
         }

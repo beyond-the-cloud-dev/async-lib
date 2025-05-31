@@ -11,9 +11,11 @@ public inherited sharing class Async {
 
     public class AsyncContext {
         public QueueableContext qc;
-
-        public AsyncContext(QueueableContext qc) {
+        public QueueableJob currentJob;
+        
+        public AsyncContext(QueueableContext qc, QueueableJob currentJob) {
             this.qc = qc;
+            this.currentJob = currentJob;
         }
     }
 

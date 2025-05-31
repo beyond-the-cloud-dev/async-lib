@@ -16,8 +16,7 @@ public inherited sharing class QueueableManager {
         if (job == null) {
             throw new Async.IllegalArgumentException('Queueable job cannot be null');
         }
-        currentJob = new QueueableJob(job);
-        return this;
+        return setJob(new QueueableJob(job));
     }
 
     public QueueableManager setJob(QueueableJob job) {
@@ -41,6 +40,21 @@ public inherited sharing class QueueableManager {
             throw new Async.IllegalArgumentException('Cannot set delay after asyncOptions has been set');
         }
         currentJob.delay = delay;
+        return this;
+    }
+
+    public QueueableManager failChainOnJobEnqueueFail() {
+        currentJob.failChainOnJobEnqueueFail = true;
+        return this;
+    }
+
+    public QueueableManager failChainOnJobExecuteFail() {
+        currentJob.failChainOnJobExecuteFail = true;
+        return this;
+    }
+
+    public QueueableManager doNotRollbackDatabaseOnFail() {
+        currentJob.doNotRollbackDatabaseOnFail = true;
         return this;
     }
 

@@ -17,12 +17,12 @@ private class AsyncTest {
         }
         Test.stopTest();
 
-        Assert.areEqual(50, [SELECT COUNT() FROM Account], 'Should have 50 normal job runs.');
-        // String queuableChainSchedulerLike = QueueableChainScheduler.QUEUEABLE_CHAIN_SCHEDULER_NAME + '%';
-        // Assert.isFalse(
-        //     [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE :queuableChainSchedulerLike].isEmpty(),
-        //     'Should run scheduled job with the rest.'
-        // );
+        Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Should have 51 job runs (50 queueable and 1 batch).');
+        Assert.areEqual(
+            1,
+            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
+            'Should run only one batchable job with the rest.'
+        );
     }
 
     @IsTest
@@ -39,27 +39,55 @@ private class AsyncTest {
         }
         Test.stopTest();
 
-        Assert.areEqual(50, [SELECT COUNT() FROM Account], 'Should have 50 normal job runs.');
-        // String queuableChainSchedulerLike = QueueableChainScheduler.QUEUEABLE_CHAIN_SCHEDULER_NAME + '%';
-        // Assert.isFalse(
-        //     [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE :queuableChainSchedulerLike].isEmpty(),
-        //     'Should run scheduled job with the rest.'
-        // );
+        Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Should have 51 job runs (50 queueable and 1 batch).');
+        Assert.areEqual(
+            1,
+            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
+            'Should run only one batchable job with the rest.'
+        );
     }
 
     @IsTest
-    private static void shouldSchedule60QueueablesSuccessfullyWithAllItemsFailed() {
+    private static void shouldSchedule60QueueablesSuccessfullyWithAllItemsFailedWithRollback() {
         FailureQueueableTest q = new FailureQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.of(q).enqueue();
+            Async.of(q)
+                .enqueue();
         }
         Test.stopTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account], 'Should have no Accounts created.');
+        Assert.areEqual(
+            1,
+            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
+            'Should run only one batchable job with the rest.'
+        );
+    }
+
+    @IsTest
+    private static void shouldSchedule60QueueablesSuccessfullyWithAllItemsFailedWithoutRollback() {
+        FailureQueueableTest q = new FailureQueueableTest();
+
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        for (Integer idx = 0; idx < 60; idx++) {
+            Async.of(q)
+                .doNotRollbackDatabaseOnFail()
+                .enqueue();
+        }
+        Test.stopTest();
+
+        Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Inserted Accounts are not rollbacked.');
+        Assert.areEqual(
+            1,
+            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
+            'Should run only one batchable job with the rest.'
+        );
     }
 
     @IsTest
@@ -81,14 +109,54 @@ private class AsyncTest {
         Assert.areEqual(1, [SELECT COUNT() FROM Account], 'Only one job should run.');
     }
 
-    private class SuccessfulQueueableTest implements Queueable {
-        public void execute(QueueableContext context) {
-            insert new Account(Name = 'Success Account');
+    @IsTest
+    private static void shouldFailChainOnDuplicateAsyncOptionsSignature() {
+        SuccessfulQueueableTest q = new SuccessfulQueueableTest();
+
+        AsyncOptions options = new AsyncOptions();
+        options.DuplicateSignature = QueueableDuplicateSignature.Builder().addString(TEST_SIGNATURE_NAME).build();
+
+        Test.startTest();
+        try {
+            Async.of(q)
+                .asyncOptions(options)
+                .failChainOnJobEnqueueFail()
+                .enqueue();
+            Async.of(q)
+                .asyncOptions(options)
+                .failChainOnJobEnqueueFail()
+                .enqueue();
+            Assert.fail('Should throw duplicate signature exception.');
+        } catch (Exception ex) {
+            Assert.areEqual(DUPLICATE_SIGNATURE_ERROR_MESSAGE, ex.getMessage());
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void shouldFailChainDueToExecuteFailure() {
+        FailureQueueableTest failureJob = new FailureQueueableTest();
+
+        try {
+            Test.startTest();
+            Async.of(failureJob)
+                .failChainOnJobExecuteFail()
+                .enqueue();
+            Test.stopTest();
+            Assert.fail('Should throw duplicate signature exception.');
+        } catch (Exception ex) {
+            Assert.areEqual(CUSTOM_ERROR_MESSAGE, ex.getMessage());
+        }
+    }
+
+    private class SuccessfulQueueableTest extends QueueableJob {
+        public override void execute(Async.AsyncContext ctx) {
+            insert new Account(Name = ctx.currentJob.uniqueName);
         }
     }
 
     private class FailureQueueableTest implements Queueable {
-        public void execute(QueueableContext context) {
+        public void execute(QueueableContext ctx) {
             insert new Account(Name = 'Failure Account');
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }

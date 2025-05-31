@@ -9,7 +9,7 @@ public class QueueableChainBatch implements Database.Batchable<sObject> {
     }
 
     public void execute(Database.BatchableContext bc, List<Account> scope){
-        chain.initialEnqueueNextJobIfAny();
+        chain.enqueueNextJobIfAny();
     }
 
     public static void removeInitialQueuableChainBatchJobIfExists(Id jobId) {

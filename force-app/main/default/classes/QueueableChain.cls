@@ -3,6 +3,7 @@ public with sharing class QueueableChain implements Queueable, Database.AllowsCa
     @TestVisible
     private Id initialQueuableChainBatchJobId;
     private Boolean isChainedContext = false;
+    private Integer chainCounter = 0;
 
     public void execute(QueueableContext ctx) {
         QueueableManager.get().setChain(this);
@@ -16,19 +17,20 @@ public with sharing class QueueableChain implements Queueable, Database.AllowsCa
         }
 
         QueueableJob currentJob = jobs.remove(0);
-        Savepoint sp = Database.setSavepoint();
+        currentJob.setChainCounterToName(++chainCounter);
+        Savepoint sp = currentJob.doNotRollbackDatabaseOnFail ? null : Database.setSavepoint();
         try {
             System.debug(currentJob.uniqueName);
-            currentJob.execute(new Async.AsyncContext(ctx));
+            currentJob.execute(new Async.AsyncContext(ctx, currentJob));
         } catch (Exception ex) {
-            Database.rollback(sp);
-            Database.releaseSavepoint(sp);
+            if (currentJob.failChainOnJobExecuteFail) {
+                throw ex;
+            }
+            if (!currentJob.doNotRollbackDatabaseOnFail) {
+                Database.rollback(sp);
+                Database.releaseSavepoint(sp);
+            }
         }
-    }
-
-    public void initialEnqueueNextJobIfAny() {
-        isChainedContext = true;
-        enqueueNextJobIfAny();
     }
 
     public void enqueueNextJobIfAny() {
@@ -38,8 +40,13 @@ public with sharing class QueueableChain implements Queueable, Database.AllowsCa
 
         QueueableJob nextJob = jobs.get(0);
         try {
+            isChainedContext = true;
             nextJob.enqueue(this);
         } catch (Exception ex) {
+            if (nextJob.failChainOnJobEnqueueFail) {
+                throw ex;
+            }
+            isChainedContext = false;
             jobs.remove(0);
             enqueueNextJobIfAny();
         }
@@ -50,6 +57,7 @@ public with sharing class QueueableChain implements Queueable, Database.AllowsCa
     }
 
     public void addJob(QueueableJob job) {
+        job.setNames(job);
         jobs.add(job);
     }
 

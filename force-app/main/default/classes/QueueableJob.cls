@@ -4,14 +4,19 @@ public virtual class QueueableJob {
     public Integer delay;
     public AsyncOptions asyncOptions;
     public Queueable job;
+    public Boolean failChainOnJobEnqueueFail = false;
+    public Boolean failChainOnJobExecuteFail = false;
+    public Boolean doNotRollbackDatabaseOnFail = false;
+
+    public QueueableJob() {
+        // Default constructor extending class
+    }
 
     public QueueableJob(Queueable job) {
         if (job == null) {
             throw new IllegalArgumentException('Queueable job cannot be null');
         }
         this.job = job;
-        this.className = getClassName();
-        this.uniqueName = className + '::' + System.now().format();
     }
 
     public virtual void execute(Async.AsyncContext ctx) {
@@ -28,7 +33,16 @@ public virtual class QueueableJob {
         }
     }
 
-    private String getClassName() {
+    public void setNames(Object job) {
+        this.className = getClassName(job);
+        this.uniqueName = className + '::' + System.now().formatGMT('yyyy-MM-dd\'T\'HH:mm:ss.SSSZ');
+    }
+
+    public void setChainCounterToName(Integer chainCounter) {
+        this.uniqueName = this.uniqueName + '::' + String.valueOf(chainCounter);
+    }
+
+    private String getClassName(Object job) {
         return String.valueOf(job).substringBefore(':');
     }
 }

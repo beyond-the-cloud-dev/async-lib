@@ -18,6 +18,10 @@ public inherited sharing class QueueableManager {
         return ctx;
     }
 
+    public Id getQueueableChainBatchId() {
+        return chain.getQueueableChainBatchId();
+    }
+
     public QueueableManager setJob(QueueableJob job) {
         currentJob = job;
         return this;
@@ -54,7 +58,7 @@ public inherited sharing class QueueableManager {
         return this;
     }
 
-    public QueueableManager enqueue() {
+    public Async.AsyncResult enqueue() {
         if (currentJob == null) {
             throw new Async.IllegalArgumentException('No Queueable job has been set to enqueue');
         }
@@ -67,7 +71,17 @@ public inherited sharing class QueueableManager {
             chain.enqueueNextJobIfAny();
             chain = new QueueableChain();
         }
-        return this;
+
+        Async.AsyncResult result = new Async.AsyncResult();
+        result.jobId = currentJob.jobId;
+        result.isEnqueuedViaBatch = currentJob.jobId == null;
+        return result;
+    }
+
+    public Async.AsyncResult getResult() {
+        Async.AsyncResult result = new Async.AsyncResult();
+        result.jobId = currentJob.jobId;
+        return result;
     }
 
     private Boolean shouldEnqueueChainJob() {

@@ -73,4 +73,8 @@ public with sharing class QueueableChain {
     public QueueableJob getCurrentJob() {
         return currentJob;
     }
+
+    public Id getQueueableChainBatchId() {
+        return initialQueuableChainBatchJobId;
+    }
 }

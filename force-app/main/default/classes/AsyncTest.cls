@@ -10,18 +10,25 @@ private class AsyncTest {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+        Id initialQueuableChainBatchJobId;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.of(q).enqueue();
+            Async.AsyncResult ar = Async.of(q).enqueue();
+            if (Limits.getQueueableJobs() <= Limits.getLimitQueueableJobs()) {
+                Assert.isFalse(ar.isEnqueuedViaBatch, 'Should not be enqueued via batch.');
+            } else {
+                Assert.isTrue(ar.isEnqueuedViaBatch, 'Should be enqueued via batch.');
+            }
         }
+        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
         Test.stopTest();
 
         Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Should have 51 job runs (50 queueable and 1 batch).');
         Assert.areEqual(
             1,
-            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
-            'Should run only one batchable job with the rest.'
+            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed' AND Id = :initialQueuableChainBatchJobId].size(),
+            'Should run only one batchable job with the rest, that should be successfully completed and with Id provided from framework.'
         );
     }
 

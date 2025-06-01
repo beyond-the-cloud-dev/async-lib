@@ -6,6 +6,7 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
     public Boolean failChainOnJobEnqueueFail = false;
     public Boolean failChainOnJobExecuteFail = false;
     public Boolean doNotRollbackDatabaseOnFail = false;
+    public Id jobId;
 
     private QueueableChain chain;
 
@@ -18,11 +19,11 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
     public void enqueue(QueueableChain chain) {
         this.chain = chain;
         if (delay != null) {
-            System.enqueueJob(this, delay);
+            jobId = System.enqueueJob(this, delay);
         } else if (asyncOptions != null) {
-            System.enqueueJob(this, asyncOptions);
+            jobId = System.enqueueJob(this, asyncOptions);
         } else {
-            System.enqueueJob(this);
+            jobId = System.enqueueJob(this);
         }
     }
 

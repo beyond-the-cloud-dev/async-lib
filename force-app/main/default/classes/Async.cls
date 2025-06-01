@@ -9,15 +9,18 @@ public inherited sharing class Async {
             .getQueueableJobContext();
     }
 
+    public static Id getQueueableChainBatchId() {
+        return QueueableManager.get()
+            .getQueueableChainBatchId();
+    }
+
     public class QueueableJobContext {
         public QueueableJob currentJob;
     }
 
     public class AsyncResult {
         public String jobId;
-        public String jobName;
-        public String status;
-        public String errorMessage;
+        public Boolean isEnqueuedViaBatch;
     }
 
     public class IllegalArgumentException extends Exception {

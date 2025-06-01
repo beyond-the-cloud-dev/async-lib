@@ -1,4 +1,4 @@
-public with sharing class QueueableChain implements Queueable, Database.AllowsCallouts {
+public with sharing class QueueableChain {
     private List<QueueableJob> jobs = new List<QueueableJob>();
     @TestVisible
     private Id initialQueuableChainBatchJobId;
@@ -22,7 +22,7 @@ public with sharing class QueueableChain implements Queueable, Database.AllowsCa
         Savepoint sp = currentJob.doNotRollbackDatabaseOnFail ? null : Database.setSavepoint();
         try {
             System.debug(currentJob.uniqueName);
-            currentJob.execute(ctx);
+            currentJob.work(ctx);
         } catch (Exception ex) {
             if (currentJob.failChainOnJobExecuteFail) {
                 throw ex;

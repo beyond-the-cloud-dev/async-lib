@@ -18,8 +18,8 @@ public inherited sharing class QueueableManager {
         return ctx;
     }
 
-    public QueueableManager setJob(Queueable job) {
-        currentJob = new QueueableJob(job);
+    public QueueableManager setJob(QueueableJob job) {
+        currentJob = job;
         return this;
     }
 

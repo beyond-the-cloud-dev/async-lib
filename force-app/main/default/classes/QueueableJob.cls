@@ -1,31 +1,28 @@
-public virtual class QueueableJob {
+public abstract class QueueableJob implements Queueable, Database.AllowsCallouts {
     public String className;
     public String uniqueName;
     public Integer delay;
     public AsyncOptions asyncOptions;
-    public Queueable job;
     public Boolean failChainOnJobEnqueueFail = false;
     public Boolean failChainOnJobExecuteFail = false;
     public Boolean doNotRollbackDatabaseOnFail = false;
 
-    public QueueableJob(Queueable job) {
-        if (job == null) {
-            throw new IllegalArgumentException('Queueable job cannot be null');
-        }
-        this.job = job;
-    }
+    private QueueableChain chain;
+
+    public abstract void work(QueueableContext ctx);
 
     public void execute(QueueableContext ctx) {
-        job.execute(ctx);
+        chain.execute(ctx);
     }
 
     public void enqueue(QueueableChain chain) {
+        this.chain = chain;
         if (delay != null) {
-            System.enqueueJob(chain, delay);
+            System.enqueueJob(this, delay);
         } else if (asyncOptions != null) {
-            System.enqueueJob(chain, asyncOptions);
+            System.enqueueJob(this, asyncOptions);
         } else {
-            System.enqueueJob(chain);
+            System.enqueueJob(this);
         }
     }
 
@@ -39,6 +36,9 @@ public virtual class QueueableJob {
     }
 
     private String getClassName() {
-        return String.valueOf(job).substringBefore(':');
+        return String.valueOf(this).substringBefore(':');
+    }
+
+    public abstract class WithCallouts extends QueueableJob implements Database.AllowsCallouts {
     }
 }

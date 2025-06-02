@@ -3,6 +3,9 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
     public String uniqueName;
     public Integer delay;
     public AsyncOptions asyncOptions;
+    public Finalizer finalizer;
+    public Boolean isJobProcessed = false;
+    public Boolean isFinalizerProcessed = false;
     public Boolean continueOnJobEnqueueFail = false;
     public Boolean continueOnJobExecuteFail = false;
     public Boolean rollbackOnJobExecuteFail = false;
@@ -34,6 +37,14 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
 
     public void setChainCounterToName(Integer chainCounter) {
         this.uniqueName = this.uniqueName + '::' + String.valueOf(chainCounter);
+    }
+
+    public Boolean isProcessed() {
+        return isJobProcessed && isFinalizerProcessed();
+    }
+
+    private Boolean isFinalizerProcessed() {
+        return finalizer == null || finalizer != null && isFinalizerProcessed;
     }
 
     private String getClassName() {

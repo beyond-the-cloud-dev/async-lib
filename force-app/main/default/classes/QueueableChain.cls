@@ -8,8 +8,13 @@ public inherited sharing class QueueableChain {
 
     public void execute(QueueableContext ctx) {
         QueueableManager.get().setChain(this);
+        attachQueueableChainFinalizer();
         executeCurrentJob(ctx);
         enqueueNextJobIfAny();
+    }
+
+    public void attachQueueableChainFinalizer() {
+        System.attachFinalizer(new QueueableChainFinalizer(this));
     }
 
     public void executeCurrentJob(QueueableContext ctx) {
@@ -17,13 +22,13 @@ public inherited sharing class QueueableChain {
             return;
         }
 
-        currentJob = jobs.remove(0);
-        System.attachFinalizer(new QueueableChainFinalizer(this));
+        currentJob = getNextJobToProcess();
         currentJob.setChainCounterToName(++chainCounter);
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
             System.debug(currentJob.uniqueName);
             currentJob.work(ctx);
+            currentJob.isJobProcessed = true;
         } catch (Exception ex) {
             if (!currentJob.continueOnJobExecuteFail) {
                 throw ex;
@@ -35,12 +40,22 @@ public inherited sharing class QueueableChain {
         }
     }
 
+    public void enqueueFinalizerOrNextJobIfAnyOnChainFail(FinalizerContext ctx) {
+        if (ctx.getResult() == ParentJobResult.SUCCESS || !hasNextJob()) {
+            return;
+        }
+
+        QueueableJob previousFailedJob = getNextJobToProcess();
+        previousFailedJob.isJobProcessed = true;
+        enqueueNextJobIfAny();
+    }
+
     public void enqueueNextJobIfAny() {
         if (!hasNextJob() || (Test.isRunningTest() && System.isQueueable())) {
             return;
         }
 
-        QueueableJob nextJob = jobs.get(0);
+        QueueableJob nextJob = getNextJobToProcess();
         try {
             isChainedContext = true;
             nextJob.enqueue(this);
@@ -49,13 +64,13 @@ public inherited sharing class QueueableChain {
                 throw ex;
             }
             isChainedContext = false;
-            jobs.remove(0);
+            nextJob.isJobProcessed = true;
             enqueueNextJobIfAny();
         }
     }
 
     public Boolean hasNextJob() {
-        return !jobs.isEmpty();
+        return getNextJobToProcess() != null;
     }
 
     public void addJob(QueueableJob job) {
@@ -77,5 +92,14 @@ public inherited sharing class QueueableChain {
 
     public Id getQueueableChainBatchId() {
         return initialQueuableChainBatchJobId;
+    }
+
+    private QueueableJob getNextJobToProcess() {
+        for (QueueableJob job : jobs) {
+            if (!job.isProcessed()) {
+                return job;
+            }
+        }
+        return null;
     }
 }

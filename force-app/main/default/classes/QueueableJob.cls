@@ -3,9 +3,9 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
     public String uniqueName;
     public Integer delay;
     public AsyncOptions asyncOptions;
-    public Boolean failChainOnJobEnqueueFail = false;
-    public Boolean failChainOnJobExecuteFail = false;
-    public Boolean doNotRollbackDatabaseOnFail = false;
+    public Boolean continueOnJobEnqueueFail = false;
+    public Boolean continueOnJobExecuteFail = false;
+    public Boolean rollbackOnJobExecuteFail = false;
     public Id jobId;
 
     private QueueableChain chain;

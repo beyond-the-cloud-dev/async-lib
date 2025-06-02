@@ -63,6 +63,8 @@ private class AsyncTest {
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
             Async.of(q)
+                .continueOnJobExecuteFail()
+                .rollbackOnJobExecuteFail()
                 .enqueue();
         }
         Test.stopTest();
@@ -84,7 +86,7 @@ private class AsyncTest {
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
             Async.of(q)
-                .doNotRollbackDatabaseOnFail()
+                .continueOnJobExecuteFail()
                 .enqueue();
         }
         Test.stopTest();
@@ -109,6 +111,7 @@ private class AsyncTest {
         for (Integer idx = 0; idx < 50; idx++) {
             Async.of(q)
                 .asyncOptions(options)
+                .continueOnJobEnqueueFail()
                 .enqueue();
         }
         Test.stopTest();
@@ -127,11 +130,9 @@ private class AsyncTest {
         try {
             Async.of(q)
                 .asyncOptions(options)
-                .failChainOnJobEnqueueFail()
                 .enqueue();
             Async.of(q)
                 .asyncOptions(options)
-                .failChainOnJobEnqueueFail()
                 .enqueue();
             Assert.fail('Should throw duplicate signature exception.');
         } catch (Exception ex) {
@@ -147,7 +148,6 @@ private class AsyncTest {
         try {
             Test.startTest();
             Async.of(failureJob)
-                .failChainOnJobExecuteFail()
                 .enqueue();
             Test.stopTest();
             Assert.fail('Should throw duplicate signature exception.');

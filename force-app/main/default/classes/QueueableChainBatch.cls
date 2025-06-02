@@ -1,4 +1,4 @@
-public class QueueableChainBatch implements Database.Batchable<sObject> {
+public inherited sharing class QueueableChainBatch implements Database.Batchable<sObject> {
     private QueueableChain chain;
 
     public QueueableChainBatch(QueueableChain chain) {

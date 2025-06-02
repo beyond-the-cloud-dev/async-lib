@@ -43,18 +43,18 @@ public inherited sharing class QueueableManager {
         return this;
     }
 
-    public QueueableManager failChainOnJobEnqueueFail() {
-        currentJob.failChainOnJobEnqueueFail = true;
+    public QueueableManager continueOnJobEnqueueFail() {
+        currentJob.continueOnJobEnqueueFail = true;
         return this;
     }
 
-    public QueueableManager failChainOnJobExecuteFail() {
-        currentJob.failChainOnJobExecuteFail = true;
+    public QueueableManager continueOnJobExecuteFail() {
+        currentJob.continueOnJobExecuteFail = true;
         return this;
     }
 
-    public QueueableManager doNotRollbackDatabaseOnFail() {
-        currentJob.doNotRollbackDatabaseOnFail = true;
+    public QueueableManager rollbackOnJobExecuteFail() {
+        currentJob.rollbackOnJobExecuteFail = true;
         return this;
     }
 

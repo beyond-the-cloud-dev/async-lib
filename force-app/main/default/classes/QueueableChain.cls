@@ -1,4 +1,4 @@
-public with sharing class QueueableChain {
+public inherited sharing class QueueableChain {
     private List<QueueableJob> jobs = new List<QueueableJob>();
     @TestVisible
     private Id initialQueuableChainBatchJobId;
@@ -18,16 +18,17 @@ public with sharing class QueueableChain {
         }
 
         currentJob = jobs.remove(0);
+        System.attachFinalizer(new QueueableChainFinalizer(this));
         currentJob.setChainCounterToName(++chainCounter);
-        Savepoint sp = currentJob.doNotRollbackDatabaseOnFail ? null : Database.setSavepoint();
+        Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
             System.debug(currentJob.uniqueName);
             currentJob.work(ctx);
         } catch (Exception ex) {
-            if (currentJob.failChainOnJobExecuteFail) {
+            if (!currentJob.continueOnJobExecuteFail) {
                 throw ex;
             }
-            if (!currentJob.doNotRollbackDatabaseOnFail) {
+            if (currentJob.rollbackOnJobExecuteFail) {
                 Database.rollback(sp);
                 Database.releaseSavepoint(sp);
             }
@@ -44,7 +45,7 @@ public with sharing class QueueableChain {
             isChainedContext = true;
             nextJob.enqueue(this);
         } catch (Exception ex) {
-            if (nextJob.failChainOnJobEnqueueFail) {
+            if (!nextJob.continueOnJobEnqueueFail) {
                 throw ex;
             }
             isChainedContext = false;

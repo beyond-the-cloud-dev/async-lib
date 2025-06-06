@@ -120,7 +120,7 @@ private class AsyncTest {
     }
 
     @IsTest
-    private static void shouldFailChainOnDuplicateAsyncOptionsSignature() {
+    private static void shouldFailJobOnDuplicateAsyncOptionsSignature() {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         AsyncOptions options = new AsyncOptions();
@@ -142,7 +142,7 @@ private class AsyncTest {
     }
 
     @IsTest
-    private static void shouldFailChainDueToExecuteFailure() {
+    private static void shouldFailJobDueToExecuteFailure() {
         FailureQueueableTest failureJob = new FailureQueueableTest();
 
         try {
@@ -156,6 +156,100 @@ private class AsyncTest {
         }
     }
 
+    @IsTest
+    private static void shouldFailToAttachFinalizerInNonChainContext() {
+        QueueableTestFinalizer finalizer = new QueueableTestFinalizer();
+
+        try {
+            Test.startTest();
+            Async.of(finalizer)
+                .attachFinalizer();
+            Test.stopTest();
+            Assert.fail('Should throw exception when trying to attach finalizer in non-chain context.');
+        } catch (Exception ex) {
+            Assert.areEqual(QueueableManager.ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER, ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldFailToEnqueueFinalizerDirectlyByEnqueueMethod() {
+        QueueableTestFinalizer finalizer = new QueueableTestFinalizer();
+
+        try {
+            Test.startTest();
+            Async.of(finalizer)
+                .enqueue();
+            Test.stopTest();
+            Assert.fail('Should throw exception when trying to enqueue finalizer directly.');
+        } catch (Exception ex) {
+            Assert.areEqual(QueueableManager.ERROR_MESSAGE_CANNOT_ENQUEUE_FINALIZER_DIRECTLY, ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldFailToAttachFinalizerWhenQueueableJobIsNotFinalizer() {
+        FinalizerErrorQueueableTest q = new FinalizerErrorQueueableTest();
+
+        try {
+            Test.startTest();
+            Async.of(q)
+                .enqueue();
+            Test.stopTest();
+            Assert.fail('Should throw exception when trying to attach finalizer to a non-finalizer job.');
+        } catch (Exception ex) {
+            Assert.areEqual(QueueableManager.ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER, ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldSortJobsProperly() {
+        QueueableTest1 job1 = new QueueableTest1();
+        job1.uniqueName = 'job1';
+        job1.priority = 100;
+        QueueableTest1 job2 = new QueueableTest1();
+        job2.uniqueName = 'job2';
+        job2.priority = 50;
+        QueueableTest1 job3 = new QueueableTest1();
+        job3.uniqueName = 'job3';
+        job3.priority = 15;
+        QueueableTest1 job4 = new QueueableTest1();
+        job4.uniqueName = 'job4';
+        job4.priority = 50;
+        QueueableTest1 job5 = new QueueableTest1();
+        job5.uniqueName = 'job5';
+        QueueableTest1 job6 = new QueueableTest1();
+        job6.uniqueName = 'job6';
+        job6.parentCustomJobId = 'something';
+        QueueableTest1 job7 = new QueueableTest1();
+        job7.uniqueName = 'job7';
+        job7.parentCustomJobId = 'something';
+        job7.priority = 15;
+        QueueableTest1 job8 = new QueueableTest1();
+        job8.uniqueName = 'job8';
+        job8.parentCustomJobId = 'something';
+        job8.priority = 2;
+
+        List<QueueableJob> jobs = new List<QueueableJob>{
+            job1,
+            job2,
+            job3,
+            job4,
+            job5,
+            job6,
+            job7,
+            job8
+        };
+        jobs.sort();
+        Assert.areEqual('job8', jobs[0].uniqueName);
+        Assert.areEqual('job7', jobs[1].uniqueName);
+        Assert.areEqual('job6', jobs[2].uniqueName);
+        Assert.areEqual('job3', jobs[3].uniqueName);
+        Assert.areEqual('job2', jobs[4].uniqueName);
+        Assert.areEqual('job4', jobs[5].uniqueName);
+        Assert.areEqual('job1', jobs[6].uniqueName);
+        Assert.areEqual('job5', jobs[7].uniqueName);
+    }
+
     private class SuccessfulQueueableTest extends QueueableJob {
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
@@ -166,6 +260,21 @@ private class AsyncTest {
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class QueueableTestFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            FinalizerContext finalizerCtx = Async.getQueueableJobContext()?.finalizerCtx;
+            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName, 
+                Description = finalizerCtx?.getResult() == ParentJobResult.SUCCESS ? 'Success' : finalizerCtx?.getException()?.getMessage());
+        }
+    }
+
+    private class FinalizerErrorQueueableTest extends QueueableJob {
+        public override void work() {
+            Async.of(new SuccessfulQueueableTest())
+                .attachFinalizer();
         }
     }
 

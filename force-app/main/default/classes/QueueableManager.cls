@@ -1,4 +1,16 @@
 public inherited sharing class QueueableManager {
+    private static final String ERROR_MESSAGE_CHAIN_NULL = 'QueueableChain cannot be null';
+    private static final String ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY = 'Cannot set asyncOptions after delay has been set';
+    private static final String ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS = 'Cannot set delay after asyncOptions has been set';
+    private static final String ERROR_MESSAGE_NO_JOB_SET = 'No Queueable job has been set to enqueue';
+    private static final String ERROR_MESSAGE_FINALIZER_JOB_NOT_SET = 'No Finalizer job has been set to attach finalizer';
+    @TestVisible
+    private static final String ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER = 'Cannot attach finalizer when not in a QueueableChain context';
+    @TestVisible
+    private static final String ERROR_MESSAGE_CANNOT_ENQUEUE_FINALIZER_DIRECTLY = 'Cannot enqueue a QueueableJob.Finalizer directly. Use attachFinalizer() instead.';
+    @TestVisible
+    private static final String ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER = 'Finalizer job must extend QueueableJob.Finalizer';
+
     private static QueueableManager instance;
 
     private QueueableChain chain = new QueueableChain();
@@ -7,7 +19,7 @@ public inherited sharing class QueueableManager {
     // Should only be used by QueueableChain to set the chain in the context
     public void setChain(QueueableChain chain) {
         if (chain == null) {
-            throw new Async.IllegalArgumentException('QueueableChain cannot be null');
+            throw new Async.IllegalArgumentException(ERROR_MESSAGE_CHAIN_NULL);
         }
         this.chain = chain;
     }
@@ -29,7 +41,7 @@ public inherited sharing class QueueableManager {
 
     public QueueableManager asyncOptions(AsyncOptions asyncOptions) {
         if (currentJob.delay != null) {
-            throw new Async.IllegalArgumentException('Cannot set asyncOptions after delay has been set');
+            throw new Async.IllegalArgumentException(ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY);
         }
         currentJob.asyncOptions = asyncOptions;
         return this;
@@ -37,9 +49,14 @@ public inherited sharing class QueueableManager {
 
     public QueueableManager delay(Integer delay) {
         if (currentJob.asyncOptions != null) {
-            throw new Async.IllegalArgumentException('Cannot set delay after asyncOptions has been set');
+            throw new Async.IllegalArgumentException(ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS);
         }
         currentJob.delay = delay;
+        return this;
+    }
+
+    public QueueableManager priority(Integer priority) {
+        currentJob.priority = priority;
         return this;
     }
 
@@ -60,11 +77,11 @@ public inherited sharing class QueueableManager {
 
     public Async.AsyncResult attachFinalizer() {
         if (currentJob == null) {
-            throw new Async.IllegalArgumentException('No Finalizer job has been set to attach finalizer');
+            throw new Async.IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_NOT_SET);
         }
 
         if (!chain.isChainedContext()) {
-            throw new Async.IllegalArgumentException('Cannot attach finalizer when not in a QueueableChain context');
+            throw new Async.IllegalArgumentException(ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER);
         }
 
         QueueableJob currentJobInChainContact = chain.getCurrentJob();
@@ -75,13 +92,13 @@ public inherited sharing class QueueableManager {
 
     public Async.AsyncResult enqueue() {
         if (currentJob == null) {
-            throw new Async.IllegalArgumentException('No Queueable job has been set to enqueue');
+            throw new Async.IllegalArgumentException(ERROR_MESSAGE_NO_JOB_SET);
         }
         if (!currentJob.isFinalizer && currentJob instanceof QueueableJob.Finalizer) {
-            throw new Async.IllegalArgumentException('Cannot enqueue a QueueableChain directly. Use attachFinalizer instead.');
+            throw new Async.IllegalArgumentException(ERROR_MESSAGE_CANNOT_ENQUEUE_FINALIZER_DIRECTLY);
         }
         if (currentJob.isFinalizer && !(currentJob instanceof QueueableJob.Finalizer)) {
-            throw new Async.IllegalArgumentException('Finalizer job must extend QueueableJob.Finalizer');
+            throw new Async.IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER);
         }
 
 

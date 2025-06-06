@@ -8,6 +8,7 @@ public inherited sharing class QueueableChain {
 
     public void execute(QueueableContext ctx) {
         QueueableManager.get().setChain(this);
+        jobs.sort();
         attachQueueableChainFinalizer();
         executeCurrentJob(ctx);
     }

@@ -1,9 +1,10 @@
-public abstract class QueueableJob implements Queueable, Database.AllowsCallouts {
+public abstract class QueueableJob implements Queueable, Database.AllowsCallouts, Comparable {
     public String salesforceJobId;
     public String customJobId;
     public String className;
     public String uniqueName;
     public Integer delay;
+    public Integer priority;
     public AsyncOptions asyncOptions;
     public Boolean isProcessed = false;
     public Boolean continueOnJobEnqueueFail = false;
@@ -25,6 +26,26 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
 
     public void execute(QueueableContext ctx) {
         chain.execute(ctx);
+    }
+    
+    public Integer compareTo(Object compareTo) {
+        QueueableJob compareToJob = (QueueableJob)compareTo;
+        if (isFinalizer && !compareToJob.isFinalizer) {
+            return -1;
+        }
+        if (!isFinalizer && compareToJob.isFinalizer ) {
+            return 1;
+        }
+        if (priority != null && compareToJob.priority == null) {
+            return -1;
+        }
+        if (priority == null && compareToJob.priority != null) {
+            return 1;
+        }
+        if (priority == compareToJob.priority) {
+            return 0;
+        }
+        return priority - compareToJob.priority;     
     }
 
     public void enqueue(QueueableChain chain) {

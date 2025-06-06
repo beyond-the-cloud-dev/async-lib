@@ -1,19 +1,27 @@
 public abstract class QueueableJob implements Queueable, Database.AllowsCallouts {
+    public String salesforceJobId;
+    public String customJobId;
     public String className;
     public String uniqueName;
     public Integer delay;
     public AsyncOptions asyncOptions;
-    public Finalizer finalizer;
-    public Boolean isJobProcessed = false;
-    public Boolean isFinalizerProcessed = false;
+    public Boolean isProcessed = false;
     public Boolean continueOnJobEnqueueFail = false;
     public Boolean continueOnJobExecuteFail = false;
     public Boolean rollbackOnJobExecuteFail = false;
-    public Id jobId;
+    public QueueableContext queueableCtx;
 
+    public String parentCustomJobId;
+    public FinalizerContext finalizerCtx;
+    public Boolean isFinalizer {
+        get {
+            return String.isNotBlank(parentCustomJobId);
+        }
+    }
+    
     private QueueableChain chain;
 
-    public abstract void work(QueueableContext ctx);
+    public abstract void work();
 
     public void execute(QueueableContext ctx) {
         chain.execute(ctx);
@@ -22,15 +30,16 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
     public void enqueue(QueueableChain chain) {
         this.chain = chain;
         if (delay != null) {
-            jobId = System.enqueueJob(this, delay);
+            salesforceJobId = System.enqueueJob(this, delay);
         } else if (asyncOptions != null) {
-            jobId = System.enqueueJob(this, asyncOptions);
+            salesforceJobId = System.enqueueJob(this, asyncOptions);
         } else {
-            jobId = System.enqueueJob(this);
+            salesforceJobId = System.enqueueJob(this);
         }
     }
 
-    public void setNames() {
+    public void setMainAttributes() {
+        this.customJobId = UUID.randomUUID().toString();
         this.className = getClassName();
         this.uniqueName = className + '::' + System.now().formatGMT('yyyy-MM-dd\'T\'HH:mm:ss.SSSZ');
     }
@@ -39,18 +48,13 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
         this.uniqueName = this.uniqueName + '::' + String.valueOf(chainCounter);
     }
 
-    public Boolean isProcessed() {
-        return isJobProcessed && isFinalizerProcessed();
-    }
-
-    private Boolean isFinalizerProcessed() {
-        return finalizer == null || finalizer != null && isFinalizerProcessed;
-    }
-
     private String getClassName() {
         return String.valueOf(this).substringBefore(':');
     }
 
     public abstract class WithCallouts extends QueueableJob implements Database.AllowsCallouts {
+    }
+
+    public abstract class Finalizer extends WithCallouts {
     }
 }

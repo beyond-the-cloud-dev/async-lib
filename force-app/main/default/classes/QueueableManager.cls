@@ -58,6 +58,21 @@ public inherited sharing class QueueableManager {
         return this;
     }
 
+    public QueueableManager asFinalizer() {
+        if (currentJob == null) {
+            throw new Async.IllegalArgumentException('No Queueable job has been set to attach finalizer');
+        }
+
+        QueueableJob currentJobInChainContact = chain.getCurrentJob();
+        if (currentJobInChainContact == null) {
+            throw new Async.IllegalArgumentException('No current job in context to attach finalizer');
+        }
+
+        currentJob.parentCustomJobId = currentJobInChainContact.customJobId;
+        
+        return this;
+    }
+
     public Async.AsyncResult enqueue() {
         if (currentJob == null) {
             throw new Async.IllegalArgumentException('No Queueable job has been set to enqueue');
@@ -72,20 +87,13 @@ public inherited sharing class QueueableManager {
             chain = new QueueableChain();
         }
 
-        Async.AsyncResult result = new Async.AsyncResult();
-        result.jobId = currentJob.jobId;
-        result.isEnqueuedViaBatch = currentJob.jobId == null;
-        return result;
-    }
-
-    public Async.AsyncResult getResult() {
-        Async.AsyncResult result = new Async.AsyncResult();
-        result.jobId = currentJob.jobId;
+        Async.AsyncResult result = new Async.AsyncResult(currentJob);
         return result;
     }
 
     private Boolean shouldEnqueueChainJob() {
         return Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() || 
+            currentJob.isFinalizer || 
             System.isQueueable();
     }
 

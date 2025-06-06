@@ -16,9 +16,9 @@ private class AsyncTest {
         for (Integer idx = 0; idx < 60; idx++) {
             Async.AsyncResult ar = Async.of(q).enqueue();
             if (Limits.getQueueableJobs() <= Limits.getLimitQueueableJobs()) {
-                Assert.isFalse(ar.isEnqueuedViaBatch, 'Should not be enqueued via batch.');
+                Assert.isFalse(ar.isChained, 'Should not be enqueued via batch.');
             } else {
-                Assert.isTrue(ar.isEnqueuedViaBatch, 'Should be enqueued via batch.');
+                Assert.isTrue(ar.isChained, 'Should be enqueued via batch.');
             }
         }
         initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
@@ -157,13 +157,13 @@ private class AsyncTest {
     }
 
     private class SuccessfulQueueableTest extends QueueableJob {
-        public override void work(QueueableContext ctx) {
+        public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
         }
     }
 
     private class FailureQueueableTest extends QueueableJob.WithCallouts {
-        public override void work(QueueableContext ctx) {
+        public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }

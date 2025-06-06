@@ -10,7 +10,6 @@ public inherited sharing class QueueableChain {
         QueueableManager.get().setChain(this);
         attachQueueableChainFinalizer();
         executeCurrentJob(ctx);
-        enqueueNextJobIfAny();
     }
 
     public void attachQueueableChainFinalizer() {
@@ -23,12 +22,13 @@ public inherited sharing class QueueableChain {
         }
 
         currentJob = getNextJobToProcess();
+        currentJob.queueableCtx = ctx;
         currentJob.setChainCounterToName(++chainCounter);
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
+            System.debug(currentJob.customJobId);
             System.debug(currentJob.uniqueName);
-            currentJob.work(ctx);
-            currentJob.isJobProcessed = true;
+            currentJob.work();
         } catch (Exception ex) {
             if (!currentJob.continueOnJobExecuteFail) {
                 throw ex;
@@ -40,13 +40,12 @@ public inherited sharing class QueueableChain {
         }
     }
 
-    public void enqueueFinalizerOrNextJobIfAnyOnChainFail(FinalizerContext ctx) {
-        if (ctx.getResult() == ParentJobResult.SUCCESS || !hasNextJob()) {
-            return;
-        }
-
-        QueueableJob previousFailedJob = getNextJobToProcess();
-        previousFailedJob.isJobProcessed = true;
+    public void enqueueNextJobIfAnyFromFinalizer(FinalizerContext ctx) {
+        QueueableJob previousJob = getNextJobToProcess();
+        previousJob.isProcessed = true;
+        previousJob.finalizerCtx = ctx;
+        
+        setFinalizerContextToAllFinalizersForPreviousJob(previousJob, ctx);
         enqueueNextJobIfAny();
     }
 
@@ -64,7 +63,7 @@ public inherited sharing class QueueableChain {
                 throw ex;
             }
             isChainedContext = false;
-            nextJob.isJobProcessed = true;
+            nextJob.isProcessed = true;
             enqueueNextJobIfAny();
         }
     }
@@ -74,7 +73,7 @@ public inherited sharing class QueueableChain {
     }
 
     public void addJob(QueueableJob job) {
-        job.setNames();
+        job.setMainAttributes();
         jobs.add(job);
     }
 
@@ -96,10 +95,18 @@ public inherited sharing class QueueableChain {
 
     private QueueableJob getNextJobToProcess() {
         for (QueueableJob job : jobs) {
-            if (!job.isProcessed()) {
+            if (!job.isProcessed) {
                 return job;
             }
         }
         return null;
+    }
+
+    private void setFinalizerContextToAllFinalizersForPreviousJob(QueueableJob previousJob, FinalizerContext ctx) {
+        for (QueueableJob job : jobs) {
+            if (!job.isProcessed && job.parentCustomJobId == previousJob.customJobId && job.finalizerCtx == null) {
+                job.finalizerCtx = ctx;
+            }
+        }
     }
 }

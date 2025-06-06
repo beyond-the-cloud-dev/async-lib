@@ -9,6 +9,6 @@ public inherited sharing class QueueableChainFinalizer implements Finalizer {
     }
 
     public void execute(FinalizerContext ctx) {
-        chain.enqueueFinalizerOrNextJobIfAnyOnChainFail(ctx);
+        chain.enqueueNextJobIfAnyFromFinalizer(ctx);
     }
 }

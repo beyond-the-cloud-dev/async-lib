@@ -8,7 +8,6 @@ public inherited sharing class QueueableChain {
 
     public void execute(QueueableContext ctx) {
         QueueableManager.get().setChain(this);
-        jobs.sort();
         attachQueueableChainFinalizer();
         executeCurrentJob(ctx);
     }
@@ -54,7 +53,8 @@ public inherited sharing class QueueableChain {
         if (!hasNextJob() || (Test.isRunningTest() && System.isQueueable())) {
             return;
         }
-
+        
+        jobs.sort();
         QueueableJob nextJob = getNextJobToProcess();
         try {
             isChainedContext = true;

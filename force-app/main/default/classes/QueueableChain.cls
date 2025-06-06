@@ -42,7 +42,7 @@ public inherited sharing class QueueableChain {
     }
 
     public void enqueueNextJobIfAnyFromFinalizer(FinalizerContext ctx) {
-        QueueableJob previousJob = getNextJobToProcess();
+        QueueableJob previousJob = currentJob;
         previousJob.isProcessed = true;
         previousJob.finalizerCtx = ctx;
         

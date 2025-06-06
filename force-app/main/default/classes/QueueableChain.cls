@@ -89,6 +89,10 @@ public inherited sharing class QueueableChain {
         return currentJob;
     }
 
+    public Boolean isChainedContext() {
+        return isChainedContext;
+    }
+
     public Id getQueueableChainBatchId() {
         return initialQueuableChainBatchJobId;
     }

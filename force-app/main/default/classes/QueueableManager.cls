@@ -58,24 +58,30 @@ public inherited sharing class QueueableManager {
         return this;
     }
 
-    public QueueableManager asFinalizer() {
+    public Async.AsyncResult attachFinalizer() {
         if (currentJob == null) {
-            throw new Async.IllegalArgumentException('No Queueable job has been set to attach finalizer');
+            throw new Async.IllegalArgumentException('No Finalizer job has been set to attach finalizer');
+        }
+
+        if (!chain.isChainedContext()) {
+            throw new Async.IllegalArgumentException('Cannot attach finalizer when not in a QueueableChain context');
         }
 
         QueueableJob currentJobInChainContact = chain.getCurrentJob();
-        if (currentJobInChainContact == null) {
-            throw new Async.IllegalArgumentException('No current job in context to attach finalizer');
-        }
-
         currentJob.parentCustomJobId = currentJobInChainContact.customJobId;
         
-        return this;
+        return enqueue();
     }
 
     public Async.AsyncResult enqueue() {
         if (currentJob == null) {
             throw new Async.IllegalArgumentException('No Queueable job has been set to enqueue');
+        }
+        if (!currentJob.isFinalizer && currentJob instanceof QueueableJob.Finalizer) {
+            throw new Async.IllegalArgumentException('Cannot enqueue a QueueableChain directly. Use attachFinalizer instead.');
+        }
+        if (currentJob.isFinalizer && !(currentJob instanceof QueueableJob.Finalizer)) {
+            throw new Async.IllegalArgumentException('Finalizer job must extend QueueableJob.Finalizer');
         }
 
 

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Settings for Queueable Jobs. All Queueable Job Settings refer to all the Queueable Jobs as a global configuration, which is overridden by specific settings.</description>
+    <label>Queueable Job Setting</label>
+    <pluralLabel>Queueable Job Settings</pluralLabel>
+    <visibility>Public</visibility>
+</CustomObject>

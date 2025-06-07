@@ -203,28 +203,28 @@ private class AsyncTest {
 
     @IsTest
     private static void shouldSortJobsProperly() {
-        QueueableTest1 job1 = new QueueableTest1();
+        QueueableJobTest1 job1 = new QueueableJobTest1();
         job1.uniqueName = 'job1';
         job1.priority = 100;
-        QueueableTest1 job2 = new QueueableTest1();
+        QueueableJobTest2 job2 = new QueueableJobTest2();
         job2.uniqueName = 'job2';
         job2.priority = 50;
-        QueueableTest1 job3 = new QueueableTest1();
+        QueueableJobTest3 job3 = new QueueableJobTest3();
         job3.uniqueName = 'job3';
         job3.priority = 15;
-        QueueableTest1 job4 = new QueueableTest1();
+        QueueableJobTest4 job4 = new QueueableJobTest4();
         job4.uniqueName = 'job4';
         job4.priority = 50;
-        QueueableTest1 job5 = new QueueableTest1();
+        QueueableJobTest5 job5 = new QueueableJobTest5();
         job5.uniqueName = 'job5';
-        QueueableTest1 job6 = new QueueableTest1();
+        QueueableJobTest6 job6 = new QueueableJobTest6();
         job6.uniqueName = 'job6';
         job6.parentCustomJobId = 'something';
-        QueueableTest1 job7 = new QueueableTest1();
+        QueueableJobTest7 job7 = new QueueableJobTest7();
         job7.uniqueName = 'job7';
         job7.parentCustomJobId = 'something';
         job7.priority = 15;
-        QueueableTest1 job8 = new QueueableTest1();
+        QueueableJobTest8 job8 = new QueueableJobTest8();
         job8.uniqueName = 'job8';
         job8.parentCustomJobId = 'something';
         job8.priority = 2;
@@ -248,6 +248,82 @@ private class AsyncTest {
         Assert.areEqual('job4', jobs[5].uniqueName);
         Assert.areEqual('job1', jobs[6].uniqueName);
         Assert.areEqual('job5', jobs[7].uniqueName);
+    }
+
+    @IsTest
+    private static void shouldRemoveAllDisabledJobs() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        job1.uniqueName = 'job1';
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+        job2.uniqueName = 'job2';
+        QueueableJobTest3 job3 = new QueueableJobTest3();
+        job3.uniqueName = 'job3';
+
+        QueueableChain chain = new QueueableChain();
+        chain.disabledQueueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                IsDisabled__c = true
+            )
+        };
+        chain.addJob(job1);
+        chain.addJob(job2);
+        chain.addJob(job3);
+
+        Assert.isFalse(chain.jobs.isEmpty());
+
+        chain.removeJobsThatAreDisabledAndDependentFinalizers();
+        
+        Assert.isTrue(chain.jobs.isEmpty());
+    }
+
+    @IsTest
+    private static void shouldRemoveSepcificDisabledJobsWithDependentFinalizers() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+        QueueableJobTest3 job3 = new QueueableJobTest3();
+        QueueableJobTest4 job4 = new QueueableJobTest4();
+        QueueableJobTest5 job5 = new QueueableJobTest5();
+        QueueableJobTest6 job6 = new QueueableJobTest6();
+        QueueableJobTest7 job7 = new QueueableJobTest7();
+        QueueableJobTest8 job8 = new QueueableJobTest8();
+
+        QueueableChain chain = new QueueableChain();
+        chain.disabledQueueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            'QueueableJobTest1' => new QueueableJobSetting__mdt(
+                DeveloperName = 'QueueableJobTest1',
+                IsDisabled__c = true
+            ),
+            'QueueableJobTest7' => new QueueableJobSetting__mdt(
+                DeveloperName = 'QueueableJobTest7',
+                IsDisabled__c = false
+            ),
+            'QueueableJobTest8' => new QueueableJobSetting__mdt(
+                DeveloperName = 'QueueableJobTest8',
+                IsDisabled__c = true
+            )
+        };
+        chain.addJob(job1);
+        job2.parentCustomJobId = job1.customJobId;
+        chain.addJob(job2);
+        job3.parentCustomJobId = job1.customJobId;
+        chain.addJob(job3);
+        job4.parentCustomJobId = job3.customJobId;
+        chain.addJob(job4);
+        job5.parentCustomJobId = job4.customJobId;
+        chain.addJob(job5);
+        chain.addJob(job6);
+        job7.parentCustomJobId = job6.customJobId;
+        chain.addJob(job7);
+        chain.addJob(job8);
+
+        Assert.isFalse(chain.jobs.isEmpty());
+
+        chain.removeJobsThatAreDisabledAndDependentFinalizers();
+        
+        Assert.areEqual(2, chain.jobs.size());
+        Assert.areEqual(job6.uniqueName, chain.jobs[0].uniqueName);
+        Assert.areEqual(job7.uniqueName, chain.jobs[1].uniqueName);
     }
 
     private class SuccessfulQueueableTest extends QueueableJob {
@@ -276,6 +352,38 @@ private class AsyncTest {
             Async.of(new SuccessfulQueueableTest())
                 .attachFinalizer();
         }
+    }
+
+    private class QueueableJobTest1 extends QueueableJob {
+        public override void work() {}
+    }
+
+    private class QueueableJobTest2 extends QueueableJob {
+        public override void work() {}
+    }
+
+    private class QueueableJobTest3 extends QueueableJob {
+        public override void work() {}
+    }
+
+    private class QueueableJobTest4 extends QueueableJob {
+        public override void work() {}
+    }
+
+    private class QueueableJobTest5 extends QueueableJob {
+        public override void work() {}
+    }
+
+    private class QueueableJobTest6 extends QueueableJob {
+        public override void work() {}
+    }
+
+    private class QueueableJobTest7 extends QueueableJob {
+        public override void work() {}
+    }
+
+    private class QueueableJobTest8 extends QueueableJob {
+        public override void work() {}
     }
 
     private class CustomException extends Exception {

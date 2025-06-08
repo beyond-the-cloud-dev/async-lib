@@ -4,9 +4,13 @@ public inherited sharing class SchedulableBuilder {
     public List<CronBuilder> crons = new List<CronBuilder>();
     public BatchableBuilder batchableBuilder;
 
+    public SchedulableBuilder(QueueableBuilder builder) {
+        this.scheduleJob = new QueueableSchedulable(builder);
+    }
+
     public SchedulableBuilder(BatchableBuilder builder) {
         this.batchableBuilder = builder;
-        this.scheduleJob = new SchedulableBatch(builder);
+        this.scheduleJob = new BatchableSchedulable(builder);
     }
 
     public SchedulableBuilder(Schedulable scheduleJob) {

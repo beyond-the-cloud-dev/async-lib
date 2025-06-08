@@ -41,6 +41,10 @@ public inherited sharing class QueueableBuilder {
         return this;
     }
 
+    public SchedulableBuilder asSchedulable() {
+        return new SchedulableBuilder(this);
+    }
+
     public Async.AsyncResult attachFinalizer() {
         return QueueableManager.get().attachFinalizer(job);
     }

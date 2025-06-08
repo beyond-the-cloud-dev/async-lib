@@ -1,7 +1,7 @@
-public class SchedulableBatch implements Schedulable {
+public class BatchableSchedulable implements Schedulable {
     public BatchableBuilder builder;
     
-    public SchedulableBatch(BatchableBuilder builder) {
+    public BatchableSchedulable(BatchableBuilder builder) {
         this.builder = builder;
     }
 

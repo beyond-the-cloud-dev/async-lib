@@ -62,9 +62,9 @@ public inherited sharing class QueueableManager {
 
 
         chain.addJob(job);
-        if (shouldEnqueueChainJob(job)) {
-            chain.executeOrReplaceInitialQueueableChainBatchJobIfNotInChainContext();
-        } else {
+        if (shouldExecuteOrReplaceInitialQueueableChainBatch(job)) {
+            chain.executeOrReplaceInitialQueueableChainBatchJob();
+        } else if (!chain.isChainedContext()) {
             chain.enqueueNextJobIfAny();
             chain = new QueueableChain();
         }
@@ -73,10 +73,12 @@ public inherited sharing class QueueableManager {
         return result;
     }
 
-    private Boolean shouldEnqueueChainJob(QueueableJob job) {
-        return Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() || 
-            job.isFinalizer || 
-            System.isQueueable();
+    private Boolean shouldExecuteOrReplaceInitialQueueableChainBatch(QueueableJob job) {
+        return 
+            !chain.isChainedContext() && (
+                Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() ||
+                System.isQueueable()
+            );
     }
 
     public static QueueableManager get() {

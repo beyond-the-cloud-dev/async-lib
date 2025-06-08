@@ -97,10 +97,7 @@ public inherited sharing class QueueableChain {
         jobs.add(job);
     }
 
-    public void executeOrReplaceInitialQueueableChainBatchJobIfNotInChainContext() {
-        if (isChainedContext) {
-            return;
-        }
+    public void executeOrReplaceInitialQueueableChainBatchJob() {
         QueueableChainBatch.removeInitialQueuableChainBatchJobIfExists(initialQueuableChainBatchJobId);
         initialQueuableChainBatchJobId = Database.executeBatch(new QueueableChainBatch(this));
     }

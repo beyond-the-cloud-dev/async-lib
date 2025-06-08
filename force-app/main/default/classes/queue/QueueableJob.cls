@@ -1,5 +1,5 @@
 public abstract class QueueableJob implements Queueable, Database.AllowsCallouts, Comparable {
-    public String salesforceJobId;
+    public Id salesforceJobId;
     public String customJobId;
     public String className;
     public String uniqueName;

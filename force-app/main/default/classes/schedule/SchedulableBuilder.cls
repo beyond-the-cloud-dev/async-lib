@@ -1,8 +1,7 @@
 public inherited sharing class SchedulableBuilder {
     public Schedulable scheduleJob;
     public String name;
-    public String cronExpression;
-    public Integer minutesFromNow;
+    public List<CronBuilder> crons = new List<CronBuilder>();
     public BatchableBuilder batchableBuilder;
 
     public SchedulableBuilder(BatchableBuilder builder) {
@@ -20,20 +19,17 @@ public inherited sharing class SchedulableBuilder {
     }
 
     public SchedulableBuilder cronExpression(String cronExpression) {
-        this.cronExpression = cronExpression;
+        this.crons.add(new CronBuilder(cronExpression));
         return this;
     }
 
-    public SchedulableBuilder cronExpression(CronBuilder cronBuilder) {
-        this.cronExpression = cronBuilder.getCronExpression();
+    public SchedulableBuilder cronExpression(CronBuilder builder) {
+        this.crons.add(builder);
         return this;
     }
 
-    public SchedulableBuilder minutesFromNow(Integer minutes) {
-        if (minutes < 0) {
-            throw new Async.IllegalArgumentException('Minutes from now must be zero or greater.');
-        }
-        this.minutesFromNow = minutes;
+    public SchedulableBuilder cronExpression(List<CronBuilder> builders) {
+        this.crons.addAll(builders);
         return this;
     }
 

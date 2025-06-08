@@ -3,16 +3,17 @@ public class CronBuilder {
     private static final String INCREMENTS = '/';
     private static final String VALUE_DELIMITER = ',';
     private static final String DEFAULT_VALUE = ALL_VALUES;
-    private static final String DEFAULT_SECOND_VALUE = '0';
+    private static final String DEFAULT_SECOND_AND_MINUTE_VALUE = '0';
+    private static final String DEFAULT_DAY_OF_WEEK_VALUE = '?';
     private static final String CRON_EXPRESSION_DELIMITER = ' ';
 
-    String second;
-    String minute;
-    String hour;
-    String dayOfMonth;
-    String month;
-    String dayOfWeek;
-    String optionalYear;
+    public String second;
+    public String minute;
+    public String hour;
+    public String dayOfMonth;
+    public String month;
+    public String dayOfWeek;
+    public String optionalYear;
 
     public CronBuilder() {}
 
@@ -21,8 +22,8 @@ public class CronBuilder {
             throw new Async.IllegalArgumentException('Cron expression cannot be blank.');
         }
 
-        List<String> parts = cronExpression.split(' ');
-        if (parts.size() != 6 || parts.size() != 7) {
+        List<String> parts = cronExpression.split(CRON_EXPRESSION_DELIMITER);
+        if (parts.size() != 6 && parts.size() != 7) {
             throw new Async.IllegalArgumentException('Cron expression must have 6 or 7 parts, but was: ' + cronExpression);
         }
 
@@ -70,7 +71,7 @@ public class CronBuilder {
         return this;
     }
 
-    public CronBuilder everyXMinutes(Integer everyXMinutes) {
+    public List<CronBuilder> buildForEveryXMinutes(Integer everyXMinutes) {
         if (everyXMinutes <= 0) {
             throw new Async.IllegalArgumentException('Every X minutes must be greater than zero.');
         }
@@ -78,8 +79,13 @@ public class CronBuilder {
             throw new Async.IllegalArgumentException('Every X minutes must be 30 or less.');
         }
 
-        this.minute = ALL_VALUES + INCREMENTS + everyXMinutes;
-        return this;
+        List<CronBuilder> crons = new List<CronBuilder>();
+        for (Integer min = 0; min < 60; min += everyXMinutes) {
+            this.minute = String.valueOf(min);
+            crons.add(new CronBuilder(this.getCronExpression()));
+        }
+        
+        return crons;
     }
 
     public CronBuilder everyHour(Integer minute) {
@@ -144,13 +150,13 @@ public class CronBuilder {
 
     public String getCronExpression() {
         return String.join(new List<String>{
-            second ?? DEFAULT_SECOND_VALUE,
-            minute ?? DEFAULT_VALUE,
-            hour ?? DEFAULT_VALUE,
-            dayOfMonth ?? DEFAULT_VALUE,
-            month ?? DEFAULT_VALUE,
-            dayOfWeek ?? DEFAULT_VALUE,
-            optionalYear ?? DEFAULT_VALUE
-        }, CRON_EXPRESSION_DELIMITER);
+                second ?? DEFAULT_SECOND_AND_MINUTE_VALUE,
+                minute ?? DEFAULT_SECOND_AND_MINUTE_VALUE,
+                hour ?? DEFAULT_VALUE,
+                dayOfMonth ?? DEFAULT_VALUE,
+                month ?? DEFAULT_VALUE,
+                dayOfWeek ?? DEFAULT_DAY_OF_WEEK_VALUE,
+                optionalYear ?? DEFAULT_VALUE
+            }, CRON_EXPRESSION_DELIMITER);
     }
 }

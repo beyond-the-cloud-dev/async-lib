@@ -1,9 +1,11 @@
 @IsTest
-private class AsyncTest {
+@TestVisible
+private class AsyncTest implements Database.Batchable<SObject> {
     private static final String ACCOUNT_NAME = 'Test Account';
     private static final String CUSTOM_ERROR_MESSAGE = 'Something goes wrong.';
     private static final String DUPLICATE_SIGNATURE_ERROR_MESSAGE = 'Attempt to enqueue job with duplicate queueable signature';
     private static final String TEST_SIGNATURE_NAME = 'SignatureName';
+    private static final String TEST_SCHEDULABLE_JOB_NAME = 'SchedulableTestJob';
 
     @IsTest
     private static void shouldSchedule60QueueablesSuccessfully() {
@@ -14,7 +16,7 @@ private class AsyncTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.AsyncResult ar = Async.of(q).enqueue();
+            Async.AsyncResult ar = Async.queueable(q).enqueue();
             if (Limits.getQueueableJobs() <= Limits.getLimitQueueableJobs()) {
                 Assert.isFalse(ar.isChained, 'Should not be enqueued via batch.');
             } else {
@@ -40,7 +42,7 @@ private class AsyncTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.of(q)
+            Async.queueable(q)
                 .delay(1)
                 .enqueue();
         }
@@ -62,7 +64,7 @@ private class AsyncTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.of(q)
+            Async.queueable(q)
                 .continueOnJobExecuteFail()
                 .rollbackOnJobExecuteFail()
                 .enqueue();
@@ -85,7 +87,7 @@ private class AsyncTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.of(q)
+            Async.queueable(q)
                 .continueOnJobExecuteFail()
                 .enqueue();
         }
@@ -109,7 +111,7 @@ private class AsyncTest {
 
         Test.startTest();
         for (Integer idx = 0; idx < 50; idx++) {
-            Async.of(q)
+            Async.queueable(q)
                 .asyncOptions(options)
                 .continueOnJobEnqueueFail()
                 .enqueue();
@@ -128,10 +130,10 @@ private class AsyncTest {
 
         Test.startTest();
         try {
-            Async.of(q)
+            Async.queueable(q)
                 .asyncOptions(options)
                 .enqueue();
-            Async.of(q)
+            Async.queueable(q)
                 .asyncOptions(options)
                 .enqueue();
             Assert.fail('Should throw duplicate signature exception.');
@@ -147,7 +149,7 @@ private class AsyncTest {
 
         try {
             Test.startTest();
-            Async.of(failureJob)
+            Async.queueable(failureJob)
                 .enqueue();
             Test.stopTest();
             Assert.fail('Should throw duplicate signature exception.');
@@ -162,7 +164,7 @@ private class AsyncTest {
 
         try {
             Test.startTest();
-            Async.of(finalizer)
+            Async.queueable(finalizer)
                 .attachFinalizer();
             Test.stopTest();
             Assert.fail('Should throw exception when trying to attach finalizer in non-chain context.');
@@ -177,7 +179,7 @@ private class AsyncTest {
 
         try {
             Test.startTest();
-            Async.of(finalizer)
+            Async.queueable(finalizer)
                 .enqueue();
             Test.stopTest();
             Assert.fail('Should throw exception when trying to enqueue finalizer directly.');
@@ -192,7 +194,7 @@ private class AsyncTest {
 
         try {
             Test.startTest();
-            Async.of(q)
+            Async.queueable(q)
                 .enqueue();
             Test.stopTest();
             Assert.fail('Should throw exception when trying to attach finalizer to a non-finalizer job.');
@@ -326,6 +328,315 @@ private class AsyncTest {
         Assert.areEqual(job7.uniqueName, chain.jobs[1].uniqueName);
     }
 
+    @IsTest
+    static void shouldScheduleEveryHourOn5Minute() {
+        Test.startTest();
+        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression('0 5 * * * ? *')
+            .schedule();
+        Test.stopTest();
+
+
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name = :TEST_SCHEDULABLE_JOB_NAME];
+        Assert.areEqual(1, triggers.size(), 'Should have one trigger scheduled.');
+        Assert.areEqual('0 5 * * * ? *', triggers[0].CronExpression, 'Cron expression should match the scheduled one.');
+        Assert.isNotNull(triggers[0].NextFireTime, 'Next fire time should not be null.');
+        Assert.isTrue(Math.mod(triggers[0].NextFireTime.minute(), 5) == 0, 'Next fire time should be every 5 minutes.');
+    }
+
+    @IsTest
+    static void shouldScheduleEvery10Minutes() {
+        Test.startTest();
+        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .buildForEveryXMinutes(10)
+            )
+            .schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(6, triggers.size(), 'Should have six triggers scheduled for every 10 minutes.');
+        Assert.areEqual(0, triggers[0].NextFireTime.minute());
+        Assert.areEqual(result.salesforceJobIds[0], triggers[0].Id);
+        Assert.areEqual(10, triggers[1].NextFireTime.minute());
+        Assert.areEqual(result.salesforceJobIds[1], triggers[1].Id);
+        Assert.areEqual(20, triggers[2].NextFireTime.minute());
+        Assert.areEqual(result.salesforceJobIds[2], triggers[2].Id);
+        Assert.areEqual(30, triggers[3].NextFireTime.minute());
+        Assert.areEqual(result.salesforceJobIds[3], triggers[3].Id);
+        Assert.areEqual(40, triggers[4].NextFireTime.minute());
+        Assert.areEqual(result.salesforceJobIds[4], triggers[4].Id);
+        Assert.areEqual(50, triggers[5].NextFireTime.minute());
+        Assert.areEqual(result.salesforceJobIds[5], triggers[5].Id);
+    }
+
+    @IsTest
+    static void shouldScheduleBatchJobEvery30Minutes() {
+        Test.startTest();
+        Async.AsyncResult result = Async.batchable(new AsyncTest())
+            .asSchedulable()
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .buildForEveryXMinutes(30)
+            )
+            .schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(2, triggers.size(), 'Should have six triggers scheduled for every 10 minutes.');
+        Assert.areEqual(0, triggers[0].NextFireTime.minute());
+        Assert.areEqual(result.salesforceJobIds[0], triggers[0].Id);
+        Assert.areEqual(30, triggers[1].NextFireTime.minute());
+        Assert.areEqual(result.salesforceJobIds[1], triggers[1].Id);
+    }
+
+    @IsTest
+    static void shouldFailToScheduleEvery50Minutes() {
+        Test.startTest();
+        try {
+            Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .buildForEveryXMinutes(50)
+            )
+            .schedule();
+            Assert.fail('Should throw exception when trying to schedule every 50 minutes.');
+        } catch (Exception ex) {
+            Assert.areEqual('Every X minutes must be 30 or less.', ex.getMessage());
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void shouldScheduleEveryHour() {
+        Test.startTest();
+        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .everyHour(10)
+            )
+            .schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(1, triggers.size());
+        Assert.areEqual('0 10 * * * ? *', triggers[0].CronExpression);
+        Assert.areEqual(10, triggers[0].NextFireTime.minute());
+    }
+
+    @IsTest
+    static void shouldScheduleEvery5Hour() {
+        Test.startTest();
+        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .everyXHours(5, 25)
+            )
+            .schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(1, triggers.size());
+        Assert.areEqual('0 25 */5 * * ? *', triggers[0].CronExpression);
+        Assert.areEqual(25, triggers[0].NextFireTime.minute());
+        Assert.isTrue(Math.mod(triggers[0].NextFireTime.hour(), 5) == 0);
+    }
+
+    @IsTest
+    static void shouldScheduleEveryDay() {
+        Test.startTest();
+        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .everyDay(10, 30)
+            )
+            .schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(1, triggers.size());
+        Assert.areEqual('0 30 10 * * ? *', triggers[0].CronExpression);
+        Assert.areEqual(30, triggers[0].NextFireTime.minute());
+        Assert.areEqual(10, triggers[0].NextFireTime.hour());
+    }
+
+    @IsTest
+    static void shouldScheduleEvery3Days() {
+        Test.startTest();
+        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .everyXDays(3, 5, 25)
+            )
+            .schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(1, triggers.size());
+        Assert.areEqual('0 25 5 */3 * ? *', triggers[0].CronExpression);
+        Assert.areEqual(25, triggers[0].NextFireTime.minute());
+        Assert.areEqual(5, triggers[0].NextFireTime.hour());
+    }
+
+    @IsTest
+    static void shouldScheduleEveryMonth() {
+        Test.startTest();
+        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .everyMonth(3, 10, 30)
+            )
+            .schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(1, triggers.size());
+        Assert.areEqual('0 30 10 3 * ? *', triggers[0].CronExpression);
+        Assert.areEqual(30, triggers[0].NextFireTime.minute());
+        Assert.areEqual(10, triggers[0].NextFireTime.hour());
+        Assert.areEqual(3, triggers[0].NextFireTime.day());
+    }
+
+    @IsTest
+    static void shouldScheduleEvery4Months() {
+        Test.startTest();
+        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .everyXMonths(4, 3, 5, 25)
+            )
+            .schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(1, triggers.size());
+        Assert.areEqual('0 25 5 3 */4 ? *', triggers[0].CronExpression);
+        Assert.areEqual(25, triggers[0].NextFireTime.minute());
+        Assert.areEqual(5, triggers[0].NextFireTime.hour());
+        Assert.areEqual(3, triggers[0].NextFireTime.day());
+    }
+
+    @IsTest
+    static void shouldFailOnMissingSchedulableJob() {
+        Test.startTest();
+        try {
+            Async.schedulable(null)
+                .schedule();
+            Assert.fail('Should throw exception when trying to schedule a null schedulable job.');
+        } catch (Exception ex) {
+            Assert.areEqual(SchedulableManager.ERROR_MESSAGE_JOB_NOT_SET, ex.getMessage());
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void shouldFailOnMissingName() {
+        Test.startTest();
+        try {
+            Async.schedulable(new SchedulableTest())
+                .schedule();
+            Assert.fail('Should throw exception when trying to schedule a schedulable job without a name.');
+        } catch (Exception ex) {
+            Assert.areEqual(SchedulableManager.ERROR_MESSAGE_JOB_NAME, ex.getMessage());
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void shouldFailOnMissingCronAndMinutesFromNow() {
+        Test.startTest();
+        try {
+            Async.schedulable(new SchedulableTest())
+                .name(TEST_SCHEDULABLE_JOB_NAME)
+                .schedule();
+            Assert.fail('Should throw exception when trying to schedule a schedulable job without cron expressions or minutes from now.');
+        } catch (Exception ex) {
+            Assert.areEqual(SchedulableManager.ERROR_MESSAGE_CRON_AND_MINUTES_NOT_SET, ex.getMessage());
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void shouldFailOnHavingBothCronAndMinutesFromNow() {
+        Test.startTest();
+        try {
+            Async.batchable(new AsyncTest())
+                .minutesFromNow(5)
+                .asSchedulable()
+                .name(TEST_SCHEDULABLE_JOB_NAME)
+                .cronExpression(
+                    new CronBuilder()
+                        .everyXMonths(4, 3, 5, 25)
+                )
+                .schedule();
+            Assert.fail('Should throw exception when trying to schedule a schedulable job with both cron expressions and minutes from now.');
+        } catch (Exception ex) {
+            Assert.areEqual(SchedulableManager.ERROR_MESSAGE_CRON_AND_MINUTES_SET, ex.getMessage());
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void shouldexecuteBatchJob() {
+        Test.startTest();
+        Async.AsyncResult result = Async.batchable(new AsyncTest())
+            .scopeSize(100)
+            .execute();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            [SELECT Id FROM AsyncApexJob WHERE Id = :result.salesforceJobId AND ApexClass.Name = 'AsyncTest' AND Status = 'Completed'].size(),
+            'Should have one batch job executed.'
+        );
+    }
+
+    @IsTest
+    static void shouldScheduleBatchJobIn5Minutes() {
+        Test.startTest();
+        Async.AsyncResult result = Async.batchable(new AsyncTest())
+            .scopeSize(100)
+            .minutesFromNow(5)
+            .asSchedulable()
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .schedule();
+        Test.stopTest();
+
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name = :TEST_SCHEDULABLE_JOB_NAME];
+        Assert.areEqual(1, triggers.size(), 'Should have one trigger scheduled.');
+        Assert.areEqual(DateTime.now().addMinutes(5).minute(), triggers[0].NextFireTime.minute(), 'Next fire time should be in 5 minutes.');
+    }
+
+    public Iterable<Account> start(Database.BatchableContext bc){
+        // This is just a placeholder to start the batch.
+        return new List<Account>{ new Account() };
+    }
+
+    public void execute(Database.BatchableContext ctx, List<Account> scope){
+    }
+
+    public void finish(Database.BatchableContext bc){
+    }
+
     private class SuccessfulQueueableTest extends QueueableJob {
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
@@ -349,7 +660,7 @@ private class AsyncTest {
 
     private class FinalizerErrorQueueableTest extends QueueableJob {
         public override void work() {
-            Async.of(new SuccessfulQueueableTest())
+            Async.queueable(new SuccessfulQueueableTest())
                 .attachFinalizer();
         }
     }
@@ -384,6 +695,11 @@ private class AsyncTest {
 
     private class QueueableJobTest8 extends QueueableJob {
         public override void work() {}
+    }
+
+    private class SchedulableTest implements Schedulable {
+        public void execute(SchedulableContext ctx) {
+        }
     }
 
     private class CustomException extends Exception {

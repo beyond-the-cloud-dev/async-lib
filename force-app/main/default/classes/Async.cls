@@ -1,6 +1,14 @@
 public inherited sharing class Async {
-    public static QueueableBuilder of(QueueableJob job) {
+    public static QueueableBuilder queueable(QueueableJob job) {
         return new QueueableBuilder(job);
+    }
+
+    public static BatchableBuilder batchable(Object job) {
+        return new BatchableBuilder(job); 
+    }
+
+    public static SchedulableBuilder schedulable(Schedulable scheduleJob) {
+        return new SchedulableBuilder(scheduleJob);
     }
 
     public static QueueableJobContext getQueueableJobContext() {
@@ -11,14 +19,6 @@ public inherited sharing class Async {
     public static Id getQueueableChainBatchId() {
         return QueueableManager.get()
             .getQueueableChainBatchId();
-    }
-
-    public static BatchableBuilder of(Database.Batchable<Object> job) {
-        return new BatchableBuilder(job);
-    }
-
-    public static SchedulableBuilder of(Schedulable scheduleJob) {
-        return new SchedulableBuilder(scheduleJob);
     }
 
     public class QueueableJobContext {
@@ -37,11 +37,20 @@ public inherited sharing class Async {
 
     public class AsyncResult {
         public Id salesforceJobId;
+        public List<Id> salesforceJobIds;
         public String customJobId;
         public Boolean isChained;
 
         public AsyncResult(Id salesforceJobId) {
             this.salesforceJobId = salesforceJobId;
+        }
+
+        public AsyncResult(List<Id> salesforceJobIds) {
+            if (salesforceJobIds.size() == 1) {
+                this.salesforceJobId = salesforceJobIds[0];
+            } else {
+                this.salesforceJobIds = salesforceJobIds;
+            }
         }
 
         public AsyncResult(QueueableJob job) {

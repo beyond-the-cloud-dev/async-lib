@@ -8,7 +8,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static final String TEST_SCHEDULABLE_JOB_NAME = 'SchedulableTestJob';
 
     @IsTest
-    private static void shouldSchedule60QueueablesSuccessfully() {
+    private static void shouldEnqueue60QueueablesSuccessfully() {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
@@ -35,7 +35,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    private static void shouldSchedule60QueueablesWitDelaySuccessfully() {
+    private static void shouldEnqueue60QueueablesWitDelaySuccessfully() {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
@@ -57,7 +57,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    private static void shouldSchedule60QueueablesSuccessfullyWithAllItemsFailedWithRollback() {
+    private static void shouldEnqueue60QueueablesSuccessfullyWithAllItemsFailedWithRollback() {
         FailureQueueableTest q = new FailureQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
@@ -80,7 +80,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    private static void shouldSchedule60QueueablesSuccessfullyWithAllItemsFailedWithoutRollback() {
+    private static void shouldEnqueue60QueueablesSuccessfullyWithAllItemsFailedWithoutRollback() {
         FailureQueueableTest q = new FailureQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
@@ -102,7 +102,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    private static void shouldOnlyScheduleOneJobDueToAsyncOptions() {
+    private static void shouldOnlyEnqueueOneJobDueToAsyncOptions() {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
@@ -596,7 +596,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    static void shouldexecuteBatchJob() {
+    static void shouldExecuteBatchJob() {
         Test.startTest();
         Async.AsyncResult result = Async.batchable(new AsyncTest())
             .scopeSize(100)
@@ -624,6 +624,28 @@ private class AsyncTest implements Database.Batchable<SObject> {
         List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name = :TEST_SCHEDULABLE_JOB_NAME];
         Assert.areEqual(1, triggers.size(), 'Should have one trigger scheduled.');
         Assert.areEqual(DateTime.now().addMinutes(5).minute(), triggers[0].NextFireTime.minute(), 'Next fire time should be in 5 minutes.');
+    }
+
+    @IsTest
+    static void shouldScheduleQueueableJobEveryDay() {
+        Test.startTest();
+        Async.AsyncResult result = Async.queueable(new SuccessfulQueueableTest())
+            .delay(1)
+            .asSchedulable()
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .everyDay(10, 30)
+            )
+            .schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(1, triggers.size());
+        Assert.areEqual('0 30 10 * * ? *', triggers[0].CronExpression);
+        Assert.areEqual(30, triggers[0].NextFireTime.minute());
+        Assert.areEqual(10, triggers[0].NextFireTime.hour());
     }
 
     public Iterable<Account> start(Database.BatchableContext bc){

@@ -329,6 +329,49 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    private static void shouldCreateResultsForJob() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            'QueueableJobTest1' => new QueueableJobSetting__mdt(
+                DeveloperName = 'QueueableJobTest1',
+                CreateResult__c = true
+            )
+        };
+        QueueableManager.get().setChain(chain);
+
+        Assert.isTrue([SELECT Id FROM AsyncResult__c].isEmpty());
+        
+        Test.startTest();
+        Async.AsyncResult result1 = Async.queueable(job1)
+            .enqueue();
+        Async.AsyncResult result2 = Async.queueable(job2)
+            .enqueue();
+        Test.stopTest();
+
+        AsyncResult__c job1Result = [SELECT Id, SalesforceJobId__c, CustomJobId__c, Result__c FROM AsyncResult__c WHERE CustomJobId__c = :result1.customJobId LIMIT 1];
+        Assert.areEqual(result1.customJobId, job1Result.CustomJobId__c, 'Custom job ID should match the one from the result.');
+        Assert.areEqual(
+            1,
+            [SELECT Id FROM AsyncApexJob WHERE Status = 'Completed' AND Id = :job1Result.SalesforceJobId__c].size(),
+            'Should have one completed job for QueueableJobTest1.'
+        );
+        Assert.areEqual('SUCCESS', job1Result.Result__c, 'Result should be "Success" for the first job.');
+
+        Assert.isTrue(
+            [SELECT Id, SalesforceJobId__c, CustomJobId__c, Result__c FROM AsyncResult__c WHERE CustomJobId__c = :result2.customJobId LIMIT 1].isEmpty(),
+            'Should not create result for QueueableJobTest2 as it does not have CreateResult__c set to true.'
+        );
+        Assert.areEqual(
+            1,
+            [SELECT Id FROM AsyncApexJob WHERE Status = 'Completed' AND Id = :result2.salesforceJobId].size(),
+            'Should have one completed job for QueueableJobTest2.'
+        );
+    }
+
+    @IsTest
     static void shouldScheduleEveryHourOn5Minute() {
         Test.startTest();
         Async.AsyncResult result = Async.schedulable(new SchedulableTest())

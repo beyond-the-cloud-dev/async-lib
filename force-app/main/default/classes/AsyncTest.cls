@@ -262,7 +262,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         job3.uniqueName = 'job3';
 
         QueueableChain chain = new QueueableChain();
-        chain.disabledQueueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 IsDisabled__c = true
@@ -291,7 +291,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest8 job8 = new QueueableJobTest8();
 
         QueueableChain chain = new QueueableChain();
-        chain.disabledQueueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
             'QueueableJobTest1' => new QueueableJobSetting__mdt(
                 DeveloperName = 'QueueableJobTest1',
                 IsDisabled__c = true

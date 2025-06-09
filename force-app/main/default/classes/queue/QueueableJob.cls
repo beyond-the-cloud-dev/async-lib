@@ -69,6 +69,14 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
         this.uniqueName = this.uniqueName + '::' + String.valueOf(chainCounter);
     }
 
+    public void createAsyncResult() {
+        insert new AsyncResult__c(
+            SalesforceJobId__c = salesforceJobId,
+            CustomJobId__c = customJobId,
+            Result__c = finalizerCtx.getResult().toString()
+        );
+    }
+
     private String getClassName() {
         return String.valueOf(this).substringBefore(':');
     }

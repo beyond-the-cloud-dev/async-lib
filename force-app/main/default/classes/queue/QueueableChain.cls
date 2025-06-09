@@ -8,16 +8,14 @@ public inherited sharing class QueueableChain {
     private QueueableJob currentJob;
 
     @TestVisible
-    private Map<String, QueueableJobSetting__mdt> disabledQueueableJobSettingByJobName {
+    private Map<String, QueueableJobSetting__mdt> queueableJobSettingByJobName {
         get {
             if (Test.isRunningTest()) {
-                return disabledQueueableJobSettingByJobName ?? new Map<String, QueueableJobSetting__mdt>();
+                return queueableJobSettingByJobName ?? new Map<String, QueueableJobSetting__mdt>();
             }
             Map<String, QueueableJobSetting__mdt> jobSettings = new Map<String, QueueableJobSetting__mdt>();
             for (QueueableJobSetting__mdt jobSetting : QueueableJobSetting__mdt.getAll().values()) {
-                if (jobSetting.IsDisabled__c) {
-                    jobSettings.put(jobSetting.QueueableJobName__c, jobSetting);
-                }
+                jobSettings.put(jobSetting.QueueableJobName__c, jobSetting);
             }
             return jobSettings;
         }
@@ -41,6 +39,7 @@ public inherited sharing class QueueableChain {
 
         currentJob = getNextJobToProcess();
         currentJob.queueableCtx = ctx;
+        currentJob.salesforceJobId = ctx.getJobId();
         currentJob.setChainCounterToName(++chainCounter);
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
@@ -63,8 +62,17 @@ public inherited sharing class QueueableChain {
         previousJob.isProcessed = true;
         previousJob.finalizerCtx = ctx;
         
+        createJobResultIfEnabled(previousJob);
         setFinalizerContextToAllFinalizersForPreviousJob(previousJob, ctx);
         enqueueNextJobIfAny();
+    }
+
+    public void createJobResultIfEnabled(QueueableJob previousJob) {
+        if (queueableJobSettingByJobName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)?.CreateResult__c == true
+            || queueableJobSettingByJobName.get(previousJob.className)?.CreateResult__c == true
+        ) {
+            previousJob.createAsyncResult();
+        }
     }
 
     public void enqueueNextJobIfAny() {
@@ -116,7 +124,7 @@ public inherited sharing class QueueableChain {
 
     @TestVisible
     private void removeJobsThatAreDisabledAndDependentFinalizers() {
-        Map<String, QueueableJobSetting__mdt> jobSettings = disabledQueueableJobSettingByJobName;
+        Map<String, QueueableJobSetting__mdt> jobSettings = queueableJobSettingByJobName;
 
         if (jobSettings.isEmpty()) {
             // If there are no job settings, do not remove any jobs

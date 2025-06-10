@@ -708,7 +708,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class FailureQueueableTest extends QueueableJob.WithCallouts {
+    private class FailureQueueableTest extends QueueableJob.AllowsCallouts {
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);

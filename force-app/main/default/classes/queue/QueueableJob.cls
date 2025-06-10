@@ -1,4 +1,4 @@
-public abstract class QueueableJob implements Queueable, Database.AllowsCallouts, Comparable {
+public abstract class QueueableJob implements Queueable, Comparable {
     public Id salesforceJobId;
     public String customJobId;
     public String className;
@@ -81,9 +81,9 @@ public abstract class QueueableJob implements Queueable, Database.AllowsCallouts
         return String.valueOf(this).substringBefore(':');
     }
 
-    public abstract class WithCallouts extends QueueableJob implements Database.AllowsCallouts {
+    public abstract class AllowsCallouts extends QueueableJob implements Database.AllowsCallouts {
     }
 
-    public abstract class Finalizer extends WithCallouts {
+    public abstract class Finalizer extends AllowsCallouts {
     }
 }

@@ -374,7 +374,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleEveryHourOn5Minute() {
         Test.startTest();
-        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+        Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression('0 5 * * * ? *')
             .schedule();
@@ -391,7 +391,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleEvery10Minutes() {
         Test.startTest();
-        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+        List<Async.AsyncResult> results = Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
                 new CronBuilder()
@@ -404,23 +404,23 @@ private class AsyncTest implements Database.Batchable<SObject> {
         List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
         Assert.areEqual(6, triggers.size(), 'Should have six triggers scheduled for every 10 minutes.');
         Assert.areEqual(0, triggers[0].NextFireTime.minute());
-        Assert.areEqual(result.salesforceJobIds[0], triggers[0].Id);
+        Assert.areEqual(results[0].salesforceJobId, triggers[0].Id);
         Assert.areEqual(10, triggers[1].NextFireTime.minute());
-        Assert.areEqual(result.salesforceJobIds[1], triggers[1].Id);
+        Assert.areEqual(results[1].salesforceJobId, triggers[1].Id);
         Assert.areEqual(20, triggers[2].NextFireTime.minute());
-        Assert.areEqual(result.salesforceJobIds[2], triggers[2].Id);
+        Assert.areEqual(results[2].salesforceJobId, triggers[2].Id);
         Assert.areEqual(30, triggers[3].NextFireTime.minute());
-        Assert.areEqual(result.salesforceJobIds[3], triggers[3].Id);
+        Assert.areEqual(results[3].salesforceJobId, triggers[3].Id);
         Assert.areEqual(40, triggers[4].NextFireTime.minute());
-        Assert.areEqual(result.salesforceJobIds[4], triggers[4].Id);
+        Assert.areEqual(results[4].salesforceJobId, triggers[4].Id);
         Assert.areEqual(50, triggers[5].NextFireTime.minute());
-        Assert.areEqual(result.salesforceJobIds[5], triggers[5].Id);
+        Assert.areEqual(results[5].salesforceJobId, triggers[5].Id);
     }
 
     @IsTest
     static void shouldScheduleBatchJobEvery30Minutes() {
         Test.startTest();
-        Async.AsyncResult result = Async.batchable(new AsyncTest())
+        List<Async.AsyncResult> results = Async.batchable(new AsyncTest())
             .asSchedulable()
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
@@ -434,16 +434,16 @@ private class AsyncTest implements Database.Batchable<SObject> {
         List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
         Assert.areEqual(2, triggers.size(), 'Should have six triggers scheduled for every 10 minutes.');
         Assert.areEqual(0, triggers[0].NextFireTime.minute());
-        Assert.areEqual(result.salesforceJobIds[0], triggers[0].Id);
+        Assert.areEqual(results[0].salesforceJobId, triggers[0].Id);
         Assert.areEqual(30, triggers[1].NextFireTime.minute());
-        Assert.areEqual(result.salesforceJobIds[1], triggers[1].Id);
+        Assert.areEqual(results[1].salesforceJobId, triggers[1].Id);
     }
 
     @IsTest
     static void shouldFailToScheduleEvery50Minutes() {
         Test.startTest();
         try {
-            Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+            Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
                 new CronBuilder()
@@ -460,7 +460,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleEveryHour() {
         Test.startTest();
-        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+        Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
                 new CronBuilder()
@@ -479,7 +479,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleEvery5Hour() {
         Test.startTest();
-        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+        Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
                 new CronBuilder()
@@ -499,7 +499,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleEveryDay() {
         Test.startTest();
-        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+        Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
                 new CronBuilder()
@@ -519,7 +519,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleEvery3Days() {
         Test.startTest();
-        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+        Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
                 new CronBuilder()
@@ -539,7 +539,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleEveryMonth() {
         Test.startTest();
-        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+        Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
                 new CronBuilder()
@@ -560,7 +560,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleEvery4Months() {
         Test.startTest();
-        Async.AsyncResult result = Async.schedulable(new SchedulableTest())
+        Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
                 new CronBuilder()
@@ -656,7 +656,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleBatchJobIn5Minutes() {
         Test.startTest();
-        Async.AsyncResult result = Async.batchable(new AsyncTest())
+        Async.batchable(new AsyncTest())
             .scopeSize(100)
             .minutesFromNow(5)
             .asSchedulable()
@@ -672,7 +672,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleQueueableJobEveryDay() {
         Test.startTest();
-        Async.AsyncResult result = Async.queueable(new SuccessfulQueueableTest())
+        Async.queueable(new SuccessfulQueueableTest())
             .delay(1)
             .asSchedulable()
             .name(TEST_SCHEDULABLE_JOB_NAME)

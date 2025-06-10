@@ -37,20 +37,11 @@ public inherited sharing class Async {
 
     public class AsyncResult {
         public Id salesforceJobId;
-        public List<Id> salesforceJobIds;
         public String customJobId;
         public Boolean isChained;
 
         public AsyncResult(Id salesforceJobId) {
             this.salesforceJobId = salesforceJobId;
-        }
-
-        public AsyncResult(List<Id> salesforceJobIds) {
-            if (salesforceJobIds.size() == 1) {
-                this.salesforceJobId = salesforceJobIds[0];
-            } else {
-                this.salesforceJobIds = salesforceJobIds;
-            }
         }
 
         public AsyncResult(QueueableJob job) {

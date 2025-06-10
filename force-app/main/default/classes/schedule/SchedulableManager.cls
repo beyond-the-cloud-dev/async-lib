@@ -12,7 +12,7 @@ public inherited sharing class SchedulableManager {
 
     private static SchedulableManager instance;
 
-    public Async.AsyncResult schedule(SchedulableBuilder builder) {
+    public List<Async.AsyncResult> schedule(SchedulableBuilder builder) {
         if (builder == null || builder.scheduleJob == null) {
             throw new Async.IllegalArgumentException(ERROR_MESSAGE_JOB_NOT_SET);
         }
@@ -26,25 +26,33 @@ public inherited sharing class SchedulableManager {
             throw new Async.IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_SET);
         }
         
-        List<Id> jobIds = new List<Id>();
+        List<Async.AsyncResult> results = new List<Async.AsyncResult>();
         if (builder.batchableBuilder?.minutesFromNow != null) {
-            jobIds.add(
-                System.scheduleBatch(builder.batchableBuilder.job, builder.name, builder.batchableBuilder.minutesFromNow, builder.batchableBuilder.scopeSize ?? BatchableManager.DEFAULT_BATCH_SIZE)
+            results.add(
+                new Async.AsyncResult(
+                    System.scheduleBatch(
+                        builder.batchableBuilder.job, 
+                        builder.name, 
+                        builder.batchableBuilder.minutesFromNow, 
+                        builder.batchableBuilder.scopeSize ?? BatchableManager.DEFAULT_BATCH_SIZE
+                    )
+                )
             );
         } else {
             for (CronBuilder cron : builder.crons) {
-                jobIds.add(
-                    System.schedule(
-                        builder.name + (builder.crons.size() == 1 ? '' : '/' + cron.minute),
-                        cron.getCronExpression(),
-                        builder.scheduleJob
+                results.add(
+                    new Async.AsyncResult(
+                        System.schedule(
+                            builder.name + (builder.crons.size() == 1 ? '' : '/' + cron.minute),
+                            cron.getCronExpression(),
+                            builder.scheduleJob
+                        )
                     )
                 );
             }
         }
 
-        Async.AsyncResult result = new Async.AsyncResult(jobIds);
-        return result;
+        return results;
     }
 
     public static SchedulableManager get() {

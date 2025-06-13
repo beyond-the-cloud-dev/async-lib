@@ -173,7 +173,7 @@ Async.batchable(new MyBatchableJob())
     .minutesFromNow(10) // Schedule the batch job to run in 10 minutes
     .asSchedulable() // Convert BatchableJob to Schedulable
     .name('My Scheduled Batch Job') // Set a name for the scheduled job - required
-    .cronExpression('0 0 12 * * ?') // Set a cron expression for scheduling - required
+    // No CRON expression set since we are using minutesFromNow
     .schedule();
 ```
 

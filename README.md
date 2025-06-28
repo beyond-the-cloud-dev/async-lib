@@ -45,9 +45,9 @@ Async.queueable(new MyQueueableJob())
     .delay(10) // Delay in minutes
     .priority(10) // Set job priority, lower number means higher priority
     .asyncOptions(new AsyncOptions()) // Set async options
-    .continueOnJobEnqueueFail(true) // Continue on job enqueue failure
-    .continueOnJobExecuteFail(true) // Continue on job execution failure
-    .rollbackOnJobExecuteFail(true) // Rollback on job execution failure
+    .continueOnJobEnqueueFail() // Continue on job enqueue failure
+    .continueOnJobExecuteFail() // Continue on job execution failure
+    .rollbackOnJobExecuteFail() // Rollback on job execution failure
     .enqueue();
 ```
 4. To access the current job context, use `Async.getQueueableJobContext()` within the `work()` method of your job class.

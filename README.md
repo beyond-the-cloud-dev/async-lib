@@ -8,6 +8,8 @@
 
 The Async Lib provides easy way for managing asynchronous processes in Salesforce.
 
+For more details and examples, please look into this [post](https://blog.beyondthecloud.dev/blog/apex-queueable-processing-framework).
+
 ## Features
 - **Queueable Chain**: Eliminate the issues with "Too many queueable jobs" by using the `Async.queueable()` method to enqueue jobs in both synchronous and asynchronous context.
   - Framework will automatically handle the chaining of jobs, allowing you to enqueue multiple jobs without hitting the limit, in the same time using as many jobs as possible.

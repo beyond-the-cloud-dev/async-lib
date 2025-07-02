@@ -1,5 +1,9 @@
 # Async Lib
 
+<p align="center">
+  <img src="./assets/async-lib-logo.png" style="width: 300px;"/>
+</p>
+
 ---
 
 The Async Lib provides easy way for managing asynchronous processes in Salesforce.

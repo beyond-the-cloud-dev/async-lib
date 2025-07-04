@@ -5,7 +5,7 @@ public inherited sharing class BatchableManager {
 
     public Async.AsyncResult execute(BatchableBuilder builder) {
         if (builder == null || builder.job == null) {
-            throw new Async.IllegalArgumentException('Batch job must be set.');
+            throw new IllegalArgumentException('Batch job must be set.');
         }
 
         Id jobId = Database.executeBatch(builder.job, builder.scopeSize ?? DEFAULT_BATCH_SIZE);

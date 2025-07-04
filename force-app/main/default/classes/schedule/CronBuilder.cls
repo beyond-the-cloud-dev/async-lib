@@ -19,12 +19,12 @@ public class CronBuilder {
 
     public CronBuilder(String cronExpression) {
         if (String.isBlank(cronExpression)) {
-            throw new Async.IllegalArgumentException('Cron expression cannot be blank.');
+            throw new IllegalArgumentException('Cron expression cannot be blank.');
         }
 
         List<String> parts = cronExpression.split(CRON_EXPRESSION_DELIMITER);
         if (parts.size() != 6 && parts.size() != 7) {
-            throw new Async.IllegalArgumentException('Cron expression must have 6 or 7 parts, but was: ' + cronExpression);
+            throw new IllegalArgumentException('Cron expression must have 6 or 7 parts, but was: ' + cronExpression);
         }
 
         this.second = parts[0];
@@ -73,10 +73,10 @@ public class CronBuilder {
 
     public List<CronBuilder> buildForEveryXMinutes(Integer everyXMinutes) {
         if (everyXMinutes <= 0) {
-            throw new Async.IllegalArgumentException('Every X minutes must be greater than zero.');
+            throw new IllegalArgumentException('Every X minutes must be greater than zero.');
         }
         if (everyXMinutes > 30) {
-            throw new Async.IllegalArgumentException('Every X minutes must be 30 or less.');
+            throw new IllegalArgumentException('Every X minutes must be 30 or less.');
         }
 
         List<CronBuilder> crons = new List<CronBuilder>();
@@ -95,10 +95,10 @@ public class CronBuilder {
 
     public CronBuilder everyXHours(Integer everyXHours, Integer minute) {
         if (everyXHours <= 0) {
-            throw new Async.IllegalArgumentException('Every X hours must be greater than zero.');
+            throw new IllegalArgumentException('Every X hours must be greater than zero.');
         }
         if (everyXHours > 12) {
-            throw new Async.IllegalArgumentException('Every X hours must be 12 or less.');
+            throw new IllegalArgumentException('Every X hours must be 12 or less.');
         }
 
         this.hour = ALL_VALUES + INCREMENTS + everyXHours;
@@ -114,10 +114,10 @@ public class CronBuilder {
 
     public CronBuilder everyXDays(Integer everyXDays, Integer hour, Integer minute) {
         if (everyXDays <= 0) {
-            throw new Async.IllegalArgumentException('Every X days must be greater than zero.');
+            throw new IllegalArgumentException('Every X days must be greater than zero.');
         }
         if (everyXDays > 15) {
-            throw new Async.IllegalArgumentException('Every X days must be 15 or less.');
+            throw new IllegalArgumentException('Every X days must be 15 or less.');
         }
 
         this.dayOfMonth = ALL_VALUES + INCREMENTS + everyXDays;
@@ -135,10 +135,10 @@ public class CronBuilder {
 
     public CronBuilder everyXMonths(Integer everyXMonths, Integer dayOfMonth, Integer hour, Integer minute) {
         if (everyXMonths <= 0) {
-            throw new Async.IllegalArgumentException('Every X months must be greater than zero.');
+            throw new IllegalArgumentException('Every X months must be greater than zero.');
         }
         if (everyXMonths > 6) {
-            throw new Async.IllegalArgumentException('Every X months must be 6 or less.');
+            throw new IllegalArgumentException('Every X months must be 6 or less.');
         }
 
         this.month = ALL_VALUES + INCREMENTS + everyXMonths;

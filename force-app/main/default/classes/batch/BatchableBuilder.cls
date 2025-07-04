@@ -9,7 +9,7 @@ public inherited sharing class BatchableBuilder {
 
     public BatchableBuilder scopeSize(Integer scopeSize) {
         if (scopeSize <= 0) {
-            throw new Async.IllegalArgumentException('Scope size must be greater than zero.');
+            throw new IllegalArgumentException('Scope size must be greater than zero.');
         }
         this.scopeSize = scopeSize;
         return this;
@@ -17,7 +17,7 @@ public inherited sharing class BatchableBuilder {
 
     public BatchableBuilder minutesFromNow(Integer minutes) {
         if (minutes <= 0) {
-            throw new Async.IllegalArgumentException('Minutes from now must be greater than zero.');
+            throw new IllegalArgumentException('Minutes from now must be greater than zero.');
         }
         this.minutesFromNow = minutes;
         return this;

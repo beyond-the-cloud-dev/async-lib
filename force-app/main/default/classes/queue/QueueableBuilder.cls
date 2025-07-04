@@ -7,7 +7,7 @@ public inherited sharing class QueueableBuilder {
 
     public QueueableBuilder asyncOptions(AsyncOptions asyncOptions) {
         if (job.delay != null) {
-            throw new Async.IllegalArgumentException(QueueableManager.ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY);
+            throw new IllegalArgumentException(QueueableManager.ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY);
         }
         job.asyncOptions = asyncOptions;
         return this;
@@ -15,7 +15,7 @@ public inherited sharing class QueueableBuilder {
 
     public QueueableBuilder delay(Integer delay) {
         if (job.asyncOptions != null) {
-            throw new Async.IllegalArgumentException(QueueableManager.ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS);
+            throw new IllegalArgumentException(QueueableManager.ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS);
         }
         job.delay = delay;
         return this;

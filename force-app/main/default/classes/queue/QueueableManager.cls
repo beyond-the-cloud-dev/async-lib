@@ -19,7 +19,7 @@ public inherited sharing class QueueableManager {
     // Should only be used by QueueableChain to set the chain in the context
     public void setChain(QueueableChain chain) {
         if (chain == null) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_CHAIN_NULL);
+            throw new IllegalArgumentException(ERROR_MESSAGE_CHAIN_NULL);
         }
         this.chain = chain;
     }
@@ -36,11 +36,11 @@ public inherited sharing class QueueableManager {
 
     public Async.AsyncResult attachFinalizer(QueueableJob job) {
         if (job == null) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_NOT_SET);
+            throw new IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_NOT_SET);
         }
 
         if (!chain.isChainedContext()) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER);
+            throw new IllegalArgumentException(ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER);
         }
 
         QueueableJob currentJobInChainContact = chain.getCurrentJob();
@@ -51,13 +51,13 @@ public inherited sharing class QueueableManager {
 
     public Async.AsyncResult enqueue(QueueableJob job) {
         if (job == null) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_NO_JOB_SET);
+            throw new IllegalArgumentException(ERROR_MESSAGE_NO_JOB_SET);
         }
         if (!job.isFinalizer && job instanceof QueueableJob.Finalizer) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_CANNOT_ENQUEUE_FINALIZER_DIRECTLY);
+            throw new IllegalArgumentException(ERROR_MESSAGE_CANNOT_ENQUEUE_FINALIZER_DIRECTLY);
         }
         if (job.isFinalizer && !(job instanceof QueueableJob.Finalizer)) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER);
+            throw new IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER);
         }
 
 

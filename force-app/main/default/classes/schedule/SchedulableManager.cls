@@ -14,16 +14,16 @@ public inherited sharing class SchedulableManager {
 
     public List<Async.AsyncResult> schedule(SchedulableBuilder builder) {
         if (builder == null || builder.scheduleJob == null) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_JOB_NOT_SET);
+            throw new IllegalArgumentException(ERROR_MESSAGE_JOB_NOT_SET);
         }
         if (String.isBlank(builder.name)) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_JOB_NAME);
+            throw new IllegalArgumentException(ERROR_MESSAGE_JOB_NAME);
         }
         if ((builder.crons == null || builder.crons.isEmpty()) && builder.batchableBuilder?.minutesFromNow == null) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_NOT_SET);
+            throw new IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_NOT_SET);
         }
         if ((builder.crons != null && !builder.crons.isEmpty()) && builder.batchableBuilder?.minutesFromNow != null) {
-            throw new Async.IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_SET);
+            throw new IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_SET);
         }
         
         List<Async.AsyncResult> results = new List<Async.AsyncResult>();

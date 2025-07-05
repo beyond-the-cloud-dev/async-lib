@@ -2,15 +2,15 @@ public inherited sharing class SchedulableBuilder {
     public Schedulable scheduleJob;
     public String name;
     public List<CronBuilder> crons = new List<CronBuilder>();
-    public BatchableBuilder batchableBuilder;
+    public Async.AsyncBatchableBuilder batchableBuilder;
 
     public SchedulableBuilder(QueueableBuilder builder) {
         this.scheduleJob = new QueueableSchedulable(builder);
     }
 
-    public SchedulableBuilder(BatchableBuilder builder) {
+    public SchedulableBuilder(Async.AsyncBatchableBuilder builder) {
         this.batchableBuilder = builder;
-        this.scheduleJob = new BatchableSchedulable(builder);
+        this.scheduleJob = new Async.BatchableSchedulable(builder);
     }
 
     public SchedulableBuilder(Schedulable scheduleJob) {

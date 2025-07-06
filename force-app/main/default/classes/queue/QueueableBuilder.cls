@@ -41,8 +41,8 @@ public inherited sharing class QueueableBuilder {
         return this;
     }
 
-    public SchedulableBuilder asSchedulable() {
-        return new SchedulableBuilder(this);
+    public Async.SchedulableBuilder asSchedulable() {
+        return new Async.SchedulableBuilder(this);
     }
 
     public Async.AsyncResult attachFinalizer() {

@@ -394,7 +394,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         List<Async.AsyncResult> results = Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .buildForEveryXMinutes(10)
             )
             .schedule();
@@ -424,7 +424,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
             .asSchedulable()
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .buildForEveryXMinutes(30)
             )
             .schedule();
@@ -446,7 +446,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
             Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .buildForEveryXMinutes(50)
             )
             .schedule();
@@ -463,7 +463,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .everyHour(10)
             )
             .schedule();
@@ -482,7 +482,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .everyXHours(5, 25)
             )
             .schedule();
@@ -502,7 +502,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .everyDay(10, 30)
             )
             .schedule();
@@ -522,7 +522,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .everyXDays(3, 5, 25)
             )
             .schedule();
@@ -542,7 +542,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .everyMonth(3, 10, 30)
             )
             .schedule();
@@ -563,7 +563,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .everyXMonths(4, 3, 5, 25)
             )
             .schedule();
@@ -586,7 +586,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 .schedule();
             Assert.fail('Should throw exception when trying to schedule a null schedulable job.');
         } catch (Exception ex) {
-            Assert.areEqual(SchedulableManager.ERROR_MESSAGE_JOB_NOT_SET, ex.getMessage());
+            Assert.areEqual(Async.ERROR_MESSAGE_JOB_NOT_SET, ex.getMessage());
         }
         Test.stopTest();
     }
@@ -599,7 +599,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 .schedule();
             Assert.fail('Should throw exception when trying to schedule a schedulable job without a name.');
         } catch (Exception ex) {
-            Assert.areEqual(SchedulableManager.ERROR_MESSAGE_JOB_NAME, ex.getMessage());
+            Assert.areEqual(Async.ERROR_MESSAGE_JOB_NAME, ex.getMessage());
         }
         Test.stopTest();
     }
@@ -613,7 +613,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 .schedule();
             Assert.fail('Should throw exception when trying to schedule a schedulable job without cron expressions or minutes from now.');
         } catch (Exception ex) {
-            Assert.areEqual(SchedulableManager.ERROR_MESSAGE_CRON_AND_MINUTES_NOT_SET, ex.getMessage());
+            Assert.areEqual(Async.ERROR_MESSAGE_CRON_AND_MINUTES_NOT_SET, ex.getMessage());
         }
         Test.stopTest();
     }
@@ -627,13 +627,13 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 .asSchedulable()
                 .name(TEST_SCHEDULABLE_JOB_NAME)
                 .cronExpression(
-                    new CronBuilder()
+                    new Async.CronBuilder()
                         .everyXMonths(4, 3, 5, 25)
                 )
                 .schedule();
             Assert.fail('Should throw exception when trying to schedule a schedulable job with both cron expressions and minutes from now.');
         } catch (Exception ex) {
-            Assert.areEqual(SchedulableManager.ERROR_MESSAGE_CRON_AND_MINUTES_SET, ex.getMessage());
+            Assert.areEqual(Async.ERROR_MESSAGE_CRON_AND_MINUTES_SET, ex.getMessage());
         }
         Test.stopTest();
     }
@@ -677,7 +677,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
             .asSchedulable()
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
-                new CronBuilder()
+                new Async.CronBuilder()
                     .everyDay(10, 30)
             )
             .schedule();

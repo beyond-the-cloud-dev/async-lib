@@ -2,18 +2,18 @@
  * Copyright (c) 2025 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
  * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
 **/
-public inherited sharing class Async {
-    // public interface QueueableBuilder {
-    //     QueueableBuilder asyncOptions(AsyncOptions asyncOptions);
-    //     QueueableBuilder delay(Integer delay);
-    //     QueueableBuilder priority(Integer priority);
-    //     QueueableBuilder continueOnJobEnqueueFail();
-    //     QueueableBuilder continueOnJobExecuteFail();
-    //     QueueableBuilder rollbackOnJobExecuteFail();
-    //     SchedulableBuilder asSchedulable();
-    //     AsyncResult attachFinalizer();
-    //     AsyncResult enqueue();
-    // }
+public inherited sharing class Async implements Database.Batchable<sObject> {
+    public interface IQueueableBuilder {
+        IQueueableBuilder asyncOptions(AsyncOptions asyncOptions);
+        IQueueableBuilder delay(Integer delay);
+        IQueueableBuilder priority(Integer priority);
+        IQueueableBuilder continueOnJobEnqueueFail();
+        IQueueableBuilder continueOnJobExecuteFail();
+        IQueueableBuilder rollbackOnJobExecuteFail();
+        ISchedulableBuilder asSchedulable();
+        AsyncResult attachFinalizer();
+        AsyncResult enqueue();
+    }
 
     public interface IBatchableBuilder {
         IBatchableBuilder scopeSize(Integer scopeSize);
@@ -48,21 +48,7 @@ public inherited sharing class Async {
         String getCronExpression();
     }
 
-    private static final BatchableManager BATCHABLE_MANAGER_INSTANCE = new BatchableManager();
-    private static final SchedulableManager SCHEDULABLE_MANAGER_INSTANCE = new SchedulableManager();
-    @TestVisible
-    private static final String ERROR_MESSAGE_JOB_NOT_SET = 'Batch job must be set.';
-    @TestVisible
-    private static  final String ERROR_MESSAGE_JOB_NAME = 'Job name must be set.';
-    @TestVisible
-    private static  final String ERROR_MESSAGE_CRON_AND_MINUTES_NOT_SET = 'Cron expressions or minutes from now must be set.';
-    @TestVisible
-    private static  final String ERROR_MESSAGE_CRON_AND_MINUTES_SET = 'Cannot set both cron expressions and minutes from now.';
-    @TestVisible
-    private static  final String ERROR_MESSAGE_JOB_BATCHABLE = 'Job must be a batch job when using minutes from now.';
-    private static final Integer DEFAULT_BATCH_SIZE = 200;
-
-    public static QueueableBuilder queueable(QueueableJob job) {
+    public static IQueueableBuilder queueable(QueueableJob job) {
         return new QueueableBuilder(job);
     }
 
@@ -75,12 +61,12 @@ public inherited sharing class Async {
     }
 
     public static QueueableJobContext getQueueableJobContext() {
-        return QueueableManager.get()
+        return QUEUEABLE_MANAGER_INSTANCE
             .getQueueableJobContext();
     }
 
     public static Id getQueueableChainBatchId() {
-        return QueueableManager.get()
+        return QUEUEABLE_MANAGER_INSTANCE
             .getQueueableChainBatchId();
     }
 
@@ -111,6 +97,485 @@ public inherited sharing class Async {
             this.salesforceJobId = job.salesforceJobId;
             this.customJobId = job.customJobId;
             this.isChained = String.isBlank(salesforceJobId);
+        }
+    }
+
+    public abstract class QueueableJob implements Queueable, Comparable {
+        public Id salesforceJobId;
+        public String customJobId;
+        public String className;
+        public String uniqueName;
+        public Integer delay;
+        public Integer priority;
+        public AsyncOptions asyncOptions;
+        public Boolean isProcessed = false;
+        public Boolean continueOnJobEnqueueFail = false;
+        public Boolean continueOnJobExecuteFail = false;
+        public Boolean rollbackOnJobExecuteFail = false;
+        public QueueableContext queueableCtx;
+
+        public String parentCustomJobId;
+        public FinalizerContext finalizerCtx;
+        public Boolean isFinalizer {
+            get {
+                return String.isNotBlank(parentCustomJobId);
+            }
+        }
+        
+        private QueueableChain chain;
+
+        public abstract void work();
+
+        public void execute(QueueableContext ctx) {
+            chain.execute(ctx);
+        }
+        
+        public Integer compareTo(Object compareTo) {
+            QueueableJob compareToJob = (QueueableJob)compareTo;
+            if (isFinalizer && !compareToJob.isFinalizer) {
+                return -1;
+            }
+            if (!isFinalizer && compareToJob.isFinalizer ) {
+                return 1;
+            }
+            if (priority != null && compareToJob.priority == null) {
+                return -1;
+            }
+            if (priority == null && compareToJob.priority != null) {
+                return 1;
+            }
+            if (priority == compareToJob.priority) {
+                return 0;
+            }
+            return priority - compareToJob.priority;     
+        }
+
+        public void enqueue(QueueableChain chain) {
+            this.chain = chain;
+            if (delay != null) {
+                salesforceJobId = System.enqueueJob(this, delay);
+            } else if (asyncOptions != null) {
+                salesforceJobId = System.enqueueJob(this, asyncOptions);
+            } else {
+                salesforceJobId = System.enqueueJob(this);
+            }
+        }
+
+        public void setMainAttributes() {
+            this.customJobId = UUID.randomUUID().toString();
+            this.className = getClassName();
+            this.uniqueName = className + '::' + System.now().formatGMT('yyyy-MM-dd\'T\'HH:mm:ss.SSSZ');
+        }
+
+        public void setChainCounterToName(Integer chainCounter) {
+            this.uniqueName = this.uniqueName + '::' + String.valueOf(chainCounter);
+        }
+
+        public void createAsyncResult() {
+            insert new AsyncResult__c(
+                SalesforceJobId__c = salesforceJobId,
+                CustomJobId__c = customJobId,
+                Result__c = finalizerCtx.getResult().toString()
+            );
+        }
+
+        private String getClassName() {
+            return String.valueOf(this).substringBefore(':');
+        }
+    }
+    public abstract class QueueableJobAllowsCallouts extends QueueableJob implements Database.AllowsCallouts {
+    }
+
+    public abstract class QueueableJobFinalizer extends QueueableJobAllowsCallouts {
+    }
+
+    @TestVisible
+    private static final QueueableManager QUEUEABLE_MANAGER_INSTANCE = new QueueableManager();
+    @TestVisible
+    private static final BatchableManager BATCHABLE_MANAGER_INSTANCE = new BatchableManager();
+    @TestVisible
+    private static final SchedulableManager SCHEDULABLE_MANAGER_INSTANCE = new SchedulableManager();
+
+    private QueueableChain chain;
+
+    @TestVisible
+    private static final String QUEUEABLE_JOB_SETTING_ALL = 'All';
+    @TestVisible
+    private static final String ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY = 'Cannot set asyncOptions after delay has been set';
+    @TestVisible
+    private static final String ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS = 'Cannot set delay after asyncOptions has been set';
+    @TestVisible
+    private static final String ERROR_MESSAGE_CHAIN_NULL = 'QueueableChain cannot be null';
+    @TestVisible
+    private static final String ERROR_MESSAGE_NO_JOB_SET = 'No Queueable job has been set to enqueue';
+    @TestVisible
+    private static final String ERROR_MESSAGE_FINALIZER_JOB_NOT_SET = 'No Finalizer job has been set to attach finalizer';
+    @TestVisible
+    private static final String ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER = 'Cannot attach finalizer when not in a QueueableChain context';
+    @TestVisible
+    private static final String ERROR_MESSAGE_CANNOT_ENQUEUE_FINALIZER_DIRECTLY = 'Cannot enqueue a QueueableJob.Finalizer directly. Use attachFinalizer() instead.';
+    @TestVisible
+    private static final String ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER = 'Finalizer job must extend QueueableJob.Finalizer';
+    @TestVisible
+    private static final String ERROR_MESSAGE_JOB_NOT_SET = 'Batch job must be set.';
+    @TestVisible
+    private static  final String ERROR_MESSAGE_JOB_NAME = 'Job name must be set.';
+    @TestVisible
+    private static  final String ERROR_MESSAGE_CRON_AND_MINUTES_NOT_SET = 'Cron expressions or minutes from now must be set.';
+    @TestVisible
+    private static  final String ERROR_MESSAGE_CRON_AND_MINUTES_SET = 'Cannot set both cron expressions and minutes from now.';
+    @TestVisible
+    private static  final String ERROR_MESSAGE_JOB_BATCHABLE = 'Job must be a batch job when using minutes from now.';
+    private static final Integer DEFAULT_BATCH_SIZE = 200;
+
+    public class QueueableBuilder implements IQueueableBuilder {
+        private QueueableJob job;
+
+        public QueueableBuilder(QueueableJob job) {
+            this.job = job;
+        }
+
+        public IQueueableBuilder asyncOptions(AsyncOptions asyncOptions) {
+            if (job.delay != null) {
+                throw new IllegalArgumentException(ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY);
+            }
+            job.asyncOptions = asyncOptions;
+            return this;
+        }
+
+        public IQueueableBuilder delay(Integer delay) {
+            if (job.asyncOptions != null) {
+                throw new IllegalArgumentException(ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS);
+            }
+            job.delay = delay;
+            return this;
+        }
+
+        public IQueueableBuilder priority(Integer priority) {
+            job.priority = priority;
+            return this;
+        }
+
+        public IQueueableBuilder continueOnJobEnqueueFail() {
+            job.continueOnJobEnqueueFail = true;
+            return this;
+        }
+
+        public IQueueableBuilder continueOnJobExecuteFail() {
+            job.continueOnJobExecuteFail = true;
+            return this;
+        }
+
+        public IQueueableBuilder rollbackOnJobExecuteFail() {
+            job.rollbackOnJobExecuteFail = true;
+            return this;
+        }
+
+        public ISchedulableBuilder asSchedulable() {
+            return new SchedulableBuilder(this);
+        }
+
+        public AsyncResult attachFinalizer() {
+            return QUEUEABLE_MANAGER_INSTANCE.attachFinalizer(job);
+        }
+
+        public AsyncResult enqueue() {
+            return QUEUEABLE_MANAGER_INSTANCE.enqueue(job);
+        }
+    }
+
+    @TestVisible
+    private class QueueableChain {
+        @TestVisible
+        private List<QueueableJob> jobs = new List<QueueableJob>();
+        @TestVisible
+        private Id initialQueuableChainBatchJobId;
+        private Boolean isChainedContext = false;
+        private Integer chainCounter = 0;
+        private QueueableJob currentJob;
+
+        @TestVisible
+        private Map<String, QueueableJobSetting__mdt> queueableJobSettingByJobName {
+            get {
+                if (Test.isRunningTest()) {
+                    return queueableJobSettingByJobName ?? new Map<String, QueueableJobSetting__mdt>();
+                }
+                Map<String, QueueableJobSetting__mdt> jobSettings = new Map<String, QueueableJobSetting__mdt>();
+                for (QueueableJobSetting__mdt jobSetting : QueueableJobSetting__mdt.getAll().values()) {
+                    jobSettings.put(jobSetting.QueueableJobName__c, jobSetting);
+                }
+                return jobSettings;
+            }
+            private set;
+        }
+
+        public void execute(QueueableContext ctx) {
+            QUEUEABLE_MANAGER_INSTANCE.setChain(this);
+            attachQueueableChainFinalizer();
+            executeCurrentJob(ctx);
+        }
+
+        public void attachQueueableChainFinalizer() {
+            System.attachFinalizer(new QueueableChainFinalizer(this));
+        }
+
+        public void executeCurrentJob(QueueableContext ctx) {
+            if (!hasNextJob()) {
+                return;
+            }
+
+            currentJob = getNextJobToProcess();
+            currentJob.queueableCtx = ctx;
+            currentJob.salesforceJobId = ctx.getJobId();
+            currentJob.setChainCounterToName(++chainCounter);
+            Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
+            try {
+                System.debug(currentJob.customJobId);
+                System.debug(currentJob.uniqueName);
+                currentJob.work();
+            } catch (Exception ex) {
+                if (!currentJob.continueOnJobExecuteFail) {
+                    throw ex;
+                }
+                if (currentJob.rollbackOnJobExecuteFail) {
+                    Database.rollback(sp);
+                    Database.releaseSavepoint(sp);
+                }
+            }
+        }
+
+        public void enqueueNextJobIfAnyFromFinalizer(FinalizerContext ctx) {
+            QueueableJob previousJob = currentJob;
+            previousJob.isProcessed = true;
+            previousJob.finalizerCtx = ctx;
+            
+            createJobResultIfEnabled(previousJob);
+            setFinalizerContextToAllFinalizersForPreviousJob(previousJob, ctx);
+            enqueueNextJobIfAny();
+        }
+
+        public void createJobResultIfEnabled(QueueableJob previousJob) {
+            if (queueableJobSettingByJobName.get(QUEUEABLE_JOB_SETTING_ALL)?.CreateResult__c == true
+                || queueableJobSettingByJobName.get(previousJob.className)?.CreateResult__c == true
+            ) {
+                previousJob.createAsyncResult();
+            }
+        }
+
+        public void enqueueNextJobIfAny() {
+            removeJobsThatAreDisabledAndDependentFinalizers();
+            if (!hasNextJob() || (Test.isRunningTest() && System.isQueueable())) {
+                return;
+            }
+            
+            jobs.sort();
+            QueueableJob nextJob = getNextJobToProcess();
+            try {
+                isChainedContext = true;
+                nextJob.enqueue(this);
+            } catch (Exception ex) {
+                if (!nextJob.continueOnJobEnqueueFail) {
+                    throw ex;
+                }
+                isChainedContext = false;
+                nextJob.isProcessed = true;
+                enqueueNextJobIfAny();
+            }
+        }
+
+        public Boolean hasNextJob() {
+            return getNextJobToProcess() != null;
+        }
+
+        public void addJob(QueueableJob job) {
+            job.setMainAttributes();
+            jobs.add(job);
+        }
+
+        public void executeOrReplaceInitialQueueableChainBatchJob() {
+            removeInitialQueuableChainBatchJobIfExists(initialQueuableChainBatchJobId);
+            initialQueuableChainBatchJobId = Database.executeBatch(new Async(this));
+        }
+
+        public QueueableJob getCurrentJob() {
+            return currentJob;
+        }
+
+        public Boolean isChainedContext() {
+            return isChainedContext;
+        }
+
+        public Id getQueueableChainBatchId() {
+            return initialQueuableChainBatchJobId;
+        }
+
+        @TestVisible
+        private void removeJobsThatAreDisabledAndDependentFinalizers() {
+            Map<String, QueueableJobSetting__mdt> jobSettings = queueableJobSettingByJobName;
+
+            if (jobSettings.isEmpty()) {
+                // If there are no job settings, do not remove any jobs
+                return;
+            }
+
+            QueueableJobSetting__mdt allJobSetting = jobSettings.get(QUEUEABLE_JOB_SETTING_ALL);
+
+            if(allJobSetting?.IsDisabled__c == true) {
+                // If the global setting is disabled, clear all jobs
+                jobs.clear();
+                return;
+            }
+
+            // there are job settings, and if the class is disabled it should be removed and if there is a finalizer that have parentJobId set to this removed job, it should be removed as well, think about creating some logical way to do that, maybe recursion
+            Set<String> customJobIdsToRemove = new Set<String>();
+            for (QueueableJob job : jobs) {
+                QueueableJobSetting__mdt jobSetting = jobSettings.get(job.className);
+                if (jobSetting != null && jobSetting.IsDisabled__c) {
+                    customJobIdsToRemove.add(job.customJobId);
+                }
+            }
+
+            // If there are no jobs to remove, return early
+            if (customJobIdsToRemove.isEmpty()) {
+                return;
+            }
+            customJobIdsToRemove = getAllCustomJobIdsToRemove(customJobIdsToRemove);
+            
+            for (Integer i = jobs.size() - 1; i >= 0; i--) {
+                QueueableJob job = jobs[i];
+                if (customJobIdsToRemove.contains(job.customJobId)) {
+                    jobs.remove(i);
+                }
+            }
+        }
+
+        private Set<String> getAllCustomJobIdsToRemove(Set<String> customJobIdsToRemove) {
+            Set<String> dependentCustomJobIdsToRemove = new Set<String>();
+            for (QueueableJob job : jobs) {
+                if (customJobIdsToRemove.contains(job.parentCustomJobId)) {
+                    dependentCustomJobIdsToRemove.add(job.customJobId);
+                }
+            }
+            
+            if (dependentCustomJobIdsToRemove.isEmpty()) {
+                return customJobIdsToRemove;
+            } else {
+                customJobIdsToRemove.addAll(getAllCustomJobIdsToRemove(dependentCustomJobIdsToRemove));
+                return customJobIdsToRemove;
+            }
+        }
+
+        private QueueableJob getNextJobToProcess() {
+            for (QueueableJob job : jobs) {
+                if (!job.isProcessed) {
+                    return job;
+                }
+            }
+            return null;
+        }
+
+        private void setFinalizerContextToAllFinalizersForPreviousJob(QueueableJob previousJob, FinalizerContext ctx) {
+            for (QueueableJob job : jobs) {
+                if (!job.isProcessed && job.parentCustomJobId == previousJob.customJobId && job.finalizerCtx == null) {
+                    job.finalizerCtx = ctx;
+                }
+            }
+        }
+    }
+
+    private class QueueableManager {
+        private QueueableChain chain = new QueueableChain();
+
+        // Should only be used by QueueableChain to set the chain in the context
+        public void setChain(QueueableChain chain) {
+            if (chain == null) {
+                throw new IllegalArgumentException(ERROR_MESSAGE_CHAIN_NULL);
+            }
+            this.chain = chain;
+        }
+
+        public QueueableJobContext getQueueableJobContext() {
+            QueueableJobContext ctx = new QueueableJobContext();
+            ctx.currentJob = chain.getCurrentJob();
+            return ctx;
+        }
+
+        public Id getQueueableChainBatchId() {
+            return chain.getQueueableChainBatchId();
+        }
+
+        public AsyncResult attachFinalizer(QueueableJob job) {
+            if (job == null) {
+                throw new IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_NOT_SET);
+            }
+
+            if (!chain.isChainedContext()) {
+                throw new IllegalArgumentException(ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER);
+            }
+
+            QueueableJob currentJobInChainContact = chain.getCurrentJob();
+            job.parentCustomJobId = currentJobInChainContact.customJobId;
+            
+            return enqueue(job);
+        }
+
+        public AsyncResult enqueue(QueueableJob job) {
+            if (job == null) {
+                throw new IllegalArgumentException(ERROR_MESSAGE_NO_JOB_SET);
+            }
+            if (!job.isFinalizer && job instanceof QueueableJobFinalizer) {
+                throw new IllegalArgumentException(ERROR_MESSAGE_CANNOT_ENQUEUE_FINALIZER_DIRECTLY);
+            }
+            if (job.isFinalizer && !(job instanceof QueueableJobFinalizer)) {
+                throw new IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER);
+            }
+
+
+            chain.addJob(job);
+            if (shouldExecuteOrReplaceInitialQueueableChainBatch(job)) {
+                chain.executeOrReplaceInitialQueueableChainBatchJob();
+            } else if (!chain.isChainedContext()) {
+                chain.enqueueNextJobIfAny();
+                chain = new QueueableChain();
+            }
+
+            AsyncResult result = new AsyncResult(job);
+            return result;
+        }
+
+        private Boolean shouldExecuteOrReplaceInitialQueueableChainBatch(QueueableJob job) {
+            return 
+                !chain.isChainedContext() && (
+                    Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() ||
+                    System.isQueueable()
+                );
+        }
+    }
+
+    private class QueueableChainFinalizer implements Finalizer {
+        private QueueableChain chain;
+
+        public QueueableChainFinalizer(QueueableChain chain) {
+            if (chain == null) {
+                throw new IllegalArgumentException('QueueableChain cannot be null');
+            }
+            this.chain = chain;
+        }
+
+        public void execute(FinalizerContext ctx) {
+            chain.enqueueNextJobIfAnyFromFinalizer(ctx);
+        }
+    }
+
+    private class QueueableSchedulable implements Schedulable {
+        public IQueueableBuilder builder;
+        
+        public QueueableSchedulable(IQueueableBuilder builder) {
+            this.builder = builder;
+        }
+
+        public void execute(SchedulableContext scx) {
+            builder.enqueue();
         }
     }
 
@@ -148,7 +613,7 @@ public inherited sharing class Async {
         }
     }
 
-    public class BatchableManager {
+    private class BatchableManager {
         public AsyncResult execute(BatchableBuilder builder) {
             if (builder == null || builder.job == null) {
                 throw new IllegalArgumentException('Batch job must be set.');
@@ -161,10 +626,10 @@ public inherited sharing class Async {
         }
     }
 
-    public class BatchableSchedulable implements Schedulable {
-        public BatchableBuilder builder;
+    private class BatchableSchedulable implements Schedulable {
+        public IBatchableBuilder builder;
         
-        public BatchableSchedulable(BatchableBuilder builder) {
+        public BatchableSchedulable(IBatchableBuilder builder) {
             this.builder = builder;
         }
 
@@ -380,7 +845,6 @@ public inherited sharing class Async {
         }
     }
 
-    @TestVisible
     private class SchedulableManager {
         public List<AsyncResult> schedule(SchedulableBuilder builder) {
             if (builder == null || builder.scheduleJob == null) {
@@ -424,6 +888,37 @@ public inherited sharing class Async {
             }
 
             return results;
+        }
+    }
+
+    private Async(QueueableChain chain) {
+        if (chain == null) {
+            throw new IllegalArgumentException('QueueableChain cannot be null');
+        }
+        this.chain = chain;
+    }
+
+    public Iterable<Account> start(Database.BatchableContext bc){
+        // This is just a placeholder to start the batch.
+        return new List<Account>{ new Account() };
+    }
+
+    public void execute(Database.BatchableContext bc, List<Account> scope){
+        chain.enqueueNextJobIfAny();
+    }
+
+    public void finish(Database.BatchableContext bc){
+    }
+
+    private static void removeInitialQueuableChainBatchJobIfExists(Id jobId) {
+        if (jobId == null) {
+            return;
+        }
+
+        try {
+            System.abortJob(jobId);
+        } catch (Exception e) {
+            // No action if not exists
         }
     }
 }

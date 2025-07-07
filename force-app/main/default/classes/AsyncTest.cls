@@ -29,7 +29,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Should have 51 job runs (50 queueable and 1 batch).');
         Assert.areEqual(
             1,
-            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed' AND Id = :initialQueuableChainBatchJobId].size(),
+            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'Async' AND Status = 'Completed' AND Id = :initialQueuableChainBatchJobId].size(),
             'Should run only one batchable job with the rest, that should be successfully completed and with Id provided from framework.'
         );
     }
@@ -51,7 +51,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Should have 51 job runs (50 queueable and 1 batch).');
         Assert.areEqual(
             1,
-            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
+            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'Async' AND Status = 'Completed'].size(),
             'Should run only one batchable job with the rest.'
         );
     }
@@ -74,7 +74,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(0, [SELECT COUNT() FROM Account], 'Should have no Accounts created.');
         Assert.areEqual(
             1,
-            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
+            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'Async' AND Status = 'Completed'].size(),
             'Should run only one batchable job with the rest.'
         );
     }
@@ -96,7 +96,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Inserted Accounts are not rollbacked.');
         Assert.areEqual(
             1,
-            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
+            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'Async' AND Status = 'Completed'].size(),
             'Should run only one batchable job with the rest.'
         );
     }
@@ -169,7 +169,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
             Test.stopTest();
             Assert.fail('Should throw exception when trying to attach finalizer in non-chain context.');
         } catch (Exception ex) {
-            Assert.areEqual(QueueableManager.ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER, ex.getMessage());
+            Assert.areEqual(Async.ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER, ex.getMessage());
         }
     }
 
@@ -184,7 +184,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
             Test.stopTest();
             Assert.fail('Should throw exception when trying to enqueue finalizer directly.');
         } catch (Exception ex) {
-            Assert.areEqual(QueueableManager.ERROR_MESSAGE_CANNOT_ENQUEUE_FINALIZER_DIRECTLY, ex.getMessage());
+            Assert.areEqual(Async.ERROR_MESSAGE_CANNOT_ENQUEUE_FINALIZER_DIRECTLY, ex.getMessage());
         }
     }
 
@@ -199,7 +199,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
             Test.stopTest();
             Assert.fail('Should throw exception when trying to attach finalizer to a non-finalizer job.');
         } catch (Exception ex) {
-            Assert.areEqual(QueueableManager.ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER, ex.getMessage());
+            Assert.areEqual(Async.ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER, ex.getMessage());
         }
     }
 
@@ -231,7 +231,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         job8.parentCustomJobId = 'something';
         job8.priority = 2;
 
-        List<QueueableJob> jobs = new List<QueueableJob>{
+        List<Async.QueueableJob> jobs = new List<Async.QueueableJob>{
             job1,
             job2,
             job3,
@@ -261,10 +261,10 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest3 job3 = new QueueableJobTest3();
         job3.uniqueName = 'job3';
 
-        QueueableChain chain = new QueueableChain();
+        Async.QueueableChain chain = new Async.QueueableChain();
         chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
-                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+            Async.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = Async.QUEUEABLE_JOB_SETTING_ALL,
                 IsDisabled__c = true
             )
         };
@@ -290,7 +290,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest7 job7 = new QueueableJobTest7();
         QueueableJobTest8 job8 = new QueueableJobTest8();
 
-        QueueableChain chain = new QueueableChain();
+        Async.QueueableChain chain = new Async.QueueableChain();
         chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
             'QueueableJobTest1' => new QueueableJobSetting__mdt(
                 DeveloperName = 'QueueableJobTest1',
@@ -333,14 +333,14 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest1 job1 = new QueueableJobTest1();
         QueueableJobTest2 job2 = new QueueableJobTest2();
 
-        QueueableChain chain = new QueueableChain();
+        Async.QueueableChain chain = new Async.QueueableChain();
         chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
             'QueueableJobTest1' => new QueueableJobSetting__mdt(
                 DeveloperName = 'QueueableJobTest1',
                 CreateResult__c = true
             )
         };
-        QueueableManager.get().setChain(chain);
+        Async.QUEUEABLE_MANAGER_INSTANCE.setChain(chain);
 
         Assert.isTrue([SELECT Id FROM AsyncResult__c].isEmpty());
         
@@ -702,20 +702,20 @@ private class AsyncTest implements Database.Batchable<SObject> {
     public void finish(Database.BatchableContext bc){
     }
 
-    private class SuccessfulQueueableTest extends QueueableJob {
+    private class SuccessfulQueueableTest extends Async.QueueableJob {
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
         }
     }
 
-    private class FailureQueueableTest extends QueueableJob.AllowsCallouts {
+    private class FailureQueueableTest extends Async.QueueableJobAllowsCallouts {
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
     }
 
-    private class QueueableTestFinalizer extends QueueableJob.Finalizer {
+    private class QueueableTestFinalizer extends Async.QueueableJobFinalizer {
         public override void work() {
             FinalizerContext finalizerCtx = Async.getQueueableJobContext()?.finalizerCtx;
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName, 
@@ -723,42 +723,42 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class FinalizerErrorQueueableTest extends QueueableJob {
+    private class FinalizerErrorQueueableTest extends Async.QueueableJob {
         public override void work() {
             Async.queueable(new SuccessfulQueueableTest())
                 .attachFinalizer();
         }
     }
 
-    private class QueueableJobTest1 extends QueueableJob {
+    private class QueueableJobTest1 extends Async.QueueableJob {
         public override void work() {}
     }
 
-    private class QueueableJobTest2 extends QueueableJob {
+    private class QueueableJobTest2 extends Async.QueueableJob {
         public override void work() {}
     }
 
-    private class QueueableJobTest3 extends QueueableJob {
+    private class QueueableJobTest3 extends Async.QueueableJob {
         public override void work() {}
     }
 
-    private class QueueableJobTest4 extends QueueableJob {
+    private class QueueableJobTest4 extends Async.QueueableJob {
         public override void work() {}
     }
 
-    private class QueueableJobTest5 extends QueueableJob {
+    private class QueueableJobTest5 extends Async.QueueableJob {
         public override void work() {}
     }
 
-    private class QueueableJobTest6 extends QueueableJob {
+    private class QueueableJobTest6 extends Async.QueueableJob {
         public override void work() {}
     }
 
-    private class QueueableJobTest7 extends QueueableJob {
+    private class QueueableJobTest7 extends Async.QueueableJob {
         public override void work() {}
     }
 
-    private class QueueableJobTest8 extends QueueableJob {
+    private class QueueableJobTest8 extends Async.QueueableJob {
         public override void work() {}
     }
 

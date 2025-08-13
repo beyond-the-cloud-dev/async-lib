@@ -26,11 +26,17 @@ private class AsyncTest implements Database.Batchable<SObject> {
         initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
         Test.stopTest();
 
-        Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Should have 51 job runs (50 queueable and 1 batch).');
+        Assert.areEqual(50, [SELECT COUNT() FROM Account], 'Should have 50 job runs (50 queueable and 1 scheduled batch that was not executed yet).');
+        List<CronTrigger> cronTriggers = [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'];
         Assert.areEqual(
             1,
-            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed' AND Id = :initialQueuableChainBatchJobId].size(),
-            'Should run only one batchable job with the rest, that should be successfully completed and with Id provided from framework.'
+            cronTriggers.size(),
+            'Should schedule only one batchable job with the rest.'
+        );
+        Assert.areEqual(
+            initialQueuableChainBatchJobId,
+            cronTriggers[0].Id,
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
         );
     }
 
@@ -39,6 +45,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+        Id initialQueuableChainBatchJobId;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
@@ -46,13 +53,20 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 .delay(1)
                 .enqueue();
         }
+        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
         Test.stopTest();
 
-        Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Should have 51 job runs (50 queueable and 1 batch).');
+        Assert.areEqual(50, [SELECT COUNT() FROM Account], 'Should have 50 job runs (50 queueable and 1 scheduled batch that was not executed yet).');
+        List<CronTrigger> cronTriggers = [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'];
         Assert.areEqual(
             1,
-            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
-            'Should run only one batchable job with the rest.'
+            cronTriggers.size(),
+            'Should schedule only one batchable job with the rest.'
+        );
+        Assert.areEqual(
+            initialQueuableChainBatchJobId,
+            cronTriggers[0].Id,
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
         );
     }
 
@@ -61,6 +75,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         FailureQueueableTest q = new FailureQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+        Id initialQueuableChainBatchJobId;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
@@ -69,13 +84,20 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 .rollbackOnJobExecuteFail()
                 .enqueue();
         }
+        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
         Test.stopTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account], 'Should have no Accounts created.');
+        List<CronTrigger> cronTriggers = [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'];
         Assert.areEqual(
             1,
-            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
-            'Should run only one batchable job with the rest.'
+            cronTriggers.size(),
+            'Should schedule only one batchable job with the rest.'
+        );
+        Assert.areEqual(
+            initialQueuableChainBatchJobId,
+            cronTriggers[0].Id,
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
         );
     }
 
@@ -84,6 +106,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         FailureQueueableTest q = new FailureQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+        Id initialQueuableChainBatchJobId;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
@@ -91,13 +114,20 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 .continueOnJobExecuteFail()
                 .enqueue();
         }
+        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
         Test.stopTest();
 
-        Assert.areEqual(51, [SELECT COUNT() FROM Account], 'Inserted Accounts are not rollbacked.');
+        Assert.areEqual(50, [SELECT COUNT() FROM Account], 'Inserted Accounts are not rollbacked.');
+        List<CronTrigger> cronTriggers = [SELECT Id FROM CronTrigger WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'];
         Assert.areEqual(
             1,
-            [SELECT Id FROM AsyncApexJob WHERE ApexClass.Name = 'QueueableChainBatch' AND Status = 'Completed'].size(),
-            'Should run only one batchable job with the rest.'
+            cronTriggers.size(),
+            'Should schedule only one batchable job with the rest.'
+        );
+        Assert.areEqual(
+            initialQueuableChainBatchJobId,
+            cronTriggers[0].Id,
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
         );
     }
 

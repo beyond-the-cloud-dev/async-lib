@@ -1,11 +1,17 @@
-public inherited sharing class QueueableChainBatch implements Database.Batchable<sObject> {
+public inherited sharing class QueueableChainBatch implements Schedulable, Database.Batchable<sObject> {
     private QueueableChain chain;
+    private String cronTriggerId;
 
     public QueueableChainBatch(QueueableChain chain) {
         if (chain == null) {
             throw new IllegalArgumentException('QueueableChain cannot be null');
         }
         this.chain = chain;
+    }
+
+    public void execute(SchedulableContext ctx){
+        this.cronTriggerId = ctx.getTriggerId();
+        Database.executeBatch(this, 1);
     }
 
     public void execute(Database.BatchableContext bc, List<Account> scope){
@@ -30,5 +36,6 @@ public inherited sharing class QueueableChainBatch implements Database.Batchable
     }
 
     public void finish(Database.BatchableContext bc){
+        System.abortJob(this.cronTriggerId);
     }
 }

@@ -107,7 +107,13 @@ public inherited sharing class QueueableChain {
 
     public void executeOrReplaceInitialQueueableChainBatchJob() {
         QueueableChainBatch.removeInitialQueuableChainBatchJobIfExists(initialQueuableChainBatchJobId);
-        initialQueuableChainBatchJobId = Database.executeBatch(new QueueableChainBatch(this));
+
+        String hour = String.valueOf(Datetime.now().hour());
+        String min = String.valueOf(Datetime.now().minute() + 1); 
+        String ss = String.valueOf(Datetime.now().second());
+        String nextFireTime = ss + ' ' + min + ' ' + hour + ' * * ?';
+
+        initialQueuableChainBatchJobId = System.schedule('QueueableChainBatch/' + String.valueOf(Datetime.now()) + '/' + UUID.randomUUID().toString(), nextFireTime, new QueueableChainBatch(this));
     }
 
     public QueueableJob getCurrentJob() {

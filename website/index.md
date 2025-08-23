@@ -3,23 +3,23 @@
 layout: home
 
 hero:
-  name: "async"
-  text: "Async Lib Documentation"
-  tagline: My great project tagline
+  name: "Async Lib"
+  text: "Salesforce Apex Async Framework"
+  tagline: Eliminate queueable limits, unify async processing, and build resilient job chains with elegant error handling
   actions:
     - theme: brand
-      text: Markdown Examples
-      link: /markdown-examples
+      text: Get Started
+      link: /getting-started
     - theme: alt
-      text: API Examples
-      link: /api-examples
+      text: View Examples
+      link: /examples
 
 features:
-  - title: Feature A
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: Feature B
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: Feature C
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
+  - title: Smart Queueable Jobs
+    details: Automatically handles "Too many queueable jobs" errors through intelligent chaining and batch overflow. Features priority-based execution, sophisticated error handling, and powerful finalizers for cleanup logic.
+  - title: Unified Batch Processing  
+    details: Execute batch jobs immediately or schedule them for later with configurable scope sizes. Convert any batch job to schedulable with a single method call. Built-in error handling and result tracking.
+  - title: Flexible Scheduling
+    details: Intuitive CronBuilder for complex scheduling patterns. Convert queueable or batch jobs to schedulable effortlessly. Support for business hours, recurring intervals, and custom cron expressions.
 ---
 

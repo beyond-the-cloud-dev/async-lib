@@ -56,3 +56,4 @@ $RECYCLE.BIN/
 *.key
 website/.vitepress/dist
 website/.vitepress/cache
+website/docs

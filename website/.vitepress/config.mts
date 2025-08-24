@@ -14,7 +14,10 @@ export default defineConfig({
 
     sidebar: [
       {
-        text: 'Getting Started'
+        text: 'Introduction',
+        items: [
+          { text: 'Getting Started', link: '/getting-started' }
+        ]
       },
       {
         text: 'API',
@@ -23,19 +26,13 @@ export default defineConfig({
           { text: 'Batchable', link: '/api/batchable' },
           { text: 'Schedulable', link: '/api/schedulable' }
         ]
-      },
-      {
-        text: 'Examples',
-        items: [
-          { text: 'Queueable', link: '/examples/queueable' },
-          { text: 'Batchable', link: '/examples/batchable' },
-          { text: 'Schedulable', link: '/examples/schedulable' }
-        ]
       }
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/vuejs/vitepress' }
+      { icon: 'github', link: 'https://github.com/beyond-the-cloud-dev/async-lib' },
+      { icon: 'linkedin', link: 'https://www.linkedin.com/company/beyondtheclouddev' }
+
     ]
   }
 })

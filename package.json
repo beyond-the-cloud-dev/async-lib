@@ -13,10 +13,13 @@
     "prettier": "prettier --write \"**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,xml,yaml,yml}\"",
     "prettier:verify": "prettier --list-different \"**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,xml,yaml,yml}\"",
     "postinstall": "husky install",
-    "precommit": "lint-staged"
+    "precommit": "lint-staged",
+    "docs:dev": "vitepress dev website",
+    "docs:build": "vitepress build website",
+    "docs:preview": "vitepress preview website"
   },
   "devDependencies": {
-    "@lwc/eslint-plugin-lwc": "^1.1.2",
+    "@lwc/eslint-plugin-lwc": "^2.0.0",
     "@prettier/plugin-xml": "^2.0.1",
     "@salesforce/eslint-config-lwc": "^3.2.3",
     "@salesforce/eslint-plugin-aura": "^2.0.0",

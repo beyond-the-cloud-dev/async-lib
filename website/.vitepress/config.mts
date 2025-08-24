@@ -15,6 +15,7 @@ export default defineConfig({
     sidebar: [
       {
         text: 'Introduction',
+        collapsed: true,
         items: [
           { text: 'Getting Started', link: '/getting-started' },
           { text: 'Installation', link: '/introduction/installation' }
@@ -22,6 +23,7 @@ export default defineConfig({
       },
       {
         text: 'API',
+        collapsed: false,
         items: [
           { text: 'Queueable', link: '/api/queueable' },
           { text: 'Batchable', link: '/api/batchable' },
@@ -29,7 +31,10 @@ export default defineConfig({
         ]
       }
     ],
-
+    footer: {
+      message: 'Released under the MIT License.',
+      copyright: 'Copyright © 2025-present Beyond The Cloud Sp. z o.o.'
+    },
     socialLinks: [
       { icon: 'github', link: 'https://github.com/beyond-the-cloud-dev/async-lib' },
       { icon: 'linkedin', link: 'https://www.linkedin.com/company/beyondtheclouddev' }

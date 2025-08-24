@@ -1,8 +1,18 @@
-# Async Lib
+<div align="center">
+  <a href="https://async.beyondthecloud.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./assets/async-lib-logo.png">
+      <img alt="Async Lib logo" src="./assets/async-lib-logo.png" height="98">
+    </picture>
+  </a>
+  <h1>Async Lib</h1>
 
-<p align="center">
-  <img src="./assets/async-lib-logo.png" style="width: 300px;"/>
-</p>
+<a href="https://beyondthecloud.dev"><img alt="Beyond The Cloud logo" src="https://img.shields.io/badge/MADE_BY_BEYOND_THE_CLOUD-555?style=for-the-badge"></a>
+<a ><img alt="API version" src="https://img.shields.io/badge/api-v64.0-blue?style=for-the-badge"></a>
+<a href="https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-mit-green?style=for-the-badge"></a>
+
+
+</div>
 
 ---
 

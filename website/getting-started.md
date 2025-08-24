@@ -57,20 +57,6 @@ Async Lib is a powerful Salesforce Apex framework that provides an elegant solut
 - **⚙️ Configuration-Driven**: Control job behavior through custom metadata without code changes
 - **🔗 Support Finalizers**: Execute cleanup logic after job completion with full context
 
-## Installation
-
-Deploy to your Salesforce org using the deploy button:
-
-<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=main">
-  <img alt="Deploy to Salesforce" src="https://raw.githubusercontent.com/afawcett/githubsfdeploy/master/deploy.png">
-</a>
-
-Or clone the repository and deploy using SFDX:
-
-```bash
-git clone https://github.com/beyond-the-cloud-dev/async-lib.git
-cd async-lib
-sf project deploy start -p force-app -u your-org-alias
 ```
 
 ## Core Concepts

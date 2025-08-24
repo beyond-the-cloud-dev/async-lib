@@ -16,7 +16,8 @@ export default defineConfig({
       {
         text: 'Introduction',
         items: [
-          { text: 'Getting Started', link: '/getting-started' }
+          { text: 'Getting Started', link: '/getting-started' },
+          { text: 'Installation', link: '/introduction/installation' }
         ]
       },
       {
@@ -32,7 +33,6 @@ export default defineConfig({
     socialLinks: [
       { icon: 'github', link: 'https://github.com/beyond-the-cloud-dev/async-lib' },
       { icon: 'linkedin', link: 'https://www.linkedin.com/company/beyondtheclouddev' }
-
     ]
   }
 })

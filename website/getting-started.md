@@ -183,8 +183,8 @@ Available settings:
 
 Now that you understand the basics:
 
-1. **[Explore the API](/api)** - Learn about all available methods and options
-2. **[See Examples](/examples)** - View real-world usage patterns and advanced scenarios
+1. **[Explore the API](/getting-started)** - Learn about all available methods and options
+2. **[See Examples](/getting-started)** - View real-world usage patterns and advanced scenarios
 3. **Read the Blog Post** - Check out the detailed explanation: [Apex Queueable Processing Framework](https://blog.beyondthecloud.dev/blog/apex-queueable-processing-framework)
 
 ## Quick Tips

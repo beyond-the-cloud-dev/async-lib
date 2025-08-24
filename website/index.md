@@ -12,7 +12,7 @@ hero:
       link: /getting-started
     - theme: alt
       text: View Examples
-      link: /examples
+      link: /getting-started
 
 features:
   - title: Smart Queueable Jobs

@@ -8,6 +8,45 @@ Async Lib is a powerful Salesforce Apex framework that provides an elegant solut
 
 ## Why Async Lib?
 
+### Salesforce Limits
+
+<table>
+    <thead>
+        <tr>
+            <th>Apex Context</th>
+            <th>Queueable</th>
+            <th>Future</th>
+            <th>Batch</th>
+            <th>Schedule</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>Synchronous</strong> or <strong>Scheduled*</strong> process</td>
+            <td>50</td>
+            <td>50</td>
+            <td rowspan="3">100 in <strong>Holding</strong> status<br/>5 in <strong>Queued</strong> or <strong>Active</strong> status</td>
+            <td rowspan="4">100</td>
+        </tr>
+        <tr>
+            <td><strong>Queueable</strong> job</td>
+            <td>1</td>
+            <td>50</td>
+        </tr>
+        <tr>
+            <td><strong>@future</strong> method call</td>
+            <td>1</td>
+            <td>0</td>
+        </tr>
+        <tr>
+            <td><strong>Batch</strong> job</td>
+            <td>1</td>
+            <td>0</td>
+            <td>As above in <strong>finish()</strong> batch method. For <strong>start()</strong> and <strong>execute()</strong> methods, the limit is 0.</td>
+        </tr>
+    </tbody>
+</table>
+
 ### Key Benefits
 
 - **🚀 Eliminates Queueable Limits**: Automatically handles "Too many queueable jobs" by intelligent chaining and batch overflow
@@ -16,7 +55,7 @@ Async Lib is a powerful Salesforce Apex framework that provides an elegant solut
 - **🛡️ Advanced Error Handling**: Built-in error recovery, rollback options, and continuation strategies
 - **📊 Job Tracking**: Comprehensive tracking with custom job IDs and result records
 - **⚙️ Configuration-Driven**: Control job behavior through custom metadata without code changes
-- **🔗 Powerful Finalizers**: Execute cleanup logic after job completion with full context
+- **🔗 Support Finalizers**: Execute cleanup logic after job completion with full context
 
 ## Installation
 
@@ -31,7 +70,7 @@ Or clone the repository and deploy using SFDX:
 ```bash
 git clone https://github.com/beyond-the-cloud-dev/async-lib.git
 cd async-lib
-sfdx force:source:deploy -p force-app -u your-org-alias
+sf project deploy start -p force-app -u your-org-alias
 ```
 
 ## Core Concepts
@@ -74,7 +113,7 @@ Async.schedulable(new MySchedulableJob())
 
 ### 3. Automatic Job Chaining
 
-When queueable limits are reached, Async Lib automatically switches to batch-based execution, ensuring your jobs always run without hitting platform limits.
+When queueable limits are reached, Async Lib automatically switches to scheduled-batch-based execution, ensuring your jobs always run without hitting Queueable platform limits.
 
 ## Your First Queueable Job
 
@@ -183,9 +222,12 @@ Available settings:
 
 Now that you understand the basics:
 
-1. **[Explore the API](/getting-started)** - Learn about all available methods and options
-2. **[See Examples](/getting-started)** - View real-world usage patterns and advanced scenarios
-3. **Read the Blog Post** - Check out the detailed explanation: [Apex Queueable Processing Framework](https://blog.beyondthecloud.dev/blog/apex-queueable-processing-framework)
+1. **Explore the API** - Learn about all available methods and options:
+   1. **[Queueable API](/api/queueable.md)** - Detailed information on using Queueable jobs
+   2. **[Batchable API](/api/batchable.md)** - Detailed information on using Batchable jobs
+   3. **[Schedulable API](/api/schedulable.md)** - Detailed information on using Schedulable jobs
+2. **Read the Blog Post** - Check out the detailed explanation: [Apex Queueable Processing Framework](https://blog.beyondthecloud.dev/blog/apex-queueable-processing-framework)
+3. **[Initial Scheduled Queueable Batch Job Explanation](/initial-scheduled-queuable-batch-job.md)** - Learn why this job is important for framework to function properly.
 
 ## Quick Tips
 

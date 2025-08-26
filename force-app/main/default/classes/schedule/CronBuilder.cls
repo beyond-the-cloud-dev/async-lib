@@ -1,3 +1,9 @@
+/**
+ * PMD False Positives:
+ * - EmptyStatementBlock: In Apex it is required to have constructor overload with empty arguments, when there is other constructor, to create the object with empty constructor
+ * - ExcessiveParameterList: This was intended to require all the values upfront
+**/
+@SuppressWarnings('PMD.EmptyStatementBlock,PMD.ExcessiveParameterList')
 public class CronBuilder {
     private static final String ALL_VALUES = '*';
     private static final String INCREMENTS = '/';

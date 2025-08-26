@@ -1,3 +1,9 @@
+/**
+ * PMD False Positives:
+ * - ApexAssertionsShouldIncludeMessage: IMO not all assertions need a message
+ * - EmptyStatementBlock: It is test class, some methods are just to create jobs placeholders
+**/
+@SuppressWarnings('PMD.ApexAssertionsShouldIncludeMessage,PMD.EmptyStatementBlock')
 @IsTest
 @TestVisible
 private class AsyncTest implements Database.Batchable<SObject> {

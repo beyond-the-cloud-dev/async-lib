@@ -1,3 +1,8 @@
+/**
+ * PMD False Positives:
+ * - EmptyCatchBlock: Catch is just for additional safety when creating initial job, and later removing it
+**/
+@SuppressWarnings('PMD.EmptyCatchBlock')
 public inherited sharing class QueueableChainBatch implements Schedulable, Database.Batchable<sObject> {
     private QueueableChain chain;
     private String cronTriggerId;

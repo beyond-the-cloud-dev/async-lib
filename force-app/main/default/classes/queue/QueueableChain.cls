@@ -1,3 +1,8 @@
+/**
+ * PMD False Positives:
+ * - CognitiveComplexity: This was intended to have all the logic in one class
+**/
+@SuppressWarnings('PMD.CognitiveComplexity')
 public inherited sharing class QueueableChain {
     @TestVisible
     private List<QueueableJob> jobs = new List<QueueableJob>();

@@ -1,3 +1,9 @@
+/**
+ * PMD False Positives:
+ * - CognitiveComplexity: This was intended to have all the logic in one class
+ * - OperationWithLimitsInLoop: This schedules up to 60 jobs in case "every minute" was used in CronBuilder.buildForEveryXMinutes(). It is intended.
+**/
+@SuppressWarnings('PMD.CognitiveComplexity,PMD.OperationWithLimitsInLoop')
 public inherited sharing class SchedulableManager {
     @TestVisible
     private static final String ERROR_MESSAGE_JOB_NOT_SET = 'Batch job must be set.';

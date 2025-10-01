@@ -28,7 +28,7 @@ The following are methods for using Async with Schedulable jobs:
 - [`cronExpression(String cronExpression)`](#cronexpression)
 - [`cronExpression(CronBuilder builder)`](#cronexpression-1)
 - [`cronExpression(List<CronBuilder> builders)`](#cronexpression-2)
-- [`skipWhenAlreadyScheduled()`]()
+- [`skipWhenAlreadyScheduled()`](#skipwhenalreadyscheduled)
 
 [**Build - Cron Expression**](#build---cron-expression)
 

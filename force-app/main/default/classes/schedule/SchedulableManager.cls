@@ -31,6 +31,10 @@ public inherited sharing class SchedulableManager {
         if ((builder.crons != null && !builder.crons.isEmpty()) && builder.batchableBuilder?.minutesFromNow != null) {
             throw new IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_SET);
         }
+
+        if (shouldSkipWhenAlreadyScheduled(builder)) {
+            return null;
+        }
         
         List<Async.AsyncResult> results = new List<Async.AsyncResult>();
         if (builder.batchableBuilder?.minutesFromNow != null) {
@@ -59,6 +63,10 @@ public inherited sharing class SchedulableManager {
         }
 
         return results;
+    }
+
+    private Boolean shouldSkipWhenAlreadyScheduled(SchedulableBuilder builder) {
+        return builder.skipWhenAlreadyScheduled && ![SELECT Id FROM CronJobDetail WHERE Name = :builder.name].isEmpty();
     }
 
     public static SchedulableManager get() {

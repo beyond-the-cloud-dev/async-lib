@@ -57,8 +57,6 @@ Async Lib is a powerful Salesforce Apex framework that provides an elegant solut
 - **⚙️ Configuration-Driven**: Control job behavior through custom metadata without code changes
 - **🔗 Support Finalizers**: Execute cleanup logic after job completion with full context
 
-```
-
 ## Core Concepts
 
 ### 1. QueueableJob Base Class
@@ -94,6 +92,7 @@ Async.batchable(new MyBatchJob())
 Async.schedulable(new MySchedulableJob())
     .name('Daily Cleanup')
     .cronExpression('0 0 2 * * ? *')
+    .skipWhenAlreadyScheduled()
     .schedule();
 ```
 
@@ -213,7 +212,7 @@ Now that you understand the basics:
    2. **[Batchable API](/api/batchable.md)** - Detailed information on using Batchable jobs
    3. **[Schedulable API](/api/schedulable.md)** - Detailed information on using Schedulable jobs
 2. **Read the Blog Post** - Check out the detailed explanation: [Apex Queueable Processing Framework](https://blog.beyondthecloud.dev/blog/apex-queueable-processing-framework)
-3. **[Initial Scheduled Queueable Batch Job Explanation](/initial-scheduled-queuable-batch-job.md)** - Learn why this job is important for framework to function properly.
+3. **[Initial Scheduled Queueable Batch Job Explanation](/explanations/initial-scheduled-queuable-batch-job.md)** - Learn why this job is important for framework to function properly.
 
 ## Quick Tips
 

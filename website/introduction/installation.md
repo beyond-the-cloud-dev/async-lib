@@ -2,22 +2,7 @@
 outline: deep
 ---
 
-# Installation <Badge type="tip" text="v1.0.0" />
-
-## Install via Package
-
-Install the SOQL Lib unmanaged package to your Salesforce environment:
-
-
-`/packaging/installPackage.apexp?p0=04tP6000001w95Z`
-
-<a href="https://test.salesforce.com/packaging/installPackage.apexp?p0=04tP6000001w95Z" target="_blank">
-    <p>Install on Sandbox</p>
-</a>
-
-<a href="https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000001w95Z" target="_blank">
-    <p>Install on Production</p>
-</a>
+# Installation <Badge type="tip" text="v2.0.0" />
 
 ## Deploy via Button
 

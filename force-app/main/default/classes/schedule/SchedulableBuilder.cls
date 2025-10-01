@@ -1,8 +1,10 @@
 public inherited sharing class SchedulableBuilder {
     public Schedulable scheduleJob;
+    public BatchableBuilder batchableBuilder;
+
     public String name;
     public List<CronBuilder> crons = new List<CronBuilder>();
-    public BatchableBuilder batchableBuilder;
+    public Boolean skipWhenAlreadyScheduled = false;
 
     public SchedulableBuilder(QueueableBuilder builder) {
         this.scheduleJob = new QueueableSchedulable(builder);
@@ -23,17 +25,20 @@ public inherited sharing class SchedulableBuilder {
     }
 
     public SchedulableBuilder cronExpression(String cronExpression) {
-        this.crons.add(new CronBuilder(cronExpression));
-        return this;
+        return cronExpression(new CronBuilder(cronExpression));
     }
 
     public SchedulableBuilder cronExpression(CronBuilder builder) {
-        this.crons.add(builder);
-        return this;
+        return cronExpression(new List<CronBuilder> {builder});
     }
 
     public SchedulableBuilder cronExpression(List<CronBuilder> builders) {
         this.crons.addAll(builders);
+        return this;
+    }
+
+    public SchedulableBuilder skipWhenAlreadyScheduled() {
+        this.skipWhenAlreadyScheduled = true;
         return this;
     }
 

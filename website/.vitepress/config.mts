@@ -14,7 +14,7 @@ export default defineConfig({
     sidebar: [
       {
         text: 'Introduction',
-        collapsed: true,
+        collapsed: false,
         items: [
           { text: 'Getting Started', link: '/getting-started' },
           { text: 'Installation', link: '/introduction/installation' }
@@ -27,6 +27,13 @@ export default defineConfig({
           { text: 'Queueable', link: '/api/queueable' },
           { text: 'Batchable', link: '/api/batchable' },
           { text: 'Schedulable', link: '/api/schedulable' }
+        ]
+      },
+      {
+        text: 'Explanations',
+        collapsed: false,
+        items: [
+          { text: 'Initial Scheduled Job', link: '/explanations/initial-scheduled-queuable-batch-job' }
         ]
       }
     ],

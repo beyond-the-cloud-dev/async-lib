@@ -9,6 +9,7 @@ Schedulable job = new MySchedulableJob();
 List<Async.AsyncResult> results = Async.schedulable(job)
 	.name('Daily Processing Job')
 	.cronExpression('0 0 2 * * ? *')
+	.skipWhenAlreadyScheduled()
 	.schedule();
 System.debug('Scheduled job results: ' + results);
 ```
@@ -27,6 +28,7 @@ The following are methods for using Async with Schedulable jobs:
 - [`cronExpression(String cronExpression)`](#cronexpression)
 - [`cronExpression(CronBuilder builder)`](#cronexpression-1)
 - [`cronExpression(List<CronBuilder> builders)`](#cronexpression-2)
+- [`skipWhenAlreadyScheduled()`]()
 
 [**Build - Cron Expression**](#build---cron-expression)
 
@@ -159,6 +161,23 @@ List<CronBuilder> crons = new List<CronBuilder>{
 Async.schedulable(new MySchedulableJob())
 	.name('Business Hours Job')
 	.cronExpression(crons);
+```
+
+#### skipWhenAlreadyScheduled
+
+If set, the job will not be scheduled if it is already scheduled with the same name. This prevents throwing the `System.AsyncException`.
+
+**Signature**
+
+```apex
+SchedulableBuilder skipWhenAlreadyScheduled();
+```
+
+**Example**
+
+```apex
+Async.schedulable(new MySchedulableJob())
+	.skipWhenAlreadyScheduled();
 ```
 
 ### Build - Cron Expression

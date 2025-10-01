@@ -727,6 +727,49 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(10, triggers[0].NextFireTime.hour());
     }
 
+    @IsTest
+    static void shouldFailWhenSchedulingJobWithTheSameName() {
+        Test.startTest();
+        try {
+            SchedulableBuilder builder = Async.batchable(new AsyncTest())
+                .asSchedulable()
+                .name(TEST_SCHEDULABLE_JOB_NAME)
+                .cronExpression(
+                    new CronBuilder()
+                        .everyXMonths(4, 3, 5, 25)
+                );
+            builder.schedule();
+            builder.schedule();
+            Assert.fail('Should throw system exception when trying to schedule the job with the same name.');
+        } catch (Exception ex) {
+            Assert.areEqual('System.AsyncException', ex.getTypeName());
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void shouldSkipWhenSchedulingJobWithTheSameName() {
+        Test.startTest();
+        SchedulableBuilder builder = Async.queueable(new SuccessfulQueueableTest())
+            .asSchedulable()
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(
+                new CronBuilder()
+                    .everyDay(10, 30)
+            )
+            .skipWhenAlreadyScheduled();
+        builder.schedule();
+        builder.schedule();
+        Test.stopTest();
+
+        String nameLike = TEST_SCHEDULABLE_JOB_NAME + '%';
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name LIKE :nameLike];
+        Assert.areEqual(1, triggers.size());
+        Assert.areEqual('0 30 10 * * ? *', triggers[0].CronExpression);
+        Assert.areEqual(30, triggers[0].NextFireTime.minute());
+        Assert.areEqual(10, triggers[0].NextFireTime.hour());
+    }
+
     public Iterable<Account> start(Database.BatchableContext bc){
         // This is just a placeholder to start the batch.
         return new List<Account>{ new Account() };

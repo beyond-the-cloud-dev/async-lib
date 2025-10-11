@@ -22,7 +22,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
-            Async.AsyncResult ar = Async.queueable(q).enqueue();
+            Async.Result ar = Async.queueable(q).enqueue();
             if (Limits.getQueueableJobs() <= Limits.getLimitQueueableJobs()) {
                 Assert.isFalse(ar.isChained, 'Should not be enqueued via batch.');
             } else {
@@ -342,18 +342,20 @@ private class AsyncTest implements Database.Batchable<SObject> {
             )
         };
         chain.addJob(job1);
-        job2.parentCustomJobId = job1.customJobId;
         chain.addJob(job2);
-        job3.parentCustomJobId = job1.customJobId;
         chain.addJob(job3);
-        job4.parentCustomJobId = job3.customJobId;
         chain.addJob(job4);
-        job5.parentCustomJobId = job4.customJobId;
         chain.addJob(job5);
         chain.addJob(job6);
-        job7.parentCustomJobId = job6.customJobId;
         chain.addJob(job7);
         chain.addJob(job8);
+
+        // Setting finalizers after sorting, since in normal execution finalizer can be only added in the queueable chain context
+        job2.parentCustomJobId = job1.customJobId;
+        job3.parentCustomJobId = job1.customJobId;
+        job4.parentCustomJobId = job3.customJobId;
+        job5.parentCustomJobId = job4.customJobId;
+        job7.parentCustomJobId = job6.customJobId;
 
         Assert.isFalse(chain.jobs.isEmpty());
 
@@ -381,9 +383,9 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.isTrue([SELECT Id FROM AsyncResult__c].isEmpty());
         
         Test.startTest();
-        Async.AsyncResult result1 = Async.queueable(job1)
+        Async.Result result1 = Async.queueable(job1)
             .enqueue();
-        Async.AsyncResult result2 = Async.queueable(job2)
+        Async.Result result2 = Async.queueable(job2)
             .enqueue();
         Test.stopTest();
 
@@ -427,7 +429,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldScheduleEvery10Minutes() {
         Test.startTest();
-        List<Async.AsyncResult> results = Async.schedulable(new SchedulableTest())
+        List<Async.Result> results = Async.schedulable(new SchedulableTest())
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
                 new CronBuilder()
@@ -441,22 +443,28 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(6, triggers.size(), 'Should have six triggers scheduled for every 10 minutes.');
         Assert.areEqual(0, triggers[0].NextFireTime.minute());
         Assert.areEqual(results[0].salesforceJobId, triggers[0].Id);
+        Assert.areEqual(results[0].asyncType, Async.AsyncType.SCHEDULABLE);
         Assert.areEqual(10, triggers[1].NextFireTime.minute());
         Assert.areEqual(results[1].salesforceJobId, triggers[1].Id);
+        Assert.areEqual(results[1].asyncType, Async.AsyncType.SCHEDULABLE);
         Assert.areEqual(20, triggers[2].NextFireTime.minute());
         Assert.areEqual(results[2].salesforceJobId, triggers[2].Id);
+        Assert.areEqual(results[2].asyncType, Async.AsyncType.SCHEDULABLE);
         Assert.areEqual(30, triggers[3].NextFireTime.minute());
         Assert.areEqual(results[3].salesforceJobId, triggers[3].Id);
+        Assert.areEqual(results[3].asyncType, Async.AsyncType.SCHEDULABLE);
         Assert.areEqual(40, triggers[4].NextFireTime.minute());
         Assert.areEqual(results[4].salesforceJobId, triggers[4].Id);
+        Assert.areEqual(results[4].asyncType, Async.AsyncType.SCHEDULABLE);
         Assert.areEqual(50, triggers[5].NextFireTime.minute());
         Assert.areEqual(results[5].salesforceJobId, triggers[5].Id);
+        Assert.areEqual(results[5].asyncType, Async.AsyncType.SCHEDULABLE);
     }
 
     @IsTest
     static void shouldScheduleBatchJobEvery30Minutes() {
         Test.startTest();
-        List<Async.AsyncResult> results = Async.batchable(new AsyncTest())
+        List<Async.Result> results = Async.batchable(new AsyncTest())
             .asSchedulable()
             .name(TEST_SCHEDULABLE_JOB_NAME)
             .cronExpression(
@@ -471,8 +479,10 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(2, triggers.size(), 'Should have six triggers scheduled for every 10 minutes.');
         Assert.areEqual(0, triggers[0].NextFireTime.minute());
         Assert.areEqual(results[0].salesforceJobId, triggers[0].Id);
+        Assert.areEqual(results[0].asyncType, Async.AsyncType.SCHEDULABLE);
         Assert.areEqual(30, triggers[1].NextFireTime.minute());
         Assert.areEqual(results[1].salesforceJobId, triggers[1].Id);
+        Assert.areEqual(results[1].asyncType, Async.AsyncType.SCHEDULABLE);
     }
 
     @IsTest
@@ -677,7 +687,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     static void shouldExecuteBatchJob() {
         Test.startTest();
-        Async.AsyncResult result = Async.batchable(new AsyncTest())
+        Async.Result result = Async.batchable(new AsyncTest())
             .scopeSize(100)
             .execute();
         Test.stopTest();
@@ -687,6 +697,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
             [SELECT Id FROM AsyncApexJob WHERE Id = :result.salesforceJobId AND ApexClass.Name = 'AsyncTest' AND Status = 'Completed'].size(),
             'Should have one batch job executed.'
         );
+        Assert.areEqual(result.asyncType, Async.AsyncType.BATCHABLE);
     }
 
     @IsTest

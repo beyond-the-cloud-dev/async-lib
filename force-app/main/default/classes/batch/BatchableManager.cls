@@ -3,15 +3,15 @@ public inherited sharing class BatchableManager {
 
     private static BatchableManager instance;
 
-    public Async.AsyncResult execute(BatchableBuilder builder) {
+    public Async.Result execute(BatchableBuilder builder) {
         if (builder == null || builder.job == null) {
             throw new IllegalArgumentException('Batch job must be set.');
         }
 
         Id jobId = Database.executeBatch(builder.job, builder.scopeSize ?? DEFAULT_BATCH_SIZE);
 
-        Async.AsyncResult result = new Async.AsyncResult(jobId);
-        return result;
+        return new Async.Result(jobId)
+            .setAsyncType(Async.AsyncType.BATCHABLE);
     }
 
     public static BatchableManager get() {

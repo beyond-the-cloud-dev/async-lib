@@ -23,6 +23,10 @@ public inherited sharing class QueueableManager {
         }
         this.chain = chain;
     }
+    
+    public QueueableChain getChain() {
+        return chain;
+    }
 
     public Async.QueueableJobContext getQueueableJobContext() {
         Async.QueueableJobContext ctx = new Async.QueueableJobContext();
@@ -34,7 +38,7 @@ public inherited sharing class QueueableManager {
         return chain.getQueueableChainBatchId();
     }
 
-    public Async.AsyncResult attachFinalizer(QueueableJob job) {
+    public Async.Result attachFinalizer(QueueableJob job) {
         if (job == null) {
             throw new IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_NOT_SET);
         }
@@ -46,10 +50,10 @@ public inherited sharing class QueueableManager {
         QueueableJob currentJobInChainContact = chain.getCurrentJob();
         job.parentCustomJobId = currentJobInChainContact.customJobId;
         
-        return enqueue(job);
+        return chain(job);
     }
 
-    public Async.AsyncResult enqueue(QueueableJob job) {
+    public Async.Result chain(QueueableJob job) {
         if (job == null) {
             throw new IllegalArgumentException(ERROR_MESSAGE_NO_JOB_SET);
         }
@@ -60,20 +64,37 @@ public inherited sharing class QueueableManager {
             throw new IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER);
         }
 
-
         chain.addJob(job);
-        if (shouldExecuteOrReplaceInitialQueueableChainBatch(job)) {
-            chain.executeOrReplaceInitialQueueableChainBatchJob();
-        } else if (!chain.isChainedContext()) {
-            chain.enqueueNextJobIfAny();
-            chain = new QueueableChain();
-        }
-
-        Async.AsyncResult result = new Async.AsyncResult(job);
-        return result;
+        return new Async.Result(job)
+            .setCurrentQueueableChainState();
     }
 
-    private Boolean shouldExecuteOrReplaceInitialQueueableChainBatch(QueueableJob job) {
+    public Async.Result enqueue(QueueableJob job) {
+        Async.QueueableChainState queueableChainState = new Async.QueueableChainState()
+            .setJobs(chain.getJobs())
+            .setNextCustomJobIdFromFirstJob();
+
+        if (shouldExecuteOrReplaceInitialQueueableChainBatch()) {
+            chain.executeOrReplaceInitialQueueableChainBatchJob();
+            queueableChainState
+                .setNextSalesforceJobId(chain.getQueueableChainBatchId())
+                .setEnqueueType(EnqueueType.INITIAL_SCHEDULED_BATCH_JOB);
+        } else if (!chain.isChainedContext()) {
+            chain.enqueueNextJobIfAny();
+            queueableChainState
+                .setNextSalesforceJobIdFromFirstJob()
+                .setEnqueueType(EnqueueType.NEW_CHAIN);
+            chain = new QueueableChain();
+        } else {
+            queueableChainState
+                .setEnqueueType(EnqueueType.EXISTING_CHAIN);
+        }
+        
+        return new Async.Result(job)
+            .setQueueableChainState(queueableChainState);
+    }
+
+    private Boolean shouldExecuteOrReplaceInitialQueueableChainBatch() {
         return 
             !chain.isChainedContext() && (
                 Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() ||
@@ -86,5 +107,11 @@ public inherited sharing class QueueableManager {
             instance = new QueueableManager();
         }
         return instance;
+    }
+
+    public enum EnqueueType {
+        INITIAL_SCHEDULED_BATCH_JOB,
+        NEW_CHAIN,
+        EXISTING_CHAIN
     }
 }

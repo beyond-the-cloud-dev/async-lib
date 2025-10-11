@@ -6,7 +6,7 @@ Common Schedulable example:
 
 ```apex
 Schedulable job = new MySchedulableJob();
-List<Async.AsyncResult> results = Async.schedulable(job)
+List<Async.Result> results = Async.schedulable(job)
 	.name('Daily Processing Job')
 	.cronExpression('0 0 2 * * ? *')
 	.skipWhenAlreadyScheduled()
@@ -452,22 +452,24 @@ String cronExpr = cron.getCronExpression();
 
 #### schedule
 
-Schedules the job with the configured options. Returns a list of Async.AsyncResult objects (one per cron expression).
+Schedules the job with the configured options. Returns a list of Async.Result objects (one per cron expression).
 
 **Signature**
 
 ```apex
-List<Async.AsyncResult> schedule();
+List<Async.Result> schedule();
 ```
 
 **Example**
 
 ```apex
-List<Async.AsyncResult> results = Async.schedulable(new MySchedulableJob())
+List<Async.Result> results = Async.schedulable(new MySchedulableJob())
 	.name('Every Hour Processing')
 	.cronExpression(
             new CronBuilder()
                 .everyHour(1)
         )
 	.schedule();
+
+results.get(0).salesforceJobId; // MySchedulableJob Salesforce Job Id
 ```

@@ -18,7 +18,7 @@ public inherited sharing class SchedulableManager {
 
     private static SchedulableManager instance;
 
-    public List<Async.AsyncResult> schedule(SchedulableBuilder builder) {
+    public List<Async.Result> schedule(SchedulableBuilder builder) {
         if (builder == null || builder.scheduleJob == null) {
             throw new IllegalArgumentException(ERROR_MESSAGE_JOB_NOT_SET);
         }
@@ -36,10 +36,10 @@ public inherited sharing class SchedulableManager {
             return null;
         }
         
-        List<Async.AsyncResult> results = new List<Async.AsyncResult>();
+        List<Async.Result> results = new List<Async.Result>();
         if (builder.batchableBuilder?.minutesFromNow != null) {
             results.add(
-                new Async.AsyncResult(
+                new Async.Result(
                     System.scheduleBatch(
                         builder.batchableBuilder.job, 
                         builder.name, 
@@ -47,17 +47,19 @@ public inherited sharing class SchedulableManager {
                         builder.batchableBuilder.scopeSize ?? BatchableManager.DEFAULT_BATCH_SIZE
                     )
                 )
+                .setAsyncType(Async.AsyncType.SCHEDULABLE)
             );
         } else {
             for (CronBuilder cron : builder.crons) {
                 results.add(
-                    new Async.AsyncResult(
+                    new Async.Result(
                         System.schedule(
                             builder.name + (builder.crons.size() == 1 ? '' : '/' + cron.minute),
                             cron.getCronExpression(),
                             builder.scheduleJob
                         )
                     )
+                    .setAsyncType(Async.AsyncType.SCHEDULABLE)
                 );
             }
         }
@@ -66,7 +68,7 @@ public inherited sharing class SchedulableManager {
     }
 
     private Boolean shouldSkipWhenAlreadyScheduled(SchedulableBuilder builder) {
-        return builder.skipWhenAlreadyScheduled && ![SELECT Id FROM CronJobDetail WHERE Name = :builder.name].isEmpty();
+        return builder.skipWhenAlreadyScheduled && ![SELECT Id FROM CronJobDetail WHERE Name = :builder.name WITH SYSTEM_MODE].isEmpty();
     }
 
     public static SchedulableManager get() {

@@ -172,6 +172,7 @@ Async.queueable(new MyQueueableJob())
 #### chain
 
 Adds the Queueable Job to the chain without enqueing it.
+All jobs in chain will be enqueued once `enqueue()` method is invoked.
 
 **Signature**
 
@@ -190,6 +191,7 @@ result.customJobId; // MyQueueableJob unique Custom Job Id
 #### chain next job
 
 Adds the Queueable Job to the chain after previous job.
+All jobs in chain will be enqueued once `enqueue()` method is invoked.
 
 **Signature**
 

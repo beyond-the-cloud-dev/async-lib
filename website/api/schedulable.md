@@ -470,4 +470,6 @@ List<Async.Result> results = Async.schedulable(new MySchedulableJob())
                 .everyHour(1)
         )
 	.schedule();
+
+results.get(0).salesforceJobId; // MySchedulableJob Salesforce Job Id
 ```

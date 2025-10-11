@@ -11,7 +11,8 @@ Async.Result result = Async.queueable(job)
 	.delay(2)
 	.continueOnJobExecuteFail()
 	.enqueue();
-System.debug('Job enqueued: ' + result.customJobId);
+
+result.customJobId; // MyQueueableJob Custom Job Id
 ```
 
 ## Methods
@@ -27,9 +28,11 @@ The following are methods for using Async with Queueable jobs:
 - [`asyncOptions(AsyncOptions asyncOptions)`](#asyncoptions)
 - [`delay(Integer delay)`](#delay)
 - [`priority(Integer priority)`](#priority)
-- [`continueOnJobEnqueueFail()`](#continueonjobequeuefail)
+- [`continueOnJobEnqueueFail()`](#continueonjobenqueuefail)
 - [`continueOnJobExecuteFail()`](#continueonjobexecutefail)
 - [`rollbackOnJobExecuteFail()`](#rollbackonjobexecutefail)
+- [`chain()`](#chain-next-job)
+- [`chain(QueueableJob job)`](#chain)
 - [`asSchedulable()`](#asschedulable)
 
 [**Execute**](#execute)
@@ -41,6 +44,7 @@ The following are methods for using Async with Queueable jobs:
 
 - [`getQueueableJobContext()`](#getqueueablejobcontext)
 - [`getQueueableChainBatchId()`](#getqueueablechainbatchid)
+- [`getCurrentQueueableChainState()`](#getcurrentqueueablechainstate)
 
 ### INIT
 
@@ -165,6 +169,43 @@ Async.queueable(new MyQueueableJob())
 	.rollbackOnJobExecuteFail();
 ```
 
+#### chain next job
+
+Adds the Queueable Job to the chain after previous job.
+
+**Signature**
+
+```apex
+QueueableBuilder chain(QueueableJob job);
+```
+
+**Example**
+
+```apex
+Async.Result result = Async.queueable(new MyQueueableJob())
+	.chain(new MyOtherQueueableJob());
+result.customJobId; // MyOtherQueueableJob Unique Custom Job Id.
+// To obtain MyQueueableJob Unique Custom Job Id use chain() method separately
+```
+
+#### chain
+
+Adds the Queueable Job to the chain without enqueing it.
+
+**Signature**
+
+```apex
+QueueableBuilder chain();
+```
+
+**Example**
+
+```apex
+Async.Result result = Async.queueable(new MyQueueableJob())
+	.chain();
+result.customJobId; // MyQueueableJob unique Custom Job Id
+```
+
 #### asSchedulable
 
 Converts the queueable builder to a schedulable builder for cron-based scheduling. For scheduling, look into the [SchedulableBuilder](/api/schedulable.md) API.
@@ -200,6 +241,16 @@ Async.Result enqueue();
 Async.Result result = Async.queueable(new MyQueueableJob())
 	.priority(5)
 	.enqueue();
+
+result.salesforceJobId; // MyQueueableJob Saleforce Job Id of either Queuable Job or Initial Scheduled Job, if MyQueueableJob was the enqueued one in chain, otherwise empty
+result.customJobId; // MyQueueableJob Unique Custom Job Id.
+result.asyncType; // Async.AsyncType.QUEUEABLE
+result.isChained; // If job was chained
+result.queueableChainState; // queueable chain state
+result.queueableChainState.jobs; // All jobs that were chained or in chain, including finalizers and processed jobs
+result.queueableChainState.nextSalesforceJobId; // Salesforce Job Id that will run next from chain
+result.queueableChainState.nextCustomJobId; // Custom Job Id that will run next from chain
+result.queueableChainState.enqueueType; // QueueableManager.EnqueueType - determine how the chain was enqueued, either added to currently running chain (EXISTING_CHAIN), enqueued as separate chain (NEW_CHAIN), or scheduled by initial job (INITIAL_SCHEDULED_BATCH_JOB)
 ```
 
 #### attachFinalizer
@@ -216,8 +267,10 @@ Async.Result attachFinalizer();
 
 ```apex
 // Inside a QueueableJob's work() method
-Async.queueable(new MyFinalizerJob())
+Async.Result result = Async.queueable(new MyFinalizerJob())
 	.attachFinalizer();
+
+result.customJobId; // MyQueueableJob unique Custom Job Id
 ```
 
 ### Context
@@ -253,6 +306,25 @@ Id getQueueableChainBatchId();
 **Example**
 
 ```apex
-Id batchId = Async.getQueueableChainBatchId();
-System.debug('Current batch ID: ' + batchId);
+Id batchId = Async.getQueueableChainBatchId(); // Initial Scheduled Batch Job
+```
+
+#### getCurrentQueueableChainState
+
+Gets details about the current Queueable Chain.
+
+**Signature**
+
+```apex
+QueueableChainState getCurrentQueueableChainState();
+```
+
+**Example**
+
+```apex
+QueueableChainState currentChain = Async.getCurrentQueueableChainState();
+currentChain.jobs; // All jobs in chain including processed ones and finalizers
+currentChain.nextSalesforceJobId; // Salesforce Job Id that will run next from chain, can be empty if chain not enqueued or from Chain context
+currentChain.nextCustomJobId; // Custom Job Id that will run next from chain
+currentChain.enqueueType; // empty, value set during enqueue() method
 ```

@@ -6,7 +6,7 @@ Common Batchable example:
 
 ```apex
 Database.Batchable<Object> job = new MyBatchJob();
-Async.Result result = new BatchableBuilder(job)
+Async.AsyncResult result = new BatchableBuilder(job)
 	.scopeSize(100)
 	.execute();
 System.debug('Batch job enqueued: ' + result);
@@ -116,8 +116,10 @@ Async.Result execute();
 **Example**
 
 ```apex
-Async.batchable(new MyBatchJob())
+Async.Result result = Async.batchable(new MyBatchJob())
 	.scopeSize(100)
 	.execute();
+
+result.salesforceJobId; // MyBatchJob Salesforce Job Id
 ```
 

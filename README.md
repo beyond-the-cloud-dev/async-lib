@@ -31,6 +31,7 @@ Visit https://async.beyondthecloud.dev/ to view the full documentation.
   - Each job will get its own Custom Job ID, which can be used to track the job status.
   - Async Result Custom Object will be created for each job, allowing you to track the status of each job.
   - Support for finalizers, which are executed after the job is processed, allowing you to handle any finalization logic.
+  - Allows for manually adding jobs to chain
 - **Schedulable Jobs**: Schedule jobs to run at specific times using the `Async.schedulable()` method.
   - Convert any `QueueableJob` or `Database.Batchable` into a schedulable job, by using the `asSchedulable()` method.
   - Support easier cron expressions using the `CronBuilder` class.

@@ -68,7 +68,7 @@ public inherited sharing class SchedulableManager {
     }
 
     private Boolean shouldSkipWhenAlreadyScheduled(SchedulableBuilder builder) {
-        return builder.skipWhenAlreadyScheduled && ![SELECT Id FROM CronJobDetail WHERE Name = :builder.name].isEmpty();
+        return builder.skipWhenAlreadyScheduled && ![SELECT Id FROM CronJobDetail WHERE Name = :builder.name WITH SYSTEM_MODE].isEmpty();
     }
 
     public static SchedulableManager get() {

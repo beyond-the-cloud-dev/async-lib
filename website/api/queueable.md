@@ -31,8 +31,8 @@ The following are methods for using Async with Queueable jobs:
 - [`continueOnJobEnqueueFail()`](#continueonjobenqueuefail)
 - [`continueOnJobExecuteFail()`](#continueonjobexecutefail)
 - [`rollbackOnJobExecuteFail()`](#rollbackonjobexecutefail)
-- [`chain()`](#chain-next-job)
-- [`chain(QueueableJob job)`](#chain)
+- [`chain()`](#chain)
+- [`chain(QueueableJob job)`](#chain-next-job)
 - [`asSchedulable()`](#asschedulable)
 
 [**Execute**](#execute)
@@ -169,6 +169,24 @@ Async.queueable(new MyQueueableJob())
 	.rollbackOnJobExecuteFail();
 ```
 
+#### chain
+
+Adds the Queueable Job to the chain without enqueing it.
+
+**Signature**
+
+```apex
+QueueableBuilder chain();
+```
+
+**Example**
+
+```apex
+Async.Result result = Async.queueable(new MyQueueableJob())
+	.chain();
+result.customJobId; // MyQueueableJob unique Custom Job Id
+```
+
 #### chain next job
 
 Adds the Queueable Job to the chain after previous job.
@@ -186,24 +204,6 @@ Async.Result result = Async.queueable(new MyQueueableJob())
 	.chain(new MyOtherQueueableJob());
 result.customJobId; // MyOtherQueueableJob Unique Custom Job Id.
 // To obtain MyQueueableJob Unique Custom Job Id use chain() method separately
-```
-
-#### chain
-
-Adds the Queueable Job to the chain without enqueing it.
-
-**Signature**
-
-```apex
-QueueableBuilder chain();
-```
-
-**Example**
-
-```apex
-Async.Result result = Async.queueable(new MyQueueableJob())
-	.chain();
-result.customJobId; // MyQueueableJob unique Custom Job Id
 ```
 
 #### asSchedulable

@@ -141,7 +141,7 @@ List<Id> accountIds = new List<Id>{
 };
 
 // Enqueue the job
-Async.AsyncResult result = Async.queueable(new AccountProcessorJob(accountIds))
+Async.Result result = Async.queueable(new AccountProcessorJob(accountIds))
     .priority(5)
     .enqueue();
 

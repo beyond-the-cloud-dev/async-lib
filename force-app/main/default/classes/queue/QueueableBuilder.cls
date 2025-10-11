@@ -41,15 +41,26 @@ public inherited sharing class QueueableBuilder {
         return this;
     }
 
+    public QueueableBuilder chain(QueueableJob job) {
+        chain();
+        this.job = job;
+        return this;
+    }
+
     public SchedulableBuilder asSchedulable() {
         return new SchedulableBuilder(this);
     }
 
-    public Async.AsyncResult attachFinalizer() {
+    public Async.Result chain() {
+        return QueueableManager.get().chain(job);
+    }
+
+    public Async.Result attachFinalizer() {
         return QueueableManager.get().attachFinalizer(job);
     }
 
-    public Async.AsyncResult enqueue() {
+    public Async.Result enqueue() {
+        chain();
         return QueueableManager.get().enqueue(job);
     }
 }

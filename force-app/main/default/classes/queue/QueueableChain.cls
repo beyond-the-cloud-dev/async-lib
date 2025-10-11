@@ -48,6 +48,7 @@ public inherited sharing class QueueableChain {
         currentJob.setChainCounterToName(++chainCounter);
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
+            // Debug statements to determine the Job Id and Name
             System.debug(currentJob.customJobId);
             System.debug(currentJob.uniqueName);
             currentJob.work();
@@ -86,7 +87,6 @@ public inherited sharing class QueueableChain {
             return;
         }
         
-        jobs.sort();
         QueueableJob nextJob = getNextJobToProcess();
         try {
             isChainedContext = true;
@@ -108,6 +108,11 @@ public inherited sharing class QueueableChain {
     public void addJob(QueueableJob job) {
         job.setMainAttributes();
         jobs.add(job);
+        jobs.sort();
+    }
+
+    public List<QueueableJob> getJobs() {
+        return jobs;
     }
 
     public void executeOrReplaceInitialQueueableChainBatchJob() {

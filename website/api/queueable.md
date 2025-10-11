@@ -6,7 +6,7 @@ Common Queueable example:
 
 ```apex
 QueueableJob job = new MyQueueableJob();
-Async.AsyncResult result = Async.queueable(job)
+Async.Result result = Async.queueable(job)
 	.priority(5)
 	.delay(2)
 	.continueOnJobExecuteFail()
@@ -186,18 +186,18 @@ Async.queueable(new MyQueueableJob())
 
 #### enqueue
 
-Enqueues the queueable job with the configured options. Returns an Async.AsyncResult.
+Enqueues the queueable job with the configured options. Returns an Async.Result.
 
 **Signature**
 
 ```apex
-Async.AsyncResult enqueue();
+Async.Result enqueue();
 ```
 
 **Example**
 
 ```apex
-Async.AsyncResult result = Async.queueable(new MyQueueableJob())
+Async.Result result = Async.queueable(new MyQueueableJob())
 	.priority(5)
 	.enqueue();
 ```
@@ -209,7 +209,7 @@ Attaches a finalizer job to run after the current job completes. Can only be cal
 **Signature**
 
 ```apex
-Async.AsyncResult attachFinalizer();
+Async.Result attachFinalizer();
 ```
 
 **Example**

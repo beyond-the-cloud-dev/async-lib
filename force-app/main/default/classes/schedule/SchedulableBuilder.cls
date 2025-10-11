@@ -42,7 +42,7 @@ public inherited sharing class SchedulableBuilder {
         return this;
     }
 
-    public List<Async.AsyncResult> schedule() {
+    public List<Async.Result> schedule() {
         return SchedulableManager.get().schedule(this);
     }
 }

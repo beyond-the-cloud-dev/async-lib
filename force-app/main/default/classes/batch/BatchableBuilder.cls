@@ -27,7 +27,7 @@ public inherited sharing class BatchableBuilder {
         return new SchedulableBuilder(this);
     }
 
-    public Async.AsyncResult execute() {
+    public Async.Result execute() {
         return BatchableManager.get().execute(this);
     }
 }

@@ -711,9 +711,9 @@ private class AsyncTest implements Database.Batchable<SObject> {
             .schedule();
         Test.stopTest();
 
-        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime FROM CronTrigger WHERE CronJobDetail.Name = :TEST_SCHEDULABLE_JOB_NAME];
+        List<CronTrigger> triggers = [SELECT CronExpression, NextFireTime, CreatedDate FROM CronTrigger WHERE CronJobDetail.Name = :TEST_SCHEDULABLE_JOB_NAME];
         Assert.areEqual(1, triggers.size(), 'Should have one trigger scheduled.');
-        Assert.areEqual(DateTime.now().addMinutes(5).minute(), triggers[0].NextFireTime.minute(), 'Next fire time should be in 5 minutes.');
+        Assert.areEqual(triggers[0].CreatedDate.addMinutes(5).minute(), triggers[0].NextFireTime.minute(), 'Next fire time should be in 5 minutes.');
     }
 
     @IsTest

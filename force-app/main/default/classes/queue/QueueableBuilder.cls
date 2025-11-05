@@ -2,7 +2,7 @@ public inherited sharing class QueueableBuilder {
     private QueueableJob job;
 
     public QueueableBuilder(QueueableJob job) {
-        this.job = job;
+        this.job = job.clone();
     }
 
     public QueueableBuilder asyncOptions(AsyncOptions asyncOptions) {

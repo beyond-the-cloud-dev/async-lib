@@ -247,7 +247,6 @@ Async.Result result = Async.queueable(new MyQueueableJob())
 result.salesforceJobId; // MyQueueableJob Saleforce Job Id of either Queuable Job or Initial Scheduled Job, if MyQueueableJob was the enqueued one in chain, otherwise empty
 result.customJobId; // MyQueueableJob Unique Custom Job Id.
 result.asyncType; // Async.AsyncType.QUEUEABLE
-result.isChained; // If job was chained
 result.queueableChainState; // queueable chain state
 result.queueableChainState.jobs; // All jobs that were chained or in chain, including finalizers and processed jobs
 result.queueableChainState.nextSalesforceJobId; // Salesforce Job Id that will run next from chain

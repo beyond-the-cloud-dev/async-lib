@@ -23,10 +23,18 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
             Async.Result ar = Async.queueable(q).enqueue();
-            if (Limits.getQueueableJobs() <= Limits.getLimitQueueableJobs()) {
-                Assert.isFalse(ar.isChained, 'Should not be enqueued via batch.');
+            if (idx <= Limits.getLimitQueueableJobs() - 1) {
+                Assert.areEqual(
+                    QueueableManager.EnqueueType.NEW_CHAIN,
+                    ar.queueableChainState.enqueueType,
+                    'Should not be enqueued via batch.'
+                );
             } else {
-                Assert.isTrue(ar.isChained, 'Should be enqueued via batch.');
+                Assert.areEqual(
+                    QueueableManager.EnqueueType.INITIAL_SCHEDULED_BATCH_JOB,
+                    ar.queueableChainState.enqueueType,
+                    'Should be enqueued via batch.'
+                );
             }
         }
         initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
@@ -394,19 +402,28 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest1 job1 = new QueueableJobTest1();
         QueueableJobTest2 job2 = new QueueableJobTest2();
 
-        QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain chain1 = new QueueableChain();
+        chain1.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
             'QueueableJobTest1' => new QueueableJobSetting__mdt(
                 DeveloperName = 'QueueableJobTest1',
                 CreateResult__c = true
             )
         };
-        QueueableManager.get().setChain(chain);
+        QueueableChain chain2 = new QueueableChain();
+        chain2.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            'QueueableJobTest1' => new QueueableJobSetting__mdt(
+                DeveloperName = 'QueueableJobTest1',
+                CreateResult__c = true
+            )
+        };
 
         Assert.isTrue([SELECT Id FROM AsyncResult__c].isEmpty());
 
         Test.startTest();
+        QueueableManager.get().setChain(chain1);
         Async.Result result1 = Async.queueable(job1).enqueue();
+
+        QueueableManager.get().setChain(chain2);
         Async.Result result2 = Async.queueable(job2).enqueue();
         Test.stopTest();
 

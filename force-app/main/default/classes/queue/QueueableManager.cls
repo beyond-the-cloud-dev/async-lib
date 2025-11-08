@@ -53,6 +53,11 @@ public inherited sharing class QueueableManager {
         return chain(job);
     }
 
+    public Async.Result chainAndEnqueue(QueueableJob job) {
+        Async.Result result = chain(job);
+        return enqueue(result.job);
+    }
+
     public Async.Result chain(QueueableJob job) {
         if (job == null) {
             throw new IllegalArgumentException(ERROR_MESSAGE_NO_JOB_SET);
@@ -64,8 +69,9 @@ public inherited sharing class QueueableManager {
             throw new IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER);
         }
 
-        chain.addJob(job.cloneJob());
-        return new Async.Result(job).setCurrentQueueableChainState();
+        QueueableJob clonedJob = job.cloneJob();
+        chain.addJob(clonedJob);
+        return new Async.Result(clonedJob).setCurrentQueueableChainState();
     }
 
     public Async.Result enqueue(QueueableJob job) {

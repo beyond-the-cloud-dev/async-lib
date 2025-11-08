@@ -43,6 +43,7 @@ public inherited sharing class Async {
         public String customJobId;
         public Boolean isChained;
         public QueueableChainState queueableChainState;
+        public QueueableJob job;
 
         public Result(Id salesforceJobId) {
             this.salesforceJobId = salesforceJobId;
@@ -52,7 +53,7 @@ public inherited sharing class Async {
             this.asyncType = Async.AsyncType.QUEUEABLE;
             this.salesforceJobId = job.salesforceJobId;
             this.customJobId = job.customJobId;
-            this.isChained = String.isBlank(salesforceJobId);
+            this.job = job;
         }
 
         public Result setAsyncType(AsyncType asyncType) {

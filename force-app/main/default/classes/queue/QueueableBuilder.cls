@@ -71,7 +71,6 @@ public inherited sharing class QueueableBuilder {
     }
 
     public Async.Result enqueue() {
-        chain();
-        return QueueableManager.get().enqueue(job);
+        return QueueableManager.get().chainAndEnqueue(job);
     }
 }

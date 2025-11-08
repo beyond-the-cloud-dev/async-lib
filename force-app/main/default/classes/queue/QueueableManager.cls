@@ -23,7 +23,7 @@ public inherited sharing class QueueableManager {
         }
         this.chain = chain;
     }
-    
+
     public QueueableChain getChain() {
         return chain;
     }
@@ -49,7 +49,7 @@ public inherited sharing class QueueableManager {
 
         QueueableJob currentJobInChainContact = chain.getCurrentJob();
         job.parentCustomJobId = currentJobInChainContact.customJobId;
-        
+
         return chain(job);
     }
 
@@ -64,9 +64,8 @@ public inherited sharing class QueueableManager {
             throw new IllegalArgumentException(ERROR_MESSAGE_FINALIZER_JOB_MUST_EXTEND_FINALIZER);
         }
 
-        chain.addJob(job);
-        return new Async.Result(job)
-            .setCurrentQueueableChainState();
+        chain.addJob(job.cloneJob());
+        return new Async.Result(job).setCurrentQueueableChainState();
     }
 
     public Async.Result enqueue(QueueableJob job) {
@@ -86,20 +85,15 @@ public inherited sharing class QueueableManager {
                 .setEnqueueType(EnqueueType.NEW_CHAIN);
             chain = new QueueableChain();
         } else {
-            queueableChainState
-                .setEnqueueType(EnqueueType.EXISTING_CHAIN);
+            queueableChainState.setEnqueueType(EnqueueType.EXISTING_CHAIN);
         }
-        
-        return new Async.Result(job)
-            .setQueueableChainState(queueableChainState);
+
+        return new Async.Result(job).setQueueableChainState(queueableChainState);
     }
 
     private Boolean shouldExecuteOrReplaceInitialQueueableChainBatch() {
-        return 
-            !chain.isChainedContext() && (
-                Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() ||
-                System.isQueueable()
-            );
+        return !chain.isChainedContext() &&
+            (Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() || System.isQueueable());
     }
 
     public static QueueableManager get() {

@@ -1,0 +1,45 @@
+{
+  "plugins": ["prettier-plugin-apex", "@prettier/plugin-xml"],
+  "trailingComma": "none",
+  "arrowParens": "avoid",
+  "singleQuote": true,
+  "proseWrap": "always",
+  "useTabs": false,
+  "bracketSpacing": true,
+  "semi": true,
+  "overrides": [
+    {
+      "files": "**/lwc/**/*.html",
+      "options": {
+        "parser": "lwc",
+        "tabWidth": 4
+      }
+    },
+    {
+      "files": "*.{cmp,page,component}",
+      "options": {
+        "parser": "html",
+        "tabWidth": 4
+      }
+    },
+    {
+      "files": "*.xml",
+      "options": {
+        "printWidth": 100,
+        "xmlWhitespaceSensitivity": "preserve",
+        "xmlSelfClosingSpace": false,
+        "bracketSameLine": true,
+        "tabWidth": 4,
+        "semi": false,
+        "embeddedLanguageFormatting": "off"
+      }
+    },
+    {
+      "files": "*.{apex,cls,trigger,js,css,json}",
+      "options": {
+        "printWidth": 100,
+        "tabWidth": 4
+      }
+    }
+  ]
+}

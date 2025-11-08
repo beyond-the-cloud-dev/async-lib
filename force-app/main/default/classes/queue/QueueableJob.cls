@@ -1,7 +1,12 @@
 public abstract class QueueableJob implements Queueable, Comparable {
     public Id salesforceJobId;
     public String customJobId;
-    public String className;
+    public String className {
+        get {
+            return String.valueOf(this).substringBefore(':');
+        }
+        private set;
+    }
     public String uniqueName;
     public Integer delay;
     public Integer priority;
@@ -10,6 +15,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public Boolean continueOnJobEnqueueFail = false;
     public Boolean continueOnJobExecuteFail = false;
     public Boolean rollbackOnJobExecuteFail = false;
+    public Boolean deepClone = false;
     public QueueableContext queueableCtx;
 
     public String parentCustomJobId;
@@ -19,7 +25,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
             return String.isNotBlank(parentCustomJobId);
         }
     }
-    
+
     private QueueableChain chain;
 
     public abstract void work();
@@ -27,13 +33,13 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public void execute(QueueableContext ctx) {
         chain.execute(ctx);
     }
-    
+
     public Integer compareTo(Object compareTo) {
-        QueueableJob compareToJob = (QueueableJob)compareTo;
+        QueueableJob compareToJob = (QueueableJob) compareTo;
         if (isFinalizer && !compareToJob.isFinalizer) {
             return -1;
         }
-        if (!isFinalizer && compareToJob.isFinalizer ) {
+        if (!isFinalizer && compareToJob.isFinalizer) {
             return 1;
         }
         if (priority != null && compareToJob.priority == null) {
@@ -45,7 +51,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
         if (priority == compareToJob.priority) {
             return 0;
         }
-        return priority - compareToJob.priority;     
+        return priority - compareToJob.priority;
     }
 
     public void enqueue(QueueableChain chain) {
@@ -61,7 +67,6 @@ public abstract class QueueableJob implements Queueable, Comparable {
 
     public void setMainAttributes() {
         this.customJobId = UUID.randomUUID().toString();
-        this.className = getClassName();
         this.uniqueName = className + '::' + System.now().formatGMT('yyyy-MM-dd\'T\'HH:mm:ss.SSSZ');
     }
 
@@ -77,8 +82,12 @@ public abstract class QueueableJob implements Queueable, Comparable {
         );
     }
 
-    private String getClassName() {
-        return String.valueOf(this).substringBefore(':');
+    public QueueableJob cloneJob() {
+        if (deepClone) {
+            return (QueueableJob) JSON.deserialize(JSON.serialize(this), Type.forName(this.className));
+        } else {
+            return this.clone();
+        }
     }
 
     public abstract class AllowsCallouts extends QueueableJob implements Database.AllowsCallouts {

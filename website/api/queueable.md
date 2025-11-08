@@ -1,6 +1,7 @@
 # Queueable API
 
-Apex classes `QueueableBuilder.cls`, `QueueableManager.cls`, and `QueueableJob.cls`.
+Apex classes `QueueableBuilder.cls`, `QueueableManager.cls`, and
+`QueueableJob.cls`.
 
 Common Queueable example:
 
@@ -87,7 +88,8 @@ Async.queueable(new MyQueueableJob())
 
 #### delay
 
-Sets a delay in minutes before the job executes. Cannot be used with asyncOptions().
+Sets a delay in minutes before the job executes. Cannot be used with
+asyncOptions().
 
 **Signature**
 
@@ -172,9 +174,9 @@ Async.queueable(new MyQueueableJob())
 
 #### deepClone
 
-Clones provided QueueableJob by value for all the member variables.
-By default only primitive member variables (String, Boolean, ...) are cloned by value.
-Deeper explanation is [here](/website/explanations/job-cloning.md).
+Clones provided QueueableJob by value for all the member variables. By default
+only primitive member variables (String, Boolean, ...) are cloned by value.
+Deeper explanation is [here](/explanations/job-cloning.md).
 
 **Signature**
 
@@ -191,8 +193,8 @@ Async.queueable(new MyQueueableJob())
 
 #### chain
 
-Adds the Queueable Job to the chain without enqueing it.
-All jobs in chain will be enqueued once `enqueue()` method is invoked.
+Adds the Queueable Job to the chain without enqueing it. All jobs in chain will
+be enqueued once `enqueue()` method is invoked.
 
 **Signature**
 
@@ -210,8 +212,8 @@ result.customJobId; // MyQueueableJob unique Custom Job Id
 
 #### chain next job
 
-Adds the Queueable Job to the chain after previous job.
-All jobs in chain will be enqueued once `enqueue()` method is invoked.
+Adds the Queueable Job to the chain after previous job. All jobs in chain will
+be enqueued once `enqueue()` method is invoked.
 
 **Signature**
 
@@ -230,7 +232,9 @@ result.customJobId; // MyOtherQueueableJob Unique Custom Job Id.
 
 #### asSchedulable
 
-Converts the queueable builder to a schedulable builder for cron-based scheduling. For scheduling, look into the [SchedulableBuilder](/api/schedulable.md) API.
+Converts the queueable builder to a schedulable builder for cron-based
+scheduling. For scheduling, look into the
+[SchedulableBuilder](/api/schedulable.md) API.
 
 **Signature**
 
@@ -276,7 +280,8 @@ result.queueableChainState.enqueueType; // QueueableManager.EnqueueType - determ
 
 #### attachFinalizer
 
-Attaches a finalizer job to run after the current job completes. Can only be called within a QueueableChain context.
+Attaches a finalizer job to run after the current job completes. Can only be
+called within a QueueableChain context.
 
 **Signature**
 
@@ -298,7 +303,8 @@ result.customJobId; // MyQueueableJob unique Custom Job Id
 
 #### getQueueableJobContext
 
-Gets the current queueable job context, providing access to job information and Salesforce QueueableContext.
+Gets the current queueable job context, providing access to job information and
+Salesforce QueueableContext.
 
 **Signature**
 
@@ -316,7 +322,8 @@ QueueableContext sfContext = ctx.queueableCtx;
 
 #### getQueueableChainBatchId
 
-Gets the ID of the QueueableChain batch job if the current execution is part of a batch-based chain.
+Gets the ID of the QueueableChain batch job if the current execution is part of
+a batch-based chain.
 
 **Signature**
 

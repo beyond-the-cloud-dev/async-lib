@@ -19,9 +19,9 @@ for **deep cloning** (slower but complete) when needed.
 The difference between soft and deep cloning is demonstrated in the `AsyncTest`
 class:
 
-- **[`shouldSoftCloneTheJob`](/force-app/main/default/classes/AsyncTest.cls)**
+- **[`shouldSoftCloneTheJob`](https://github.com/beyond-the-cloud-dev/async-lib/blob/v2.3.0/force-app/main/default/classes/AsyncTest.cls)**
   method: Shows how primitive properties are properly isolated
-- **[`shouldDeepCloneTheJob`](/force-app/main/default/classes/AsyncTest.cls)**
+- **[`shouldDeepCloneTheJob`](https://github.com/beyond-the-cloud-dev/async-lib/blob/v2.3.0/force-app/main/default/classes/AsyncTest.cls)**
   method: Demonstrates complete object isolation including complex types
 
 View AsyncTest examples for detailed test scenarios.

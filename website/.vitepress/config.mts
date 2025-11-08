@@ -1,9 +1,9 @@
-import { defineConfig } from 'vitepress'
+import { defineConfig } from 'vitepress';
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "Async Lib",
-  description: "Async Lib Documentation",
+  title: 'Async Lib',
+  description: 'Async Lib Documentation',
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [
@@ -33,7 +33,11 @@ export default defineConfig({
         text: 'Explanations',
         collapsed: false,
         items: [
-          { text: 'Initial Scheduled Job', link: '/explanations/initial-scheduled-queuable-batch-job' }
+          {
+            text: 'Initial Scheduled Job',
+            link: '/explanations/initial-scheduled-queuable-batch-job'
+          },
+          { text: 'Job Cloning', link: '/explanations/job-cloning' }
         ]
       }
     ],
@@ -42,8 +46,14 @@ export default defineConfig({
       copyright: 'Copyright © 2025-present Beyond The Cloud Sp. z o.o.'
     },
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/beyond-the-cloud-dev/async-lib' },
-      { icon: 'linkedin', link: 'https://www.linkedin.com/company/beyondtheclouddev' }
+      {
+        icon: 'github',
+        link: 'https://github.com/beyond-the-cloud-dev/async-lib'
+      },
+      {
+        icon: 'linkedin',
+        link: 'https://www.linkedin.com/company/beyondtheclouddev'
+      }
     ]
   }
-})
+});

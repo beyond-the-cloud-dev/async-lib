@@ -4,7 +4,7 @@ public inherited sharing class Async {
     }
 
     public static BatchableBuilder batchable(Object job) {
-        return new BatchableBuilder(job); 
+        return new BatchableBuilder(job);
     }
 
     public static SchedulableBuilder schedulable(Schedulable scheduleJob) {
@@ -12,18 +12,15 @@ public inherited sharing class Async {
     }
 
     public static QueueableJobContext getQueueableJobContext() {
-        return QueueableManager.get()
-            .getQueueableJobContext();
+        return QueueableManager.get().getQueueableJobContext();
     }
 
     public static Id getQueueableChainBatchId() {
-        return QueueableManager.get()
-            .getQueueableChainBatchId();
+        return QueueableManager.get().getQueueableChainBatchId();
     }
 
     public static QueueableChainState getCurrentQueueableChainState() {
-        return new QueueableChainState()
-            .setCurrentQueueableChainState();
+        return new QueueableChainState().setCurrentQueueableChainState();
     }
 
     public class QueueableJobContext {
@@ -69,8 +66,7 @@ public inherited sharing class Async {
         }
 
         public Result setCurrentQueueableChainState() {
-            this.queueableChainState = new QueueableChainState()
-                .setCurrentQueueableChainState();
+            this.queueableChainState = new QueueableChainState().setCurrentQueueableChainState();
             return this;
         }
     }

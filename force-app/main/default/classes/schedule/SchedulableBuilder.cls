@@ -29,7 +29,7 @@ public inherited sharing class SchedulableBuilder {
     }
 
     public SchedulableBuilder cronExpression(CronBuilder builder) {
-        return cronExpression(new List<CronBuilder> {builder});
+        return cronExpression(new List<CronBuilder>{ builder });
     }
 
     public SchedulableBuilder cronExpression(List<CronBuilder> builders) {

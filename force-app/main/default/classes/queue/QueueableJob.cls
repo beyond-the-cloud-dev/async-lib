@@ -84,7 +84,10 @@ public abstract class QueueableJob implements Queueable, Comparable {
 
     public QueueableJob cloneJob() {
         if (deepClone) {
-            return (QueueableJob) JSON.deserialize(JSON.serialize(this), Type.forName(this.className));
+            return (QueueableJob) JSON.deserialize(
+                JSON.serialize(this),
+                Type.forName(this.className)
+            );
         } else {
             return this.clone();
         }

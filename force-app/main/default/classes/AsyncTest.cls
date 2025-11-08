@@ -12,6 +12,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static final String DUPLICATE_SIGNATURE_ERROR_MESSAGE = 'Attempt to enqueue job with duplicate queueable signature';
     private static final String TEST_SIGNATURE_NAME = 'SignatureName';
     private static final String TEST_SCHEDULABLE_JOB_NAME = 'SchedulableTestJob';
+    private static final String PRIMITIVE_VALUE_INITIAL = 'INITIAL_VALUE';
 
     @IsTest
     private static void shouldEnqueue60QueueablesSuccessfully() {
@@ -359,16 +360,16 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
         QueueableChain chain = new QueueableChain();
         chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            'QueueableJobTest1' => new QueueableJobSetting__mdt(
-                DeveloperName = 'QueueableJobTest1',
+            'AsyncTest.QueueableJobTest1' => new QueueableJobSetting__mdt(
+                DeveloperName = 'AsyncTest.QueueableJobTest1',
                 IsDisabled__c = true
             ),
-            'QueueableJobTest7' => new QueueableJobSetting__mdt(
-                DeveloperName = 'QueueableJobTest7',
+            'AsyncTest.QueueableJobTest7' => new QueueableJobSetting__mdt(
+                DeveloperName = 'AsyncTest.QueueableJobTest7',
                 IsDisabled__c = false
             ),
-            'QueueableJobTest8' => new QueueableJobSetting__mdt(
-                DeveloperName = 'QueueableJobTest8',
+            'AsyncTest.QueueableJobTest8' => new QueueableJobSetting__mdt(
+                DeveloperName = 'AsyncTest.QueueableJobTest8',
                 IsDisabled__c = true
             )
         };
@@ -404,15 +405,15 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
         QueueableChain chain1 = new QueueableChain();
         chain1.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            'QueueableJobTest1' => new QueueableJobSetting__mdt(
-                DeveloperName = 'QueueableJobTest1',
+            'AsyncTest.QueueableJobTest1' => new QueueableJobSetting__mdt(
+                DeveloperName = 'AsyncTest.QueueableJobTest1',
                 CreateResult__c = true
             )
         };
         QueueableChain chain2 = new QueueableChain();
         chain2.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            'QueueableJobTest1' => new QueueableJobSetting__mdt(
-                DeveloperName = 'QueueableJobTest1',
+            'AsyncTest.QueueableJobTest1' => new QueueableJobSetting__mdt(
+                DeveloperName = 'AsyncTest.QueueableJobTest1',
                 CreateResult__c = true
             )
         };
@@ -888,6 +889,42 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(10, triggers[0].NextFireTime.hour());
     }
 
+    @IsTest
+    static void shouldSoftCloneTheJob() {
+        String CHANGED_PRIMITIVE_VALUE = 'CHANGED_PRIMITIVE_VALUE';
+
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        Async.Result result1 = Async.queueable(job1).chain();
+
+        // Complex member is passed by reference, what change the first job value
+        job1.complexMember.primitiveMember = CHANGED_PRIMITIVE_VALUE;
+        Async.Result result2 = Async.queueable(job1).enqueue();
+
+        QueueableJobTest1 firstEnqueuedJob = (QueueableJobTest1) result1.job;
+        QueueableJobTest1 secondEnqueuedJob = (QueueableJobTest1) result2.job;
+
+        Assert.areEqual(CHANGED_PRIMITIVE_VALUE, firstEnqueuedJob.complexMember.primitiveMember);
+        Assert.areEqual(CHANGED_PRIMITIVE_VALUE, secondEnqueuedJob.complexMember.primitiveMember);
+    }
+
+    @IsTest
+    static void shouldDeepCloneTheJob() {
+        String CHANGED_PRIMITIVE_VALUE = 'CHANGED_PRIMITIVE_VALUE';
+
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        Async.Result result1 = Async.queueable(job1).deepClone().chain();
+
+        // Due to above deep clone, all values above were passed by value
+        job1.complexMember.primitiveMember = CHANGED_PRIMITIVE_VALUE;
+        Async.Result result2 = Async.queueable(job1).enqueue();
+
+        QueueableJobTest1 firstEnqueuedJob = (QueueableJobTest1) result1.job;
+        QueueableJobTest1 secondEnqueuedJob = (QueueableJobTest1) result2.job;
+
+        Assert.areEqual(PRIMITIVE_VALUE_INITIAL, firstEnqueuedJob.complexMember.primitiveMember);
+        Assert.areEqual(CHANGED_PRIMITIVE_VALUE, secondEnqueuedJob.complexMember.primitiveMember);
+    }
+
     public Iterable<Account> start(Database.BatchableContext bc) {
         // This is just a placeholder to start the batch.
         return new List<Account>{ new Account() };
@@ -930,12 +967,14 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class QueueableJobTest1 extends QueueableJob {
+    public class QueueableJobTest1 extends QueueableJob {
+        public QueueableJobTest2 complexMember = new QueueableJobTest2();
         public override void work() {
         }
     }
 
     private class QueueableJobTest2 extends QueueableJob {
+        public String primitiveMember = PRIMITIVE_VALUE_INITIAL;
         public override void work() {
         }
     }

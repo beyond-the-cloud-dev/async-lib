@@ -3,7 +3,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public String customJobId;
     public String className {
         get {
-            return String.valueOf(this).substringBefore(':');
+            return getFullClassName(this);
         }
         private set;
     }
@@ -91,6 +91,18 @@ public abstract class QueueableJob implements Queueable, Comparable {
         } else {
             return this.clone();
         }
+    }
+
+    private String getFullClassName(Object job) {
+        String result;
+        try {
+            DateTime typeCheck = (DateTime) job;
+        } catch (System.TypeException expectedTypeException) {
+            String message = expectedTypeException.getMessage()
+                .substringAfter('Invalid conversion from runtime type ');
+            result = message.substringBefore(' to Datetime');
+        }
+        return result;
     }
 
     public abstract class AllowsCallouts extends QueueableJob implements Database.AllowsCallouts {

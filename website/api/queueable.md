@@ -31,6 +31,7 @@ The following are methods for using Async with Queueable jobs:
 - [`continueOnJobEnqueueFail()`](#continueonjobenqueuefail)
 - [`continueOnJobExecuteFail()`](#continueonjobexecutefail)
 - [`rollbackOnJobExecuteFail()`](#rollbackonjobexecutefail)
+- [`deepClone()`](#deepclone)
 - [`chain()`](#chain)
 - [`chain(QueueableJob job)`](#chain-next-job)
 - [`asSchedulable()`](#asschedulable)
@@ -167,6 +168,25 @@ QueueableBuilder rollbackOnJobExecuteFail();
 ```apex
 Async.queueable(new MyQueueableJob())
 	.rollbackOnJobExecuteFail();
+```
+
+#### deepClone
+
+Clones provided QueueableJob by value for all the member variables.
+By default only primitive member variables (String, Boolean, ...) are cloned by value.
+Deeper explanation is [here](/website/explanations/job-cloning.md).
+
+**Signature**
+
+```apex
+QueueableBuilder deepClone();
+```
+
+**Example**
+
+```apex
+Async.queueable(new MyQueueableJob())
+	.deepClone();
 ```
 
 #### chain

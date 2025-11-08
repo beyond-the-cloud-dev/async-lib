@@ -41,7 +41,6 @@ public inherited sharing class Async {
         public Id salesforceJobId;
         public AsyncType asyncType;
         public String customJobId;
-        public Boolean isChained;
         public QueueableChainState queueableChainState;
         public QueueableJob job;
 

@@ -3,7 +3,7 @@
 Apex classes `QueueableBuilder.cls`, `QueueableManager.cls`, and
 `QueueableJob.cls`.
 
-Common Queueable example:
+**Common Queueable example:**
 
 ```apex
 QueueableJob job = new MyQueueableJob();
@@ -14,6 +14,28 @@ Async.Result result = Async.queueable(job)
 	.enqueue();
 
 result.customJobId; // MyQueueableJob Custom Job Id
+```
+
+**Common QueueableJob class example:**
+
+```apex
+public class AccountProcessorJob extends QueueableJob {
+	public override void work() {
+		// Get job context
+		Async.QueueableJobContext ctx = Async.getQueueableJobContext();
+	}
+}
+```
+
+**Common Finalizer class example:**
+
+```apex
+private class ProcessorFinalizer extends QueueableJob.Finalizer {
+	public override void work() {
+		// Get finalizer context
+		FinalizerContext finalizerCtx = Async.getQueueableJobContext().finalizerCtx;
+	}
+}
 ```
 
 ## Methods

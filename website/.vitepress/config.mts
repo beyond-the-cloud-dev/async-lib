@@ -4,6 +4,24 @@ import { defineConfig } from 'vitepress';
 export default defineConfig({
   title: 'Async Lib',
   description: 'Async Lib Documentation',
+  head: [
+    ['link', { rel: 'icon', href: '/favicon.ico' }],
+    [
+      'script',
+      { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-53N22KN47H' }
+    ],
+    [
+      'script',
+      {},
+      `window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-53N22KN47H');`
+    ]
+  ],
+  sitemap: {
+    hostname: 'https://async.beyondthecloud.dev'
+  },
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [

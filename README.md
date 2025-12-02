@@ -18,6 +18,8 @@
 
 The Async Lib provides easy way for managing asynchronous processes in Salesforce.
 
+Async Lib is part of [Apex Fluently](https://apexfluently.beyondthecloud.dev/), a suite of production-ready Salesforce libraries by Beyond the Cloud.
+
 For more details and examples, please look into this [post](https://blog.beyondthecloud.dev/blog/apex-queueable-processing-framework).
 
 ## Documentation

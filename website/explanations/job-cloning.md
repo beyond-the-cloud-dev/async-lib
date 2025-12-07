@@ -6,11 +6,13 @@ outline: deep
 
 ## TL;DR
 
-In Salesforce Apex, everything is passed by reference. When you enqueue a job
-using `Async.queueable(this).enqueue()`, you're passing the same instance that's
-already in the jobs processing list. Any changes to the job instance after
-enqueueing will affect both the original and the queued job, including critical
-QueueableJob properties like `isProcessed`.
+In Salesforce Apex, everything is passed by value, what mean passing value
+itself, or the reference (the memory pointer) to it. Every time you are passing
+complex data types, the reference (memory pointer) is shared. When you enqueue a
+job using `Async.queueable(this).enqueue()`, you're passing the same instance
+that's already in the jobs processing list. Any changes to the job instance
+after enqueueing will affect both the original and the queued job, including
+critical QueueableJob properties like `isProcessed`.
 
 To prevent this, Async Lib clones every job when adding it to the processing
 queue. By default, it uses **soft cloning** (fast but shallow), with an option

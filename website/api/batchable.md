@@ -6,7 +6,7 @@ Common Batchable example:
 
 ```apex
 Database.Batchable<Object> job = new MyBatchJob();
-Async.AsyncResult result = new BatchableBuilder(job)
+Async.AsyncResult result = Async.batchable(job)
 	.scopeSize(100)
 	.execute();
 System.debug('Batch job enqueued: ' + result);
@@ -86,7 +86,8 @@ Async.batchable(new MyBatchJob())
 
 #### asSchedulable
 
-Converts the batch builder to a schedulable builder for cron-based scheduling. For scheduling, look into the [SchedulableBuilder](/api/schedulable.md) API.
+Converts the batch builder to a schedulable builder for cron-based scheduling.
+For scheduling, look into the [SchedulableBuilder](/api/schedulable.md) API.
 
 **Signature**
 
@@ -122,4 +123,3 @@ Async.Result result = Async.batchable(new MyBatchJob())
 
 result.salesforceJobId; // MyBatchJob Salesforce Job Id
 ```
-

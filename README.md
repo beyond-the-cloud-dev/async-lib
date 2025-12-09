@@ -11,7 +11,8 @@
 <a ><img alt="API version" src="https://img.shields.io/badge/api-v64.0-blue?style=for-the-badge"></a>
 <a href="https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-mit-green?style=for-the-badge"></a>
 
-
+[![CI](https://github.com/beyond-the-cloud-dev/async-lib/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/beyond-the-cloud-dev/async-lib/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/beyond-the-cloud-dev/async-lib/branch/main/graph/badge.svg)](https://codecov.io/gh/beyond-the-cloud-dev/async-lib)
 </div>
 
 ---

@@ -23,6 +23,7 @@ export default defineConfig({
     hostname: 'https://async.beyondthecloud.dev'
   },
   themeConfig: {
+    logo: '/logo.png',
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },

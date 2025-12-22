@@ -1,8 +1,8 @@
 <div align="center">
   <a href="https://async.beyondthecloud.dev">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="./assets/async-lib-logo.png">
-      <img alt="Async Lib logo" src="./assets/async-lib-logo.png" height="98">
+      <source media="(prefers-color-scheme: dark)" srcset="./website/public/logo.png">
+      <img alt="Async Lib logo" src="./website/public/logo.png" height="98">
     </picture>
   </a>
   <h1>Async Lib</h1>

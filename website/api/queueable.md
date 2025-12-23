@@ -67,7 +67,7 @@ The following are methods for using Async with Queueable jobs:
 [**Context**](#context)
 
 - [`getQueueableJobContext()`](#getqueueablejobcontext)
-- [`getQueueableChainBatchId()`](#getqueueablechainbatchid)
+- [`getQueueableChainSchedulableId()`](#getqueueablechainschedulableid)
 - [`getCurrentQueueableChainState()`](#getcurrentqueueablechainstate)
 
 ### INIT
@@ -290,14 +290,14 @@ Async.Result result = Async.queueable(new MyQueueableJob())
 	.priority(5)
 	.enqueue();
 
-result.salesforceJobId; // MyQueueableJob Saleforce Job Id of either Queuable Job or Initial Scheduled Job, if MyQueueableJob was the enqueued one in chain, otherwise empty
+result.salesforceJobId; // MyQueueableJob Saleforce Job Id of either Queuable Job or Initial Queueable Chain Schedulable, if MyQueueableJob was the enqueued one in chain, otherwise empty
 result.customJobId; // MyQueueableJob Unique Custom Job Id.
 result.asyncType; // Async.AsyncType.QUEUEABLE
 result.queueableChainState; // queueable chain state
 result.queueableChainState.jobs; // All jobs that were chained or in chain, including finalizers and processed jobs
 result.queueableChainState.nextSalesforceJobId; // Salesforce Job Id that will run next from chain
 result.queueableChainState.nextCustomJobId; // Custom Job Id that will run next from chain
-result.queueableChainState.enqueueType; // QueueableManager.EnqueueType - determine how the chain was enqueued, either added to currently running chain (EXISTING_CHAIN), enqueued as separate chain (NEW_CHAIN), or scheduled by initial job (INITIAL_SCHEDULED_BATCH_JOB)
+result.queueableChainState.enqueueType; // QueueableManager.EnqueueType - determine how the chain was enqueued, either added to currently running chain (EXISTING_CHAIN), enqueued as separate chain (NEW_CHAIN), or initial queueable chain schedulable (INITIAL_QUEUEABLE_CHAIN_SCHEDULABLE)
 ```
 
 #### attachFinalizer
@@ -342,7 +342,7 @@ QueueableJob currentJob = ctx.currentJob;
 QueueableContext sfContext = ctx.queueableCtx;
 ```
 
-#### getQueueableChainBatchId
+#### getQueueableChainSchedulableId
 
 Gets the ID of the QueueableChain batch job if the current execution is part of
 a batch-based chain.
@@ -350,13 +350,13 @@ a batch-based chain.
 **Signature**
 
 ```apex
-Id getQueueableChainBatchId();
+Id getQueueableChainSchedulableId();
 ```
 
 **Example**
 
 ```apex
-Id batchId = Async.getQueueableChainBatchId(); // Initial Scheduled Batch Job
+Id batchId = Async.getQueueableChainSchedulableId(); // Initial Scheduled Batch Job
 ```
 
 #### getCurrentQueueableChainState

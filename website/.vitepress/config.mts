@@ -8,7 +8,10 @@ export default defineConfig({
     ['link', { rel: 'icon', href: '/favicon.ico' }],
     [
       'script',
-      { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-53N22KN47H' }
+      {
+        async: '',
+        src: 'https://www.googletagmanager.com/gtag/js?id=G-53N22KN47H'
+      }
     ],
     [
       'script',
@@ -52,7 +55,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: 'Initial Scheduled Job',
+            text: 'Initial Queueable Chain Schedulable',
             link: '/explanations/initial-scheduled-queuable-batch-job'
           },
           { text: 'Job Cloning', link: '/explanations/job-cloning' }

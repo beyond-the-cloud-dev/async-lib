@@ -19,7 +19,8 @@ private class AsyncTest implements Database.Batchable<SObject> {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
-        Id initialQueuableChainBatchJobId;
+        Id initialQueuableChainSchedulableId;
+        List<CronTrigger> cronTriggers;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
@@ -32,13 +33,18 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 );
             } else {
                 Assert.areEqual(
-                    QueueableManager.EnqueueType.INITIAL_SCHEDULED_BATCH_JOB,
+                    QueueableManager.EnqueueType.INITIAL_QUEUEABLE_CHAIN_SCHEDULABLE,
                     ar.queueableChainState.enqueueType,
                     'Should be enqueued via batch.'
                 );
             }
         }
-        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
+        initialQueuableChainSchedulableId = Async.getQueueableChainSchedulableId();
+        cronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
         Test.stopTest();
 
         Assert.areEqual(
@@ -46,35 +52,46 @@ private class AsyncTest implements Database.Batchable<SObject> {
             [SELECT COUNT() FROM Account],
             'Should have 50 job runs (50 queueable and 1 scheduled batch that was not executed yet).'
         );
-        List<CronTrigger> cronTriggers = [
-            SELECT Id
-            FROM CronTrigger
-            WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'
-        ];
         Assert.areEqual(
             1,
             cronTriggers.size(),
             'Should schedule only one batchable job with the rest.'
         );
         Assert.areEqual(
-            initialQueuableChainBatchJobId,
+            initialQueuableChainSchedulableId,
             cronTriggers[0].Id,
-            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainSchedulableId()'
+        );
+        List<CronTrigger> currentCronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
+        Assert.areEqual(
+            0,
+            currentCronTriggers.size(),
+            'The scheduled job should be deleted once finished.'
         );
     }
 
     @IsTest
-    private static void shouldEnqueue60QueueablesWitDelaySuccessfully() {
+    private static void shouldEnqueue60QueueablesWithDelaySuccessfully() {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
-        Id initialQueuableChainBatchJobId;
+        Id initialQueuableChainSchedulableId;
+        List<CronTrigger> cronTriggers;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
             Async.queueable(q).delay(1).enqueue();
         }
-        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
+        initialQueuableChainSchedulableId = Async.getQueueableChainSchedulableId();
+        cronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
         Test.stopTest();
 
         Assert.areEqual(
@@ -82,20 +99,25 @@ private class AsyncTest implements Database.Batchable<SObject> {
             [SELECT COUNT() FROM Account],
             'Should have 50 job runs (50 queueable and 1 scheduled batch that was not executed yet).'
         );
-        List<CronTrigger> cronTriggers = [
-            SELECT Id
-            FROM CronTrigger
-            WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'
-        ];
         Assert.areEqual(
             1,
             cronTriggers.size(),
             'Should schedule only one batchable job with the rest.'
         );
         Assert.areEqual(
-            initialQueuableChainBatchJobId,
+            initialQueuableChainSchedulableId,
             cronTriggers[0].Id,
-            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainSchedulableId()'
+        );
+        List<CronTrigger> currentCronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
+        Assert.areEqual(
+            0,
+            currentCronTriggers.size(),
+            'The scheduled job should be deleted once finished.'
         );
     }
 
@@ -104,30 +126,41 @@ private class AsyncTest implements Database.Batchable<SObject> {
         FailureQueueableTest q = new FailureQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
-        Id initialQueuableChainBatchJobId;
+        Id initialQueuableChainSchedulableId;
+        List<CronTrigger> cronTriggers;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
             Async.queueable(q).continueOnJobExecuteFail().rollbackOnJobExecuteFail().enqueue();
         }
-        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
+        initialQueuableChainSchedulableId = Async.getQueueableChainSchedulableId();
+        cronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
         Test.stopTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account], 'Should have no Accounts created.');
-        List<CronTrigger> cronTriggers = [
-            SELECT Id
-            FROM CronTrigger
-            WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'
-        ];
         Assert.areEqual(
             1,
             cronTriggers.size(),
             'Should schedule only one batchable job with the rest.'
         );
         Assert.areEqual(
-            initialQueuableChainBatchJobId,
+            initialQueuableChainSchedulableId,
             cronTriggers[0].Id,
-            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainSchedulableId()'
+        );
+        List<CronTrigger> currentCronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
+        Assert.areEqual(
+            0,
+            currentCronTriggers.size(),
+            'The scheduled job should be deleted once finished.'
         );
     }
 
@@ -136,30 +169,41 @@ private class AsyncTest implements Database.Batchable<SObject> {
         FailureQueueableTest q = new FailureQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
-        Id initialQueuableChainBatchJobId;
+        Id initialQueuableChainSchedulableId;
+        List<CronTrigger> cronTriggers;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
             Async.queueable(q).continueOnJobExecuteFail().enqueue();
         }
-        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
+        initialQueuableChainSchedulableId = Async.getQueueableChainSchedulableId();
+        cronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
         Test.stopTest();
 
         Assert.areEqual(50, [SELECT COUNT() FROM Account], 'Inserted Accounts are not rollbacked.');
-        List<CronTrigger> cronTriggers = [
-            SELECT Id
-            FROM CronTrigger
-            WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'
-        ];
         Assert.areEqual(
             1,
             cronTriggers.size(),
             'Should schedule only one batchable job with the rest.'
         );
         Assert.areEqual(
-            initialQueuableChainBatchJobId,
+            initialQueuableChainSchedulableId,
             cronTriggers[0].Id,
-            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainSchedulableId()'
+        );
+        List<CronTrigger> currentCronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
+        Assert.areEqual(
+            0,
+            currentCronTriggers.size(),
+            'The scheduled job should be deleted once finished.'
         );
     }
 
@@ -925,6 +969,22 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(CHANGED_PRIMITIVE_VALUE, secondEnqueuedJob.complexMember.primitiveMember);
     }
 
+    @IsTest
+    static void shouldExecuteChainedQueueableJob20Times() {
+        Integer noOfChainedJobs = 20;
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.queueable(new ChainedQueueableJob(noOfChainedJobs)).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(noOfChainedJobs, [SELECT COUNT() FROM Account]);
+        Assert.areEqual(
+            noOfChainedJobs,
+            [SELECT COUNT() FROM AsyncApexJob WHERE Status = 'Completed' AND JobType = 'Queueable']
+        );
+    }
+
     public Iterable<Account> start(Database.BatchableContext bc) {
         // This is just a placeholder to start the batch.
         return new List<Account>{ new Account() };
@@ -964,6 +1024,23 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private class FinalizerErrorQueueableTest extends QueueableJob {
         public override void work() {
             Async.queueable(new SuccessfulQueueableTest()).attachFinalizer();
+        }
+    }
+
+    private class ChainedQueueableJob extends QueueableJob {
+        private Integer chainDepthLimit = 1;
+        private Integer currentChainDepth = 0;
+
+        public ChainedQueueableJob(Integer chainDepthLimit) {
+            this.chainDepthLimit = chainDepthLimit;
+        }
+
+        public override void work() {
+            currentChainDepth++;
+            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
+            if (currentChainDepth < chainDepthLimit) {
+                Async.queueable(this).enqueue();
+            }
         }
     }
 

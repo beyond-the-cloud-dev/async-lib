@@ -981,7 +981,14 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(noOfChainedJobs, [SELECT COUNT() FROM Account]);
         Assert.areEqual(
             noOfChainedJobs,
-            [SELECT COUNT() FROM AsyncApexJob WHERE Status = 'Completed' AND JobType = 'Queueable']
+            [
+                SELECT COUNT()
+                FROM AsyncApexJob
+                WHERE
+                    Status = 'Completed'
+                    AND JobType = 'Queueable'
+                    AND ApexClass.Name = 'AsyncTest'
+            ]
         );
     }
 

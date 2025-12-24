@@ -344,8 +344,8 @@ QueueableContext sfContext = ctx.queueableCtx;
 
 #### getQueueableChainSchedulableId
 
-Gets the ID of the QueueableChain batch job if the current execution is part of
-a batch-based chain.
+Gets the ID of the initial Queueable Chain Schedulable if the current execution is part of
+a scheduled-based chain.
 
 **Signature**
 

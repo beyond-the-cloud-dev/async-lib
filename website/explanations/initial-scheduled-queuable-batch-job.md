@@ -120,8 +120,8 @@ for (Integer i = 1; i <= 75; i++) {
 1. **Jobs 1-50**: Enqueued normally using `System.enqueueJob()`
 2. **Job 51**: Triggers QueueableChainSchedulable creation, scheduled for +1
    minute
-3. **Jobs 52-75**: Each addition aborts previous batch and schedules new one
-   with updated chain
+3. **Jobs 52-75**: Each addition aborts previous schedulable and schedules new
+   one with updated chain
 4. **Final result**: One queueable chain schedulable is created, containing
    queueable jobs 51-75 in the chain
 
@@ -129,6 +129,7 @@ for (Integer i = 1; i <= 75; i++) {
 
 ✅ **No Limit Errors**: Never throws "Too many queueable jobs" exceptions  
 ✅ **Efficient Processing**: Uses direct queueable jobs when possible  
-✅ **Automatic Fallback**: Seamlessly switches to batch processing when needed  
+✅ **Automatic Fallback**: Seamlessly switches to schedulable processing when
+needed  
 ✅ **Complete Chain Execution**: All jobs execute in the correct order  
 ✅ **Error Recovery**: Handles various Salesforce governor limit scenarios

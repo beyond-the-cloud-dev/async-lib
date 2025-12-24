@@ -15,8 +15,8 @@ public inherited sharing class Async {
         return QueueableManager.get().getQueueableJobContext();
     }
 
-    public static Id getQueueableChainBatchId() {
-        return QueueableManager.get().getQueueableChainBatchId();
+    public static Id getQueueableChainSchedulableId() {
+        return QueueableManager.get().getQueueableChainSchedulableId();
     }
 
     public static QueueableChainState getCurrentQueueableChainState() {

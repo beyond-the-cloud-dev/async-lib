@@ -60,10 +60,7 @@ export default defineConfig({
         ]
       }
     ],
-    footer: {
-      message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2025-present Beyond The Cloud Sp. z o.o.'
-    },
+    footer: false,
     socialLinks: [
       {
         icon: 'github',

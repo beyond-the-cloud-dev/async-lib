@@ -6,9 +6,11 @@ Common Batchable example:
 
 ```apex
 Database.Batchable<Object> job = new MyBatchJob();
+
 Async.AsyncResult result = Async.batchable(job)
 	.scopeSize(100)
 	.execute();
+
 System.debug('Batch job enqueued: ' + result);
 ```
 

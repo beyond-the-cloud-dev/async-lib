@@ -7,7 +7,7 @@ public inherited sharing class QueueableChain {
     @TestVisible
     private List<QueueableJob> jobs = new List<QueueableJob>();
     @TestVisible
-    private Id initialQueuableChainBatchJobId;
+    private Id initialQueuableChainSchedulableId;
     private Boolean isChainedContext = false;
     private Integer chainCounter = 0;
     private QueueableJob currentJob;
@@ -115,8 +115,8 @@ public inherited sharing class QueueableChain {
         return jobs;
     }
 
-    public void executeOrReplaceInitialQueueableChainBatchJob() {
-        QueueableChainBatch.removeInitialQueuableChainBatchJobIfExists(initialQueuableChainBatchJobId);
+    public void executeOrReplaceInitialQueueableChainSchedulableJob() {
+        QueueableChainSchedulable.removeInitialQueuableChainSchedulableIfExists(initialQueuableChainSchedulableId);
 
         Datetime nextRunTime = Datetime.now().addMinutes(1);
         String hour = String.valueOf(nextRunTime.hour());
@@ -124,7 +124,7 @@ public inherited sharing class QueueableChain {
         String ss = String.valueOf(nextRunTime.second());
         String nextFireTime = ss + ' ' + min + ' ' + hour + ' * * ?';
 
-        initialQueuableChainBatchJobId = System.schedule('QueueableChainBatch/' + String.valueOf(Datetime.now()) + '/' + UUID.randomUUID().toString(), nextFireTime, new QueueableChainBatch(this));
+        initialQueuableChainSchedulableId = System.schedule('QueueableChainSchedulable/' + String.valueOf(Datetime.now()) + '/' + UUID.randomUUID().toString(), nextFireTime, new QueueableChainSchedulable(this));
     }
 
     public QueueableJob getCurrentJob() {
@@ -135,8 +135,8 @@ public inherited sharing class QueueableChain {
         return isChainedContext;
     }
 
-    public Id getQueueableChainBatchId() {
-        return initialQueuableChainBatchJobId;
+    public Id getQueueableChainSchedulableId() {
+        return initialQueuableChainSchedulableId;
     }
 
     @TestVisible

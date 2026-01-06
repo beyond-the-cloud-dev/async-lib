@@ -52,6 +52,11 @@ public inherited sharing class QueueableBuilder {
         return this;
     }
 
+    public QueueableBuilder mockId(String mockId) {
+        job.mockId = mockId;
+        return this;
+    }
+
     public QueueableBuilder chain(QueueableJob job) {
         chain();
         this.job = job;

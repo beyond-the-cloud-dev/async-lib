@@ -45,6 +45,14 @@ public class AsyncMock {
         return ctx;
     }
 
+    public static Boolean hasQueueableMock(String mockId) {
+        return queueableSetups.containsKey(mockId) || defaultQueueableSetup != null;
+    }
+
+    public static Boolean hasFinalizerMock(String mockId) {
+        return finalizerSetups.containsKey(mockId) || defaultFinalizerSetup != null;
+    }
+
     public static void reset() {
         finalizerSetups.clear();
         queueableSetups.clear();

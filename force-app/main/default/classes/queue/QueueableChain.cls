@@ -216,21 +216,15 @@ public inherited sharing class QueueableChain {
     }
 
     private void injectQueueableMockIfNeeded(QueueableJob job) {
-        if (Test.isRunningTest() && String.isNotBlank(job.mockId)) {
-            QueueableContext mockCtx = AsyncMock.getQueueableContext(job.mockId);
-            if (mockCtx != null) {
-                job.queueableCtx = mockCtx;
-            }
+        if (Test.isRunningTest() && AsyncMock.hasQueueableMock(job.mockId)) {
+            job.queueableCtx = AsyncMock.getQueueableContext(job.mockId);
         }
     }
 
     private void injectFinalizerMockOrDefault(QueueableJob job, FinalizerContext defaultCtx) {
-        if (Test.isRunningTest() && String.isNotBlank(job.mockId)) {
-            FinalizerContext mockCtx = AsyncMock.getFinalizerContext(job.mockId);
-            if (mockCtx != null) {
-                job.finalizerCtx = mockCtx;
-                return;
-            }
+        if (Test.isRunningTest() && AsyncMock.hasFinalizerMock(job.mockId)) {
+            job.finalizerCtx = AsyncMock.getFinalizerContext(job.mockId);
+            return;
         }
         job.finalizerCtx = defaultCtx;
     }

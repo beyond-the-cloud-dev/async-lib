@@ -46,6 +46,9 @@ public inherited sharing class QueueableChain {
         currentJob.queueableCtx = ctx;
         currentJob.salesforceJobId = ctx.getJobId();
         currentJob.setChainCounterToName(++chainCounter);
+
+        injectQueueableMockIfNeeded(currentJob);
+
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
             // Debug statements to determine the Job Id and Name
@@ -207,8 +210,22 @@ public inherited sharing class QueueableChain {
     private void setFinalizerContextToAllFinalizersForPreviousJob(QueueableJob previousJob, FinalizerContext ctx) {
         for (QueueableJob job : jobs) {
             if (!job.isProcessed && job.parentCustomJobId == previousJob.customJobId && job.finalizerCtx == null) {
-                job.finalizerCtx = ctx;
+                injectFinalizerMockOrDefault(job, ctx);
             }
         }
+    }
+
+    private void injectQueueableMockIfNeeded(QueueableJob job) {
+        if (Test.isRunningTest() && AsyncMock.hasQueueableMock(job.mockId)) {
+            job.queueableCtx = AsyncMock.getQueueableContext(job.mockId);
+        }
+    }
+
+    private void injectFinalizerMockOrDefault(QueueableJob job, FinalizerContext defaultCtx) {
+        if (Test.isRunningTest() && AsyncMock.hasFinalizerMock(job.mockId)) {
+            job.finalizerCtx = AsyncMock.getFinalizerContext(job.mockId);
+            return;
+        }
+        job.finalizerCtx = defaultCtx;
     }
 }

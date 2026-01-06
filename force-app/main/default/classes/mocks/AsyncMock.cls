@@ -1,6 +1,5 @@
 @IsTest
 public class AsyncMock {
-
     private static Map<String, FinalizerMockSetup> finalizerSetups = new Map<String, FinalizerMockSetup>();
     private static Map<String, QueueableMockSetup> queueableSetups = new Map<String, QueueableMockSetup>();
     private static FinalizerMockSetup defaultFinalizerSetup;
@@ -30,18 +29,20 @@ public class AsyncMock {
 
     public static FinalizerContext getFinalizerContext(String mockId) {
         FinalizerMockSetup setup = finalizerSetups.get(mockId);
-        if (setup == null) {
-            setup = defaultFinalizerSetup;
+        FinalizerContext ctx = setup?.getNext();
+        if (ctx == null && defaultFinalizerSetup != null) {
+            ctx = defaultFinalizerSetup.getNext();
         }
-        return setup?.getNext();
+        return ctx;
     }
 
     public static QueueableContext getQueueableContext(String mockId) {
         QueueableMockSetup setup = queueableSetups.get(mockId);
-        if (setup == null) {
-            setup = defaultQueueableSetup;
+        QueueableContext ctx = setup?.getNext();
+        if (ctx == null && defaultQueueableSetup != null) {
+            ctx = defaultQueueableSetup.getNext();
         }
-        return setup?.getNext();
+        return ctx;
     }
 
     public static void reset() {
@@ -71,9 +72,6 @@ public class AsyncMock {
             if (contexts.isEmpty()) {
                 return null;
             }
-            if (contexts.size() == 1) {
-                return contexts.get(0);
-            }
             return contexts.remove(0);
         }
     }
@@ -93,9 +91,6 @@ public class AsyncMock {
         public QueueableContext getNext() {
             if (contexts.isEmpty()) {
                 return null;
-            }
-            if (contexts.size() == 1) {
-                return contexts.get(0);
             }
             return contexts.remove(0);
         }

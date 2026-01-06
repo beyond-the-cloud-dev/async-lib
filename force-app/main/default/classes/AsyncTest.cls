@@ -1614,7 +1614,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    static void shouldReturnLastContextWhenMultipleConsumed() {
+    static void shouldReturnNullWhenAllMocksConsumed() {
         AsyncMock.whenFinalizer('test')
             .thenReturn(ParentJobResult.SUCCESS)
             .thenThrow(new DmlException('Error'));
@@ -1625,7 +1625,19 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
         Assert.areEqual(ParentJobResult.SUCCESS, ctx1.getResult());
         Assert.areEqual(ParentJobResult.UNHANDLED_EXCEPTION, ctx2.getResult());
-        Assert.areEqual(ParentJobResult.UNHANDLED_EXCEPTION, ctx3.getResult());
+        Assert.isNull(ctx3);
+    }
+
+    @IsTest
+    static void shouldUseDefaultMockWhenSpecificMocksConsumed() {
+        AsyncMock.whenFinalizerDefault().thenReturn(ParentJobResult.SUCCESS);
+        AsyncMock.whenFinalizer('test').thenThrow(new DmlException('Error'));
+
+        FinalizerContext ctx1 = AsyncMock.getFinalizerContext('test');
+        FinalizerContext ctx2 = AsyncMock.getFinalizerContext('test');
+
+        Assert.areEqual(ParentJobResult.UNHANDLED_EXCEPTION, ctx1.getResult());
+        Assert.areEqual(ParentJobResult.SUCCESS, ctx2.getResult());
     }
 
     public Iterable<Account> start(Database.BatchableContext bc) {

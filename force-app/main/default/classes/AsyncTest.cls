@@ -945,38 +945,38 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     static void shouldSoftCloneTheJob() {
-        String CHANGED_PRIMITIVE_VALUE = 'CHANGED_PRIMITIVE_VALUE';
+        String changedPrimitiveValue = 'changedPrimitiveValue';
 
         QueueableJobTest1 job1 = new QueueableJobTest1();
         Async.Result result1 = Async.queueable(job1).chain();
 
         // Complex member is passed by reference, what change the first job value
-        job1.complexMember.primitiveMember = CHANGED_PRIMITIVE_VALUE;
+        job1.complexMember.primitiveMember = changedPrimitiveValue;
         Async.Result result2 = Async.queueable(job1).enqueue();
 
         QueueableJobTest1 firstEnqueuedJob = (QueueableJobTest1) result1.job;
         QueueableJobTest1 secondEnqueuedJob = (QueueableJobTest1) result2.job;
 
-        Assert.areEqual(CHANGED_PRIMITIVE_VALUE, firstEnqueuedJob.complexMember.primitiveMember);
-        Assert.areEqual(CHANGED_PRIMITIVE_VALUE, secondEnqueuedJob.complexMember.primitiveMember);
+        Assert.areEqual(changedPrimitiveValue, firstEnqueuedJob.complexMember.primitiveMember);
+        Assert.areEqual(changedPrimitiveValue, secondEnqueuedJob.complexMember.primitiveMember);
     }
 
     @IsTest
     static void shouldDeepCloneTheJob() {
-        String CHANGED_PRIMITIVE_VALUE = 'CHANGED_PRIMITIVE_VALUE';
+        String changedPrimitiveValue = 'changedPrimitiveValue';
 
         QueueableJobTest1 job1 = new QueueableJobTest1();
         Async.Result result1 = Async.queueable(job1).deepClone().chain();
 
         // Due to above deep clone, all values above were passed by value
-        job1.complexMember.primitiveMember = CHANGED_PRIMITIVE_VALUE;
+        job1.complexMember.primitiveMember = changedPrimitiveValue;
         Async.Result result2 = Async.queueable(job1).enqueue();
 
         QueueableJobTest1 firstEnqueuedJob = (QueueableJobTest1) result1.job;
         QueueableJobTest1 secondEnqueuedJob = (QueueableJobTest1) result2.job;
 
         Assert.areEqual(PRIMITIVE_VALUE_INITIAL, firstEnqueuedJob.complexMember.primitiveMember);
-        Assert.areEqual(CHANGED_PRIMITIVE_VALUE, secondEnqueuedJob.complexMember.primitiveMember);
+        Assert.areEqual(changedPrimitiveValue, secondEnqueuedJob.complexMember.primitiveMember);
     }
 
     @IsTest
@@ -1317,11 +1317,13 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    @SuppressWarnings('PMD.ApexUnitTestClassShouldHaveAsserts')
     static void shouldRemoveSchedulableJobWhenIdIsNull() {
         QueueableChainSchedulable.removeInitialQueuableChainSchedulableIfExists(null);
     }
 
     @IsTest
+    @SuppressWarnings('PMD.ApexUnitTestClassShouldHaveAsserts,PMD.AvoidHardcodingId')
     static void shouldHandleRemoveSchedulableJobWithInvalidId() {
         QueueableChainSchedulable.removeInitialQueuableChainSchedulableIfExists(
             '001000000000000AAA'
@@ -1472,6 +1474,182 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(60, crons1.size());
     }
 
+    @IsTest
+    static void shouldTestFinalizerWithSuccessViaEnqueue() {
+        AsyncMock.whenFinalizer('error-handler').thenReturn(ParentJobResult.SUCCESS);
+
+        Test.startTest();
+        Async.queueable(new ParentJobWithFinalizer('error-handler')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+    }
+
+    @IsTest
+    static void shouldTestFinalizerWithExceptionViaEnqueue() {
+        AsyncMock.whenFinalizer('error-handler').thenThrow(new DmlException('Parent job failed'));
+
+        Test.startTest();
+        Async.queueable(new ParentJobWithFinalizer('error-handler')).enqueue();
+        Test.stopTest();
+
+        Account errorLog = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Error Log', errorLog.Name);
+        Assert.areEqual('Parent job failed', errorLog.Description);
+    }
+
+    @IsTest
+    static void shouldTestFinalizerDirectlyWithMockContext() {
+        ErrorHandlerFinalizer finalizer = new ErrorHandlerFinalizer();
+        finalizer.finalizerCtx = new AsyncMock.MockFinalizerContext()
+            .setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+            .setException(new DmlException('Direct test error'));
+
+        finalizer.work();
+
+        Account errorLog = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Error Log', errorLog.Name);
+        Assert.areEqual('Direct test error', errorLog.Description);
+    }
+
+    @IsTest
+    static void shouldTestQueueableWithMockContext() {
+        AsyncMock.whenQueueable('account-creator').thenReturn(new AsyncMock.MockQueueableContext());
+
+        Test.startTest();
+        Async.queueable(new AccountCreatorJob('Test Account')).mockId('account-creator').enqueue();
+        Test.stopTest();
+
+        Account acc = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Test Account', acc.Name);
+        Assert.isNotNull(acc.Description);
+    }
+
+    @IsTest
+    static void shouldTestQueueableDirectlyWithMockContext() {
+        AccountCreatorJob job = new AccountCreatorJob('Direct Test');
+        job.queueableCtx = new AsyncMock.MockQueueableContext();
+
+        job.work();
+
+        Account acc = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Direct Test', acc.Name);
+        Assert.isNotNull(acc.Description);
+    }
+
+    @IsTest
+    static void shouldTestMultipleFinalizerInvocations() {
+        AsyncMock.whenFinalizer('multi-test')
+            .thenReturn(ParentJobResult.SUCCESS)
+            .thenThrow(new DmlException('Second call failed'))
+            .thenReturn(ParentJobResult.SUCCESS);
+
+        Test.startTest();
+        Async.queueable(new ParentJobWithFinalizer('multi-test')).enqueue();
+        Async.queueable(new ParentJobWithFinalizer('multi-test')).enqueue();
+        Async.queueable(new ParentJobWithFinalizer('multi-test')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, [SELECT COUNT() FROM Account]);
+        Assert.areEqual(
+            'Second call failed',
+            [SELECT Description FROM Account LIMIT 1].Description
+        );
+    }
+
+    @IsTest
+    static void shouldTestDefaultFinalizerMock() {
+        AsyncMock.whenFinalizerDefault().thenReturn(ParentJobResult.SUCCESS);
+
+        Test.startTest();
+        Async.queueable(new ParentJobWithFinalizer('job-1')).enqueue();
+        Async.queueable(new ParentJobWithFinalizer('job-2')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+    }
+
+    @IsTest
+    static void shouldTestBatchJobExecuteDirectly() {
+        Account testAcc = new Account(Name = 'Test');
+        insert testAcc;
+
+        AsyncMock.MockBatchableContext mockCtx = new AsyncMock.MockBatchableContext();
+
+        AsyncTest batchJob = new AsyncTest();
+
+        batchJob.execute(mockCtx, new List<Account>{ testAcc });
+
+        Account updatedAcc = [SELECT Description FROM Account WHERE Id = :testAcc.Id];
+        Assert.isTrue(updatedAcc.Description.startsWith('Processed by:'));
+    }
+
+    @IsTest
+    static void shouldTestBatchJobFinishDirectly() {
+        AsyncMock.MockBatchableContext mockCtx = new AsyncMock.MockBatchableContext();
+
+        AsyncTest batchJob = new AsyncTest();
+        batchJob.finish(mockCtx);
+
+        Account finishLog = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Batch Complete', finishLog.Name);
+        Assert.isTrue(finishLog.Description.startsWith('Job:'));
+    }
+
+    @IsTest
+    static void shouldTestSchedulableJobDirectly() {
+        AsyncMock.MockSchedulableContext mockCtx = new AsyncMock.MockSchedulableContext();
+
+        SchedulableForMockTest job = new SchedulableForMockTest();
+        job.execute(mockCtx);
+
+        Account acc = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Scheduled Cleanup', acc.Name);
+        Assert.isTrue(acc.Description.startsWith('Trigger:'));
+    }
+
+    @IsTest
+    static void shouldResetMocks() {
+        AsyncMock.whenFinalizer('test').thenReturn(ParentJobResult.SUCCESS);
+        AsyncMock.whenQueueable('test').thenReturn(new AsyncMock.MockQueueableContext());
+        AsyncMock.whenFinalizerDefault().thenReturn(ParentJobResult.SUCCESS);
+        AsyncMock.whenQueueableDefault().thenReturn(new AsyncMock.MockQueueableContext());
+
+        AsyncMock.reset();
+
+        Assert.isNull(AsyncMock.getFinalizerContext('test'));
+        Assert.isNull(AsyncMock.getQueueableContext('test'));
+        Assert.isNull(AsyncMock.getFinalizerContext('unknown'));
+        Assert.isNull(AsyncMock.getQueueableContext('unknown'));
+    }
+
+    @IsTest
+    static void shouldReturnNullWhenAllMocksConsumed() {
+        AsyncMock.whenFinalizer('test')
+            .thenReturn(ParentJobResult.SUCCESS)
+            .thenThrow(new DmlException('Error'));
+
+        FinalizerContext ctx1 = AsyncMock.getFinalizerContext('test');
+        FinalizerContext ctx2 = AsyncMock.getFinalizerContext('test');
+        FinalizerContext ctx3 = AsyncMock.getFinalizerContext('test');
+
+        Assert.areEqual(ParentJobResult.SUCCESS, ctx1.getResult());
+        Assert.areEqual(ParentJobResult.UNHANDLED_EXCEPTION, ctx2.getResult());
+        Assert.isNull(ctx3);
+    }
+
+    @IsTest
+    static void shouldUseDefaultMockWhenSpecificMocksConsumed() {
+        AsyncMock.whenFinalizerDefault().thenReturn(ParentJobResult.SUCCESS);
+        AsyncMock.whenFinalizer('test').thenThrow(new DmlException('Error'));
+
+        FinalizerContext ctx1 = AsyncMock.getFinalizerContext('test');
+        FinalizerContext ctx2 = AsyncMock.getFinalizerContext('test');
+
+        Assert.areEqual(ParentJobResult.UNHANDLED_EXCEPTION, ctx1.getResult());
+        Assert.areEqual(ParentJobResult.SUCCESS, ctx2.getResult());
+    }
+
     private static String getClassNameWithNamespaceDotPrefix(String className) {
         return getNamespaceDotPrefix() + className;
     }
@@ -1487,9 +1665,16 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     public void execute(Database.BatchableContext ctx, List<Account> scope) {
+        for (Account acc : scope) {
+            acc.Description = 'Processed by: ' + ctx.getJobId();
+        }
+        if (!scope.isEmpty() && scope[0].Id != null) {
+            update scope;
+        }
     }
 
     public void finish(Database.BatchableContext bc) {
+        insert new Account(Name = 'Batch Complete', Description = 'Job: ' + bc.getJobId());
     }
 
     private class SuccessfulQueueableTest extends QueueableJob {
@@ -1588,5 +1773,51 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     private class CustomException extends Exception {
+    }
+
+    public class ParentJobWithFinalizer extends QueueableJob {
+        private String mockId;
+
+        public ParentJobWithFinalizer(String mockId) {
+            this.mockId = mockId;
+        }
+
+        public override void work() {
+            Async.queueable(new ErrorHandlerFinalizer()).mockId(mockId).attachFinalizer();
+        }
+    }
+
+    public class ErrorHandlerFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            FinalizerContext ctx = this.finalizerCtx;
+            if (ctx?.getResult() == ParentJobResult.UNHANDLED_EXCEPTION) {
+                insert new Account(
+                    Name = 'Error Log',
+                    Description = ctx.getException()?.getMessage()
+                );
+            }
+        }
+    }
+
+    public class AccountCreatorJob extends QueueableJob {
+        private String accountName;
+
+        public AccountCreatorJob(String accountName) {
+            this.accountName = accountName;
+        }
+
+        public override void work() {
+            Id jobId = this.queueableCtx?.getJobId();
+            insert new Account(Name = accountName, Description = 'Job: ' + jobId);
+        }
+    }
+
+    private class SchedulableForMockTest implements Schedulable {
+        public void execute(SchedulableContext sc) {
+            insert new Account(
+                Name = 'Scheduled Cleanup',
+                Description = 'Trigger: ' + sc.getTriggerId()
+            );
+        }
     }
 }

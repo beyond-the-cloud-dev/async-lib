@@ -26,6 +26,7 @@ export default defineConfig({
     hostname: 'https://async.beyondthecloud.dev'
   },
   themeConfig: {
+    logo: '/logo.png',
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },
@@ -62,10 +63,7 @@ export default defineConfig({
         ]
       }
     ],
-    footer: {
-      message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2025-present Beyond The Cloud Sp. z o.o.'
-    },
+    footer: false,
     socialLinks: [
       {
         icon: 'github',

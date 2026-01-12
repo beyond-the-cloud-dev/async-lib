@@ -34,8 +34,8 @@ public inherited sharing class QueueableManager {
         return ctx;
     }
 
-    public Id getQueueableChainBatchId() {
-        return chain.getQueueableChainBatchId();
+    public Id getQueueableChainSchedulableId() {
+        return chain.getQueueableChainSchedulableId();
     }
 
     public Async.Result attachFinalizer(QueueableJob job) {
@@ -79,11 +79,11 @@ public inherited sharing class QueueableManager {
             .setJobs(chain.getJobs())
             .setNextCustomJobIdFromFirstJob();
 
-        if (shouldExecuteOrReplaceInitialQueueableChainBatch()) {
-            chain.executeOrReplaceInitialQueueableChainBatchJob();
+        if (shouldExecuteOrReplaceInitialQueueableChainSchedulable()) {
+            chain.executeOrReplaceInitialQueueableChainSchedulableJob();
             queueableChainState
-                .setNextSalesforceJobId(chain.getQueueableChainBatchId())
-                .setEnqueueType(EnqueueType.INITIAL_SCHEDULED_BATCH_JOB);
+                .setNextSalesforceJobId(chain.getQueueableChainSchedulableId())
+                .setEnqueueType(EnqueueType.INITIAL_QUEUEABLE_CHAIN_SCHEDULABLE);
         } else if (!chain.isChainedContext()) {
             chain.enqueueNextJobIfAny();
             queueableChainState
@@ -97,7 +97,7 @@ public inherited sharing class QueueableManager {
         return new Async.Result(job).setQueueableChainState(queueableChainState);
     }
 
-    private Boolean shouldExecuteOrReplaceInitialQueueableChainBatch() {
+    private Boolean shouldExecuteOrReplaceInitialQueueableChainSchedulable() {
         return !chain.isChainedContext() &&
             (Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() || System.isQueueable());
     }
@@ -110,7 +110,7 @@ public inherited sharing class QueueableManager {
     }
 
     public enum EnqueueType {
-        INITIAL_SCHEDULED_BATCH_JOB,
+        INITIAL_QUEUEABLE_CHAIN_SCHEDULABLE,
         NEW_CHAIN,
         EXISTING_CHAIN
     }

@@ -4,7 +4,10 @@ outline: deep
 
 # Getting Started
 
-Async Lib is a powerful Salesforce Apex framework that provides an elegant solution for managing asynchronous processes. It eliminates common limitations like "Too many queueable jobs" errors and offers a unified API for queueable, batchable, and schedulable jobs.
+Async Lib is a powerful Salesforce Apex framework that provides an elegant
+solution for managing asynchronous processes. It eliminates common limitations
+like "Too many queueable jobs" errors and offers a unified API for queueable,
+batchable, and schedulable jobs.
 
 ## Why Async Lib?
 
@@ -49,13 +52,20 @@ Async Lib is a powerful Salesforce Apex framework that provides an elegant solut
 
 ### Key Benefits
 
-- **🚀 Eliminates Queueable Limits**: Automatically handles "Too many queueable jobs" by intelligent chaining and batch overflow
-- **🎯 Unified API**: Single, consistent interface for all async job types (Queueable, Batchable, Schedulable)
-- **⚡ Smart Prioritization**: Jobs execute based on priority with automatic sorting
-- **🛡️ Advanced Error Handling**: Built-in error recovery, rollback options, and continuation strategies
-- **📊 Job Tracking**: Comprehensive tracking with custom job IDs and result records
-- **⚙️ Configuration-Driven**: Control job behavior through custom metadata without code changes
-- **🔗 Support Finalizers**: Execute cleanup logic after job completion with full context
+- **🚀 Eliminates Queueable Limits**: Automatically handles "Too many queueable
+  jobs" by intelligent chaining and batch overflow
+- **🎯 Unified API**: Single, consistent interface for all async job types
+  (Queueable, Batchable, Schedulable)
+- **⚡ Smart Prioritization**: Jobs execute based on priority with automatic
+  sorting
+- **🛡️ Advanced Error Handling**: Built-in error recovery, rollback options, and
+  continuation strategies
+- **📊 Job Tracking**: Comprehensive tracking with custom job IDs and result
+  records
+- **⚙️ Configuration-Driven**: Control job behavior through custom metadata
+  without code changes
+- **🔗 Support Finalizers**: Execute cleanup logic after job completion with
+  full context
 
 ## Core Concepts
 
@@ -65,10 +75,12 @@ All queueable jobs extend the `QueueableJob` abstract class:
 
 ```apex
 public class MyQueueableJob extends QueueableJob {
-    public override void work() {
-        // Your business logic here
-        System.debug('Processing job: ' + Async.getQueueableJobContext().currentJob.customJobId);
-    }
+  public override void work() {
+    // Your business logic here
+    System.debug(
+      'Processing job: ' + Async.getQueueableJobContext().currentJob.customJobId
+    );
+  }
 }
 ```
 
@@ -98,7 +110,9 @@ Async.schedulable(new MySchedulableJob())
 
 ### 3. Automatic Job Chaining
 
-When queueable limits are reached, Async Lib automatically switches to scheduled-batch-based execution, ensuring your jobs always run without hitting Queueable platform limits.
+When queueable limits are reached, Async Lib automatically switches to
+scheduled-batch-based execution, ensuring your jobs always run without hitting
+Queueable platform limits.
 
 ## Your First Queueable Job
 
@@ -108,26 +122,30 @@ Let's create a simple job that processes accounts:
 
 ```apex
 public class AccountProcessorJob extends QueueableJob {
-    private List<Id> accountIds;
-    
-    public AccountProcessorJob(List<Id> accountIds) {
-        this.accountIds = accountIds;
+  private List<Id> accountIds;
+
+  public AccountProcessorJob(List<Id> accountIds) {
+    this.accountIds = accountIds;
+  }
+
+  public override void work() {
+    // Get job context
+    Async.QueueableJobContext ctx = Async.getQueueableJobContext();
+    System.debug('Processing job: ' + ctx.currentJob.customJobId);
+
+    // Process accounts
+    List<Account> accounts = [
+      SELECT Id, Name
+      FROM Account
+      WHERE Id IN :accountIds
+    ];
+    for (Account acc : accounts) {
+      acc.Description = 'Processed by ' + ctx.currentJob.className;
     }
-    
-    public override void work() {
-        // Get job context
-        Async.QueueableJobContext ctx = Async.getQueueableJobContext();
-        System.debug('Processing job: ' + ctx.currentJob.customJobId);
-        
-        // Process accounts
-        List<Account> accounts = [SELECT Id, Name FROM Account WHERE Id IN :accountIds];
-        for (Account acc : accounts) {
-            acc.Description = 'Processed by ' + ctx.currentJob.className;
-        }
-        update accounts;
-        
-        System.debug('Processed ' + accounts.size() + ' accounts');
-    }
+    update accounts;
+
+    System.debug('Processed ' + accounts.size() + ' accounts');
+  }
 }
 ```
 
@@ -169,7 +187,7 @@ public class MyJobFinalizer extends QueueableJob.Finalizer {
     public override void work() {
         Async.QueueableJobContext ctx = Async.getQueueableJobContext();
         FinalizerContext finalizerCtx = ctx.finalizerCtx;
-        
+
         if (finalizerCtx.getResult() == ParentJobResult.SUCCESS) {
             System.debug('Job completed successfully!');
         } else {
@@ -182,7 +200,7 @@ public class MyJobFinalizer extends QueueableJob.Finalizer {
 public class MyMainJob extends QueueableJob {
     public override void work() {
         // Do main work...
-        
+
         // Attach finalizer
         Async.queueable(new MyJobFinalizer())
             .attachFinalizer();
@@ -194,43 +212,54 @@ public class MyMainJob extends QueueableJob {
 
 Control job behavior using Custom Metadata (`QueueableJobSetting__mdt`):
 
-1. Go to **Setup → Custom Metadata Types → QueueableJobSetting → Manage Records**
+1. Go to **Setup → Custom Metadata Types → QueueableJobSetting → Manage
+   Records**
 2. Create or edit settings:
    - **All**: Global settings for all jobs
    - **Specific Class Name**: Settings for specific job classes
 
 Available settings:
-- **QueueableJobName__c**: The name of the QueueableJob.
-- **IsDisabled__c**: Disable job execution
-- **CreateResult__c**: Create `AsyncResult__c` records for tracking
+
+- **QueueableJobName\_\_c**: The name of the QueueableJob.
+- **IsDisabled\_\_c**: Disable job execution
+- **CreateResult\_\_c**: Create `AsyncResult__c` records for tracking
 
 ## Async Result Records
 
-When enabled in `QueueableJobSetting__mdt` (**CreateResult__c** = true), Async Lib automatically creates `AsyncResult__c` records for executed jobs.
-These records help track job execution and outcomes.
+When enabled in `QueueableJobSetting__mdt` (**CreateResult\_\_c** = true), Async
+Lib automatically creates `AsyncResult__c` records for executed jobs. These
+records help track job execution and outcomes.
 
 ### Key Fields
 
-- **CustomJobId__c**: Unique job ID generated by Async Lib
-- **SalesforceJobId__c**: Underlying Salesforce job ID (Queueable, Batch, or Scheduled)
-- **Result__c**: Final job status (SUCCESS, UNHANDLED_EXCEPTION)
-
+- **CustomJobId\_\_c**: Unique job ID generated by Async Lib
+- **SalesforceJobId\_\_c**: Underlying Salesforce job ID (Queueable, Batch, or
+  Scheduled)
+- **Result\_\_c**: Final job status (SUCCESS, UNHANDLED_EXCEPTION)
 
 ## What's Next?
 
 Now that you understand the basics:
 
 1. **Explore the API** - Learn about all available methods and options:
-   1. **[Queueable API](/api/queueable.md)** - Detailed information on using Queueable jobs
-   2. **[Batchable API](/api/batchable.md)** - Detailed information on using Batchable jobs
-   3. **[Schedulable API](/api/schedulable.md)** - Detailed information on using Schedulable jobs
-2. **Read the Blog Post** - Check out the detailed explanation: [Apex Queueable Processing Framework](https://blog.beyondthecloud.dev/blog/apex-queueable-processing-framework)
-3. **[Initial Scheduled Queueable Batch Job Explanation](/explanations/initial-scheduled-queuable-batch-job.md)** - Learn why this job is important for framework to function properly.
+   1. **[Queueable API](/api/queueable.md)** - Detailed information on using
+      Queueable jobs
+   2. **[Batchable API](/api/batchable.md)** - Detailed information on using
+      Batchable jobs
+   3. **[Schedulable API](/api/schedulable.md)** - Detailed information on using
+      Schedulable jobs
+2. **Read the Blog Post** - Check out the detailed explanation:
+   [Apex Queueable Processing Framework](https://blog.beyondthecloud.dev/blog/apex-queueable-processing-framework)
+3. **[Initial Queueable Chain Schedulable Explanation](/explanations/initial-scheduled-queuable-batch-job.md)** -
+   Learn why this job is important for framework to function properly.
 
 ## Quick Tips
 
-- **Job Naming**: Jobs get unique names with timestamps: `MyJob::2024-01-15T10:30:45.123Z::1`
-- **Custom Job IDs**: Every job gets a UUID for tracking independent of Salesforce Job IDs
-- **Priority Matters**: Lower numbers = higher priority. Finalizers always run first.
+- **Job Naming**: Jobs get unique names with timestamps:
+  `MyJob::2024-01-15T10:30:45.123Z::1`
+- **Custom Job IDs**: Every job gets a UUID for tracking independent of
+  Salesforce Job IDs
+- **Priority Matters**: Lower numbers = higher priority. Finalizers always run
+  first.
 - **Test Friendly**: Framework handles test context automatically
 - **Callouts Supported**: Use `QueueableJob.AllowsCallouts` for HTTP callouts

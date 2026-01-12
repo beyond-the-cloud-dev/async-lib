@@ -360,16 +360,22 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
         QueueableChain chain = new QueueableChain();
         chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            'AsyncTest.QueueableJobTest1' => new QueueableJobSetting__mdt(
-                DeveloperName = 'AsyncTest.QueueableJobTest1',
+            getClassNameWithNamespaceDotPrefix(
+                'AsyncTest.QueueableJobTest1'
+            ) => new QueueableJobSetting__mdt(
+                DeveloperName = getClassNameWithNamespaceDotPrefix('AsyncTest.QueueableJobTest1'),
                 IsDisabled__c = true
             ),
-            'AsyncTest.QueueableJobTest7' => new QueueableJobSetting__mdt(
-                DeveloperName = 'AsyncTest.QueueableJobTest7',
+            getClassNameWithNamespaceDotPrefix(
+                'AsyncTest.QueueableJobTest7'
+            ) => new QueueableJobSetting__mdt(
+                DeveloperName = getClassNameWithNamespaceDotPrefix('AsyncTest.QueueableJobTest7'),
                 IsDisabled__c = false
             ),
-            'AsyncTest.QueueableJobTest8' => new QueueableJobSetting__mdt(
-                DeveloperName = 'AsyncTest.QueueableJobTest8',
+            getClassNameWithNamespaceDotPrefix(
+                'AsyncTest.QueueableJobTest8'
+            ) => new QueueableJobSetting__mdt(
+                DeveloperName = getClassNameWithNamespaceDotPrefix('AsyncTest.QueueableJobTest8'),
                 IsDisabled__c = true
             )
         };
@@ -405,15 +411,19 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
         QueueableChain chain1 = new QueueableChain();
         chain1.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            'AsyncTest.QueueableJobTest1' => new QueueableJobSetting__mdt(
-                DeveloperName = 'AsyncTest.QueueableJobTest1',
+            getClassNameWithNamespaceDotPrefix(
+                'AsyncTest.QueueableJobTest1'
+            ) => new QueueableJobSetting__mdt(
+                DeveloperName = getClassNameWithNamespaceDotPrefix('AsyncTest.QueueableJobTest1'),
                 CreateResult__c = true
             )
         };
         QueueableChain chain2 = new QueueableChain();
         chain2.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            'AsyncTest.QueueableJobTest1' => new QueueableJobSetting__mdt(
-                DeveloperName = 'AsyncTest.QueueableJobTest1',
+            getClassNameWithNamespaceDotPrefix(
+                'AsyncTest.QueueableJobTest1'
+            ) => new QueueableJobSetting__mdt(
+                DeveloperName = getClassNameWithNamespaceDotPrefix('AsyncTest.QueueableJobTest1'),
                 CreateResult__c = true
             )
         };
@@ -923,6 +933,15 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
         Assert.areEqual(PRIMITIVE_VALUE_INITIAL, firstEnqueuedJob.complexMember.primitiveMember);
         Assert.areEqual(CHANGED_PRIMITIVE_VALUE, secondEnqueuedJob.complexMember.primitiveMember);
+    }
+
+    private static String getClassNameWithNamespaceDotPrefix(String className) {
+        return getNamespaceDotPrefix() + className;
+    }
+
+    private static String getNamespaceDotPrefix() {
+        String className = AsyncTest.class.getName();
+        return className.contains('.') ? className.substringBefore('.') + '.' : '';
     }
 
     public Iterable<Account> start(Database.BatchableContext bc) {

@@ -1,3 +1,4 @@
+@SuppressWarnings('PMD.ExcessivePublicCount')
 public abstract class QueueableJob implements Queueable, Comparable {
     public Id salesforceJobId;
     public String customJobId;
@@ -20,6 +21,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
 
     public String parentCustomJobId;
     public FinalizerContext finalizerCtx;
+    public String mockId;
     public Boolean isFinalizer {
         get {
             return String.isNotBlank(parentCustomJobId);

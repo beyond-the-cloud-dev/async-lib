@@ -8,7 +8,10 @@ export default defineConfig({
     ['link', { rel: 'icon', href: '/favicon.ico' }],
     [
       'script',
-      { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-53N22KN47H' }
+      {
+        async: '',
+        src: 'https://www.googletagmanager.com/gtag/js?id=G-53N22KN47H'
+      }
     ],
     [
       'script',
@@ -45,7 +48,8 @@ export default defineConfig({
         items: [
           { text: 'Queueable', link: '/api/queueable' },
           { text: 'Batchable', link: '/api/batchable' },
-          { text: 'Schedulable', link: '/api/schedulable' }
+          { text: 'Schedulable', link: '/api/schedulable' },
+          { text: 'AsyncMock', link: '/api/async-mock' }
         ]
       },
       {
@@ -53,10 +57,11 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: 'Initial Scheduled Job',
+            text: 'Initial Queueable Chain Schedulable',
             link: '/explanations/initial-scheduled-queuable-batch-job'
           },
-          { text: 'Job Cloning', link: '/explanations/job-cloning' }
+          { text: 'Job Cloning', link: '/explanations/job-cloning' },
+          { text: 'Testing Async Jobs', link: '/explanations/testing-async-jobs' }
         ]
       }
     ],

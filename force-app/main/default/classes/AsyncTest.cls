@@ -19,7 +19,8 @@ private class AsyncTest implements Database.Batchable<SObject> {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
-        Id initialQueuableChainBatchJobId;
+        Id initialQueuableChainSchedulableId;
+        List<CronTrigger> cronTriggers;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
@@ -32,13 +33,18 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 );
             } else {
                 Assert.areEqual(
-                    QueueableManager.EnqueueType.INITIAL_SCHEDULED_BATCH_JOB,
+                    QueueableManager.EnqueueType.INITIAL_QUEUEABLE_CHAIN_SCHEDULABLE,
                     ar.queueableChainState.enqueueType,
                     'Should be enqueued via batch.'
                 );
             }
         }
-        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
+        initialQueuableChainSchedulableId = Async.getQueueableChainSchedulableId();
+        cronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
         Test.stopTest();
 
         Assert.areEqual(
@@ -46,35 +52,46 @@ private class AsyncTest implements Database.Batchable<SObject> {
             [SELECT COUNT() FROM Account],
             'Should have 50 job runs (50 queueable and 1 scheduled batch that was not executed yet).'
         );
-        List<CronTrigger> cronTriggers = [
-            SELECT Id
-            FROM CronTrigger
-            WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'
-        ];
         Assert.areEqual(
             1,
             cronTriggers.size(),
             'Should schedule only one batchable job with the rest.'
         );
         Assert.areEqual(
-            initialQueuableChainBatchJobId,
+            initialQueuableChainSchedulableId,
             cronTriggers[0].Id,
-            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainSchedulableId()'
+        );
+        List<CronTrigger> currentCronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
+        Assert.areEqual(
+            0,
+            currentCronTriggers.size(),
+            'The scheduled job should be deleted once finished.'
         );
     }
 
     @IsTest
-    private static void shouldEnqueue60QueueablesWitDelaySuccessfully() {
+    private static void shouldEnqueue60QueueablesWithDelaySuccessfully() {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
-        Id initialQueuableChainBatchJobId;
+        Id initialQueuableChainSchedulableId;
+        List<CronTrigger> cronTriggers;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
             Async.queueable(q).delay(1).enqueue();
         }
-        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
+        initialQueuableChainSchedulableId = Async.getQueueableChainSchedulableId();
+        cronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
         Test.stopTest();
 
         Assert.areEqual(
@@ -82,20 +99,25 @@ private class AsyncTest implements Database.Batchable<SObject> {
             [SELECT COUNT() FROM Account],
             'Should have 50 job runs (50 queueable and 1 scheduled batch that was not executed yet).'
         );
-        List<CronTrigger> cronTriggers = [
-            SELECT Id
-            FROM CronTrigger
-            WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'
-        ];
         Assert.areEqual(
             1,
             cronTriggers.size(),
             'Should schedule only one batchable job with the rest.'
         );
         Assert.areEqual(
-            initialQueuableChainBatchJobId,
+            initialQueuableChainSchedulableId,
             cronTriggers[0].Id,
-            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainSchedulableId()'
+        );
+        List<CronTrigger> currentCronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
+        Assert.areEqual(
+            0,
+            currentCronTriggers.size(),
+            'The scheduled job should be deleted once finished.'
         );
     }
 
@@ -104,30 +126,41 @@ private class AsyncTest implements Database.Batchable<SObject> {
         FailureQueueableTest q = new FailureQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
-        Id initialQueuableChainBatchJobId;
+        Id initialQueuableChainSchedulableId;
+        List<CronTrigger> cronTriggers;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
             Async.queueable(q).continueOnJobExecuteFail().rollbackOnJobExecuteFail().enqueue();
         }
-        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
+        initialQueuableChainSchedulableId = Async.getQueueableChainSchedulableId();
+        cronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
         Test.stopTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account], 'Should have no Accounts created.');
-        List<CronTrigger> cronTriggers = [
-            SELECT Id
-            FROM CronTrigger
-            WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'
-        ];
         Assert.areEqual(
             1,
             cronTriggers.size(),
             'Should schedule only one batchable job with the rest.'
         );
         Assert.areEqual(
-            initialQueuableChainBatchJobId,
+            initialQueuableChainSchedulableId,
             cronTriggers[0].Id,
-            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainSchedulableId()'
+        );
+        List<CronTrigger> currentCronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
+        Assert.areEqual(
+            0,
+            currentCronTriggers.size(),
+            'The scheduled job should be deleted once finished.'
         );
     }
 
@@ -136,30 +169,41 @@ private class AsyncTest implements Database.Batchable<SObject> {
         FailureQueueableTest q = new FailureQueueableTest();
 
         Assert.areEqual(0, [SELECT COUNT() FROM Account]);
-        Id initialQueuableChainBatchJobId;
+        Id initialQueuableChainSchedulableId;
+        List<CronTrigger> cronTriggers;
 
         Test.startTest();
         for (Integer idx = 0; idx < 60; idx++) {
             Async.queueable(q).continueOnJobExecuteFail().enqueue();
         }
-        initialQueuableChainBatchJobId = Async.getQueueableChainBatchId();
+        initialQueuableChainSchedulableId = Async.getQueueableChainSchedulableId();
+        cronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
         Test.stopTest();
 
         Assert.areEqual(50, [SELECT COUNT() FROM Account], 'Inserted Accounts are not rollbacked.');
-        List<CronTrigger> cronTriggers = [
-            SELECT Id
-            FROM CronTrigger
-            WHERE CronJobDetail.Name LIKE 'QueueableChainBatch%'
-        ];
         Assert.areEqual(
             1,
             cronTriggers.size(),
             'Should schedule only one batchable job with the rest.'
         );
         Assert.areEqual(
-            initialQueuableChainBatchJobId,
+            initialQueuableChainSchedulableId,
             cronTriggers[0].Id,
-            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainBatchId()'
+            'The one scheduled batch job should have the same Id as the one returned from Async.getQueueableChainSchedulableId()'
+        );
+        List<CronTrigger> currentCronTriggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name LIKE 'QueueableChainSchedulable%'
+        ];
+        Assert.areEqual(
+            0,
+            currentCronTriggers.size(),
+            'The scheduled job should be deleted once finished.'
         );
     }
 
@@ -901,38 +945,670 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     static void shouldSoftCloneTheJob() {
-        String CHANGED_PRIMITIVE_VALUE = 'CHANGED_PRIMITIVE_VALUE';
+        String changedPrimitiveValue = 'changedPrimitiveValue';
 
         QueueableJobTest1 job1 = new QueueableJobTest1();
         Async.Result result1 = Async.queueable(job1).chain();
 
         // Complex member is passed by reference, what change the first job value
-        job1.complexMember.primitiveMember = CHANGED_PRIMITIVE_VALUE;
+        job1.complexMember.primitiveMember = changedPrimitiveValue;
         Async.Result result2 = Async.queueable(job1).enqueue();
 
         QueueableJobTest1 firstEnqueuedJob = (QueueableJobTest1) result1.job;
         QueueableJobTest1 secondEnqueuedJob = (QueueableJobTest1) result2.job;
 
-        Assert.areEqual(CHANGED_PRIMITIVE_VALUE, firstEnqueuedJob.complexMember.primitiveMember);
-        Assert.areEqual(CHANGED_PRIMITIVE_VALUE, secondEnqueuedJob.complexMember.primitiveMember);
+        Assert.areEqual(changedPrimitiveValue, firstEnqueuedJob.complexMember.primitiveMember);
+        Assert.areEqual(changedPrimitiveValue, secondEnqueuedJob.complexMember.primitiveMember);
     }
 
     @IsTest
     static void shouldDeepCloneTheJob() {
-        String CHANGED_PRIMITIVE_VALUE = 'CHANGED_PRIMITIVE_VALUE';
+        String changedPrimitiveValue = 'changedPrimitiveValue';
 
         QueueableJobTest1 job1 = new QueueableJobTest1();
         Async.Result result1 = Async.queueable(job1).deepClone().chain();
 
         // Due to above deep clone, all values above were passed by value
-        job1.complexMember.primitiveMember = CHANGED_PRIMITIVE_VALUE;
+        job1.complexMember.primitiveMember = changedPrimitiveValue;
         Async.Result result2 = Async.queueable(job1).enqueue();
 
         QueueableJobTest1 firstEnqueuedJob = (QueueableJobTest1) result1.job;
         QueueableJobTest1 secondEnqueuedJob = (QueueableJobTest1) result2.job;
 
         Assert.areEqual(PRIMITIVE_VALUE_INITIAL, firstEnqueuedJob.complexMember.primitiveMember);
-        Assert.areEqual(CHANGED_PRIMITIVE_VALUE, secondEnqueuedJob.complexMember.primitiveMember);
+        Assert.areEqual(changedPrimitiveValue, secondEnqueuedJob.complexMember.primitiveMember);
+    }
+
+    @IsTest
+    static void shouldExecuteChainedQueueableJob20Times() {
+        Integer noOfChainedJobs = 20;
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.queueable(new ChainedQueueableJob(noOfChainedJobs)).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(noOfChainedJobs, [SELECT COUNT() FROM Account]);
+        Assert.areEqual(
+            noOfChainedJobs,
+            [
+                SELECT COUNT()
+                FROM AsyncApexJob
+                WHERE
+                    Status = 'Completed'
+                    AND JobType = 'Queueable'
+                    AND ApexClass.Name = 'AsyncTest'
+            ]
+        );
+    }
+
+    @IsTest
+    static void shouldFailToSetAsyncOptionsAfterDelay() {
+        SuccessfulQueueableTest q = new SuccessfulQueueableTest();
+
+        try {
+            Async.queueable(q).delay(1).asyncOptions(new AsyncOptions());
+            Assert.fail('Should throw exception when setting asyncOptions after delay.');
+        } catch (Exception ex) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY,
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void shouldFailToSetDelayAfterAsyncOptions() {
+        SuccessfulQueueableTest q = new SuccessfulQueueableTest();
+
+        try {
+            Async.queueable(q).asyncOptions(new AsyncOptions()).delay(1);
+            Assert.fail('Should throw exception when setting delay after asyncOptions.');
+        } catch (Exception ex) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS,
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void shouldSetPriorityOnJob() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+
+        Async.Result result = Async.queueable(job).priority(10).chain();
+
+        Assert.areEqual(10, result.job.priority);
+    }
+
+    @IsTest
+    static void shouldFailWhenBatchScopeSizeIsZeroOrLess() {
+        try {
+            Async.batchable(new AsyncTest()).scopeSize(0).execute();
+            Assert.fail('Should throw exception when scope size is zero.');
+        } catch (Exception ex) {
+            Assert.areEqual('Scope size must be greater than zero.', ex.getMessage());
+        }
+
+        try {
+            Async.batchable(new AsyncTest()).scopeSize(-1).execute();
+            Assert.fail('Should throw exception when scope size is negative.');
+        } catch (Exception ex) {
+            Assert.areEqual('Scope size must be greater than zero.', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldFailWhenBatchMinutesFromNowIsZeroOrLess() {
+        try {
+            Async.batchable(new AsyncTest())
+                .minutesFromNow(0)
+                .asSchedulable()
+                .name(TEST_SCHEDULABLE_JOB_NAME)
+                .schedule();
+            Assert.fail('Should throw exception when minutes from now is zero.');
+        } catch (Exception ex) {
+            Assert.areEqual('Minutes from now must be greater than zero.', ex.getMessage());
+        }
+
+        try {
+            Async.batchable(new AsyncTest())
+                .minutesFromNow(-5)
+                .asSchedulable()
+                .name(TEST_SCHEDULABLE_JOB_NAME)
+                .schedule();
+            Assert.fail('Should throw exception when minutes from now is negative.');
+        } catch (Exception ex) {
+            Assert.areEqual('Minutes from now must be greater than zero.', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldFailWhenBatchJobIsNull() {
+        try {
+            BatchableManager.get().execute(null);
+            Assert.fail('Should throw exception when builder is null.');
+        } catch (Exception ex) {
+            Assert.areEqual('Batch job must be set.', ex.getMessage());
+        }
+
+        try {
+            BatchableBuilder builder = new BatchableBuilder(new AsyncTest());
+            builder.job = null;
+            BatchableManager.get().execute(builder);
+            Assert.fail('Should throw exception when job is null.');
+        } catch (Exception ex) {
+            Assert.areEqual('Batch job must be set.', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldExecuteBatchWithDefaultScopeSize() {
+        Test.startTest();
+        Async.Result result = Async.batchable(new AsyncTest()).execute();
+        Test.stopTest();
+
+        Assert.isNotNull(result.salesforceJobId);
+        Assert.areEqual(Async.AsyncType.BATCHABLE, result.asyncType);
+    }
+
+    @IsTest
+    static void shouldFailWhenCronExpressionIsBlank() {
+        try {
+            new CronBuilder('');
+            Assert.fail('Should throw exception when cron expression is blank.');
+        } catch (Exception ex) {
+            Assert.areEqual('Cron expression cannot be blank.', ex.getMessage());
+        }
+
+        try {
+            new CronBuilder('   ');
+            Assert.fail('Should throw exception when cron expression is whitespace.');
+        } catch (Exception ex) {
+            Assert.areEqual('Cron expression cannot be blank.', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldFailWhenCronExpressionHasInvalidParts() {
+        try {
+            new CronBuilder('0 0 * *');
+            Assert.fail('Should throw exception when cron has less than 6 parts.');
+        } catch (Exception ex) {
+            Assert.isTrue(ex.getMessage().contains('must have 6 or 7 parts'));
+        }
+
+        try {
+            new CronBuilder('0 0 * * * ? * 2024 extra');
+            Assert.fail('Should throw exception when cron has more than 7 parts.');
+        } catch (Exception ex) {
+            Assert.isTrue(ex.getMessage().contains('must have 6 or 7 parts'));
+        }
+    }
+
+    @IsTest
+    static void shouldParseCronExpressionWith7Parts() {
+        CronBuilder cron = new CronBuilder('0 30 10 * * ? 2025');
+
+        Assert.areEqual('0', cron.second);
+        Assert.areEqual('30', cron.minute);
+        Assert.areEqual('10', cron.hour);
+        Assert.areEqual('*', cron.dayOfMonth);
+        Assert.areEqual('*', cron.month);
+        Assert.areEqual('?', cron.dayOfWeek);
+        Assert.areEqual('2025', cron.optionalYear);
+    }
+
+    @IsTest
+    static void shouldBuildCronExpressionWithSetters() {
+        CronBuilder cron = new CronBuilder()
+            .second('30')
+            .minute('15')
+            .hour('8')
+            .dayOfMonth('1')
+            .month('6')
+            .dayOfWeek('MON')
+            .optionalYear('2025');
+
+        String expression = cron.getCronExpression();
+        Assert.areEqual('30 15 8 1 6 MON 2025', expression);
+    }
+
+    @IsTest
+    static void shouldBuildCronExpressionWithDefaults() {
+        CronBuilder cron = new CronBuilder();
+        String expression = cron.getCronExpression();
+
+        Assert.areEqual('0 0 * * * ? *', expression);
+    }
+
+    @IsTest
+    static void shouldFailWhenEveryXMinutesIsZeroOrNegative() {
+        try {
+            new CronBuilder().buildForEveryXMinutes(0);
+            Assert.fail('Should throw exception when everyXMinutes is zero.');
+        } catch (Exception ex) {
+            Assert.areEqual('Every X minutes must be greater than zero.', ex.getMessage());
+        }
+
+        try {
+            new CronBuilder().buildForEveryXMinutes(-1);
+            Assert.fail('Should throw exception when everyXMinutes is negative.');
+        } catch (Exception ex) {
+            Assert.areEqual('Every X minutes must be greater than zero.', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldFailWhenEveryXHoursIsInvalid() {
+        try {
+            new CronBuilder().everyXHours(0, 30);
+            Assert.fail('Should throw exception when everyXHours is zero.');
+        } catch (Exception ex) {
+            Assert.areEqual('Every X hours must be greater than zero.', ex.getMessage());
+        }
+
+        try {
+            new CronBuilder().everyXHours(13, 30);
+            Assert.fail('Should throw exception when everyXHours is greater than 12.');
+        } catch (Exception ex) {
+            Assert.areEqual('Every X hours must be 12 or less.', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldFailWhenEveryXDaysIsInvalid() {
+        try {
+            new CronBuilder().everyXDays(0, 10, 30);
+            Assert.fail('Should throw exception when everyXDays is zero.');
+        } catch (Exception ex) {
+            Assert.areEqual('Every X days must be greater than zero.', ex.getMessage());
+        }
+
+        try {
+            new CronBuilder().everyXDays(16, 10, 30);
+            Assert.fail('Should throw exception when everyXDays is greater than 15.');
+        } catch (Exception ex) {
+            Assert.areEqual('Every X days must be 15 or less.', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldFailWhenEveryXMonthsIsInvalid() {
+        try {
+            new CronBuilder().everyXMonths(0, 1, 10, 30);
+            Assert.fail('Should throw exception when everyXMonths is zero.');
+        } catch (Exception ex) {
+            Assert.areEqual('Every X months must be greater than zero.', ex.getMessage());
+        }
+
+        try {
+            new CronBuilder().everyXMonths(7, 1, 10, 30);
+            Assert.fail('Should throw exception when everyXMonths is greater than 6.');
+        } catch (Exception ex) {
+            Assert.areEqual('Every X months must be 6 or less.', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldBuildEveryHourCron() {
+        CronBuilder cron = new CronBuilder().everyHour(45);
+
+        Assert.areEqual('45', cron.minute);
+        String expression = cron.getCronExpression();
+        Assert.isTrue(expression.contains('45'));
+    }
+
+    @IsTest
+    static void shouldBuildEveryDayCron() {
+        CronBuilder cron = new CronBuilder().everyDay(14, 30);
+
+        Assert.areEqual('14', cron.hour);
+        Assert.areEqual('30', cron.minute);
+    }
+
+    @IsTest
+    static void shouldBuildEveryMonthCron() {
+        CronBuilder cron = new CronBuilder().everyMonth(15, 9, 0);
+
+        Assert.areEqual('15', cron.dayOfMonth);
+        Assert.areEqual('9', cron.hour);
+        Assert.areEqual('0', cron.minute);
+    }
+
+    @IsTest
+    static void shouldFailWhenQueueableChainFinalizerChainIsNull() {
+        try {
+            new QueueableChainFinalizer(null);
+            Assert.fail('Should throw exception when chain is null.');
+        } catch (Exception ex) {
+            Assert.areEqual('QueueableChain cannot be null', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldFailWhenQueueableChainSchedulableChainIsNull() {
+        try {
+            new QueueableChainSchedulable(null);
+            Assert.fail('Should throw exception when chain is null.');
+        } catch (Exception ex) {
+            Assert.areEqual('QueueableChain cannot be null', ex.getMessage());
+        }
+    }
+
+    @IsTest
+    static void shouldGetCurrentQueueableChainState() {
+        SuccessfulQueueableTest q = new SuccessfulQueueableTest();
+
+        Async.queueable(q).chain();
+        Async.QueueableChainState state = Async.getCurrentQueueableChainState();
+
+        Assert.isNotNull(state);
+        Assert.isNotNull(state.jobs);
+        Assert.areEqual(1, state.jobs.size());
+    }
+
+    @IsTest
+    static void shouldGetQueueableJobContext() {
+        Async.QueueableJobContext ctx = Async.getQueueableJobContext();
+
+        Assert.isNotNull(ctx);
+        Assert.isNull(ctx.currentJob);
+    }
+
+    @IsTest
+    @SuppressWarnings('PMD.ApexUnitTestClassShouldHaveAsserts')
+    static void shouldRemoveSchedulableJobWhenIdIsNull() {
+        QueueableChainSchedulable.removeInitialQueuableChainSchedulableIfExists(null);
+    }
+
+    @IsTest
+    @SuppressWarnings('PMD.ApexUnitTestClassShouldHaveAsserts,PMD.AvoidHardcodingId')
+    static void shouldHandleRemoveSchedulableJobWithInvalidId() {
+        QueueableChainSchedulable.removeInitialQueuableChainSchedulableIfExists(
+            '001000000000000AAA'
+        );
+    }
+
+    @IsTest
+    static void shouldChainMultipleJobsWithBuilder() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+
+        Async.queueable(job1).chain(job2).chain();
+
+        Async.QueueableChainState state = Async.getCurrentQueueableChainState();
+        Assert.areEqual(2, state.jobs.size());
+    }
+
+    @IsTest
+    static void shouldConvertQueueableToSchedulable() {
+        SuccessfulQueueableTest q = new SuccessfulQueueableTest();
+
+        Test.startTest();
+        Async.queueable(q)
+            .asSchedulable()
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression(new CronBuilder().everyDay(10, 30))
+            .schedule();
+        Test.stopTest();
+
+        List<CronTrigger> triggers = [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name = :TEST_SCHEDULABLE_JOB_NAME
+        ];
+        Assert.areEqual(1, triggers.size());
+    }
+
+    @IsTest
+    static void shouldHandleQueueableChainStateWithNullJobs() {
+        Async.QueueableChainState state = new Async.QueueableChainState();
+
+        state.setNextSalesforceJobIdFromFirstJob();
+        Assert.isNull(state.nextSalesforceJobId);
+
+        state.setNextCustomJobIdFromFirstJob();
+        Assert.isNull(state.nextCustomJobId);
+    }
+
+    @IsTest
+    static void shouldHandleQueueableChainStateWithEmptyJobs() {
+        Async.QueueableChainState state = new Async.QueueableChainState();
+        state.setJobs(new List<QueueableJob>());
+
+        state.setNextSalesforceJobIdFromFirstJob();
+        Assert.isNull(state.nextSalesforceJobId);
+
+        state.setNextCustomJobIdFromFirstJob();
+        Assert.isNull(state.nextCustomJobId);
+    }
+
+    @IsTest
+    static void shouldSetEnqueueTypeOnChainState() {
+        Async.QueueableChainState state = new Async.QueueableChainState();
+
+        state.setEnqueueType(QueueableManager.EnqueueType.NEW_CHAIN);
+        Assert.areEqual(QueueableManager.EnqueueType.NEW_CHAIN, state.enqueueType);
+
+        state.setEnqueueType(QueueableManager.EnqueueType.EXISTING_CHAIN);
+        Assert.areEqual(QueueableManager.EnqueueType.EXISTING_CHAIN, state.enqueueType);
+    }
+
+    @IsTest
+    static void shouldCompareJobsWithBothFinalizersAndSamePriority() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        job1.parentCustomJobId = 'parent1';
+        job1.priority = 10;
+
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+        job2.parentCustomJobId = 'parent2';
+        job2.priority = 10;
+
+        Integer result = job1.compareTo(job2);
+        Assert.areEqual(0, result);
+    }
+
+    @IsTest
+    static void shouldCompareJobsWithBothNullPriorities() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        job1.priority = null;
+
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+        job2.priority = null;
+
+        Integer result = job1.compareTo(job2);
+        Assert.areEqual(0, result);
+    }
+
+    @IsTest
+    static void shouldCompareJobsWithOnePriorityNull() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        job1.priority = 10;
+
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+        job2.priority = null;
+
+        Integer result = job1.compareTo(job2);
+        Assert.areEqual(-1, result);
+
+        result = job2.compareTo(job1);
+        Assert.areEqual(1, result);
+    }
+
+    @IsTest
+    static void shouldUseSchedulableBuilderWithStringCronExpression() {
+        Test.startTest();
+        Async.schedulable(new SchedulableTest())
+            .name(TEST_SCHEDULABLE_JOB_NAME)
+            .cronExpression('0 0 12 * * ?')
+            .schedule();
+        Test.stopTest();
+
+        List<CronTrigger> triggers = [
+            SELECT CronExpression
+            FROM CronTrigger
+            WHERE CronJobDetail.Name = :TEST_SCHEDULABLE_JOB_NAME
+        ];
+        Assert.areEqual(1, triggers.size());
+        Assert.areEqual('0 0 12 * * ? *', triggers[0].CronExpression);
+    }
+
+    @IsTest
+    static void shouldBuildEveryXMinutesCrons() {
+        List<CronBuilder> crons = new CronBuilder().buildForEveryXMinutes(15);
+
+        Assert.areEqual(4, crons.size());
+        Assert.areEqual('0', crons[0].minute);
+        Assert.areEqual('15', crons[1].minute);
+        Assert.areEqual('30', crons[2].minute);
+        Assert.areEqual('45', crons[3].minute);
+    }
+
+    @IsTest
+    static void shouldScheduleWithBoundaryEveryXMinutes() {
+        List<CronBuilder> crons30 = new CronBuilder().buildForEveryXMinutes(30);
+        Assert.areEqual(2, crons30.size());
+
+        List<CronBuilder> crons1 = new CronBuilder().buildForEveryXMinutes(1);
+        Assert.areEqual(60, crons1.size());
+    }
+
+    @IsTest
+    static void shouldTestFinalizerWithSuccessViaEnqueue() {
+        AsyncMock.whenFinalizer('error-handler').thenReturn(ParentJobResult.SUCCESS);
+
+        Test.startTest();
+        Async.queueable(new ParentJobWithFinalizer('error-handler')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+    }
+
+    @IsTest
+    static void shouldTestFinalizerWithExceptionViaEnqueue() {
+        AsyncMock.whenFinalizer('error-handler').thenThrow(new DmlException('Parent job failed'));
+
+        Test.startTest();
+        Async.queueable(new ParentJobWithFinalizer('error-handler')).enqueue();
+        Test.stopTest();
+
+        Account errorLog = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Error Log', errorLog.Name);
+        Assert.areEqual('Parent job failed', errorLog.Description);
+    }
+
+    @IsTest
+    static void shouldTestFinalizerDirectlyWithMockContext() {
+        ErrorHandlerFinalizer finalizer = new ErrorHandlerFinalizer();
+        finalizer.finalizerCtx = new AsyncMock.MockFinalizerContext()
+            .setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+            .setException(new DmlException('Direct test error'));
+
+        finalizer.work();
+
+        Account errorLog = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Error Log', errorLog.Name);
+        Assert.areEqual('Direct test error', errorLog.Description);
+    }
+
+    @IsTest
+    static void shouldTestQueueableWithMockContext() {
+        AsyncMock.whenQueueable('account-creator').thenReturn(new AsyncMock.MockQueueableContext());
+
+        Test.startTest();
+        Async.queueable(new AccountCreatorJob('Test Account')).mockId('account-creator').enqueue();
+        Test.stopTest();
+
+        Account acc = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Test Account', acc.Name);
+        Assert.isNotNull(acc.Description);
+    }
+
+    @IsTest
+    static void shouldTestQueueableDirectlyWithMockContext() {
+        AccountCreatorJob job = new AccountCreatorJob('Direct Test');
+        job.queueableCtx = new AsyncMock.MockQueueableContext();
+
+        job.work();
+
+        Account acc = [SELECT Name, Description FROM Account LIMIT 1];
+        Assert.areEqual('Direct Test', acc.Name);
+        Assert.isNotNull(acc.Description);
+    }
+
+    @IsTest
+    static void shouldTestMultipleFinalizerInvocations() {
+        AsyncMock.whenFinalizer('multi-test')
+            .thenReturn(ParentJobResult.SUCCESS)
+            .thenThrow(new DmlException('Second call failed'))
+            .thenReturn(ParentJobResult.SUCCESS);
+
+        Test.startTest();
+        Async.queueable(new ParentJobWithFinalizer('multi-test')).enqueue();
+        Async.queueable(new ParentJobWithFinalizer('multi-test')).enqueue();
+        Async.queueable(new ParentJobWithFinalizer('multi-test')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, [SELECT COUNT() FROM Account]);
+        Assert.areEqual(
+            'Second call failed',
+            [SELECT Description FROM Account LIMIT 1].Description
+        );
+    }
+
+    @IsTest
+    static void shouldTestDefaultFinalizerMock() {
+        AsyncMock.whenFinalizerDefault().thenReturn(ParentJobResult.SUCCESS);
+
+        Test.startTest();
+        Async.queueable(new ParentJobWithFinalizer('job-1')).enqueue();
+        Async.queueable(new ParentJobWithFinalizer('job-2')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+    }
+
+    @IsTest
+    static void shouldResetMocks() {
+        AsyncMock.whenFinalizer('test').thenReturn(ParentJobResult.SUCCESS);
+        AsyncMock.whenQueueable('test').thenReturn(new AsyncMock.MockQueueableContext());
+        AsyncMock.whenFinalizerDefault().thenReturn(ParentJobResult.SUCCESS);
+        AsyncMock.whenQueueableDefault().thenReturn(new AsyncMock.MockQueueableContext());
+
+        AsyncMock.reset();
+
+        Assert.isNull(AsyncMock.getFinalizerContext('test'));
+        Assert.isNull(AsyncMock.getQueueableContext('test'));
+        Assert.isNull(AsyncMock.getFinalizerContext('unknown'));
+        Assert.isNull(AsyncMock.getQueueableContext('unknown'));
+    }
+
+    @IsTest
+    static void shouldReturnNullWhenAllMocksConsumed() {
+        AsyncMock.whenFinalizer('test')
+            .thenReturn(ParentJobResult.SUCCESS)
+            .thenThrow(new DmlException('Error'));
+
+        FinalizerContext ctx1 = AsyncMock.getFinalizerContext('test');
+        FinalizerContext ctx2 = AsyncMock.getFinalizerContext('test');
+        FinalizerContext ctx3 = AsyncMock.getFinalizerContext('test');
+
+        Assert.areEqual(ParentJobResult.SUCCESS, ctx1.getResult());
+        Assert.areEqual(ParentJobResult.UNHANDLED_EXCEPTION, ctx2.getResult());
+        Assert.isNull(ctx3);
+    }
+
+    @IsTest
+    static void shouldUseDefaultMockWhenSpecificMocksConsumed() {
+        AsyncMock.whenFinalizerDefault().thenReturn(ParentJobResult.SUCCESS);
+        AsyncMock.whenFinalizer('test').thenThrow(new DmlException('Error'));
+
+        FinalizerContext ctx1 = AsyncMock.getFinalizerContext('test');
+        FinalizerContext ctx2 = AsyncMock.getFinalizerContext('test');
+
+        Assert.areEqual(ParentJobResult.UNHANDLED_EXCEPTION, ctx1.getResult());
+        Assert.areEqual(ParentJobResult.SUCCESS, ctx2.getResult());
     }
 
     private static String getClassNameWithNamespaceDotPrefix(String className) {
@@ -950,9 +1626,16 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     public void execute(Database.BatchableContext ctx, List<Account> scope) {
+        for (Account acc : scope) {
+            acc.Description = 'Processed by: ' + ctx.getJobId();
+        }
+        if (!scope.isEmpty() && scope[0].Id != null) {
+            update scope;
+        }
     }
 
     public void finish(Database.BatchableContext bc) {
+        insert new Account(Name = 'Batch Complete', Description = 'Job: ' + bc.getJobId());
     }
 
     private class SuccessfulQueueableTest extends QueueableJob {
@@ -983,6 +1666,23 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private class FinalizerErrorQueueableTest extends QueueableJob {
         public override void work() {
             Async.queueable(new SuccessfulQueueableTest()).attachFinalizer();
+        }
+    }
+
+    private class ChainedQueueableJob extends QueueableJob {
+        private Integer chainDepthLimit = 1;
+        private Integer currentChainDepth = 0;
+
+        public ChainedQueueableJob(Integer chainDepthLimit) {
+            this.chainDepthLimit = chainDepthLimit;
+        }
+
+        public override void work() {
+            currentChainDepth++;
+            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
+            if (currentChainDepth < chainDepthLimit) {
+                Async.queueable(this).enqueue();
+            }
         }
     }
 
@@ -1035,4 +1735,42 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     private class CustomException extends Exception {
     }
+
+    public class ParentJobWithFinalizer extends QueueableJob {
+        private String mockId;
+
+        public ParentJobWithFinalizer(String mockId) {
+            this.mockId = mockId;
+        }
+
+        public override void work() {
+            Async.queueable(new ErrorHandlerFinalizer()).mockId(mockId).attachFinalizer();
+        }
+    }
+
+    public class ErrorHandlerFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            FinalizerContext ctx = this.finalizerCtx;
+            if (ctx?.getResult() == ParentJobResult.UNHANDLED_EXCEPTION) {
+                insert new Account(
+                    Name = 'Error Log',
+                    Description = ctx.getException()?.getMessage()
+                );
+            }
+        }
+    }
+
+    public class AccountCreatorJob extends QueueableJob {
+        private String accountName;
+
+        public AccountCreatorJob(String accountName) {
+            this.accountName = accountName;
+        }
+
+        public override void work() {
+            Id jobId = this.queueableCtx?.getJobId();
+            insert new Account(Name = accountName, Description = 'Job: ' + jobId);
+        }
+    }
+
 }

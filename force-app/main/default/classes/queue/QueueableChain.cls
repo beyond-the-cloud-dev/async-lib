@@ -7,7 +7,7 @@ public inherited sharing class QueueableChain {
     @TestVisible
     private List<QueueableJob> jobs = new List<QueueableJob>();
     @TestVisible
-    private Id initialQueuableChainBatchJobId;
+    private Id initialQueuableChainSchedulableId;
     private Boolean isChainedContext = false;
     private Integer chainCounter = 0;
     private QueueableJob currentJob;
@@ -46,6 +46,9 @@ public inherited sharing class QueueableChain {
         currentJob.queueableCtx = ctx;
         currentJob.salesforceJobId = ctx.getJobId();
         currentJob.setChainCounterToName(++chainCounter);
+
+        injectQueueableMockIfNeeded(currentJob);
+
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
             // Debug statements to determine the Job Id and Name
@@ -115,8 +118,8 @@ public inherited sharing class QueueableChain {
         return jobs;
     }
 
-    public void executeOrReplaceInitialQueueableChainBatchJob() {
-        QueueableChainBatch.removeInitialQueuableChainBatchJobIfExists(initialQueuableChainBatchJobId);
+    public void executeOrReplaceInitialQueueableChainSchedulableJob() {
+        QueueableChainSchedulable.removeInitialQueuableChainSchedulableIfExists(initialQueuableChainSchedulableId);
 
         Datetime nextRunTime = Datetime.now().addMinutes(1);
         String hour = String.valueOf(nextRunTime.hour());
@@ -124,7 +127,7 @@ public inherited sharing class QueueableChain {
         String ss = String.valueOf(nextRunTime.second());
         String nextFireTime = ss + ' ' + min + ' ' + hour + ' * * ?';
 
-        initialQueuableChainBatchJobId = System.schedule('QueueableChainBatch/' + String.valueOf(Datetime.now()) + '/' + UUID.randomUUID().toString(), nextFireTime, new QueueableChainBatch(this));
+        initialQueuableChainSchedulableId = System.schedule('QueueableChainSchedulable/' + String.valueOf(Datetime.now()) + '/' + UUID.randomUUID().toString(), nextFireTime, new QueueableChainSchedulable(this));
     }
 
     public QueueableJob getCurrentJob() {
@@ -135,8 +138,8 @@ public inherited sharing class QueueableChain {
         return isChainedContext;
     }
 
-    public Id getQueueableChainBatchId() {
-        return initialQueuableChainBatchJobId;
+    public Id getQueueableChainSchedulableId() {
+        return initialQueuableChainSchedulableId;
     }
 
     @TestVisible
@@ -207,8 +210,22 @@ public inherited sharing class QueueableChain {
     private void setFinalizerContextToAllFinalizersForPreviousJob(QueueableJob previousJob, FinalizerContext ctx) {
         for (QueueableJob job : jobs) {
             if (!job.isProcessed && job.parentCustomJobId == previousJob.customJobId && job.finalizerCtx == null) {
-                job.finalizerCtx = ctx;
+                injectFinalizerMockOrDefault(job, ctx);
             }
         }
+    }
+
+    private void injectQueueableMockIfNeeded(QueueableJob job) {
+        if (Test.isRunningTest() && AsyncMock.hasQueueableMock(job.mockId)) {
+            job.queueableCtx = AsyncMock.getQueueableContext(job.mockId);
+        }
+    }
+
+    private void injectFinalizerMockOrDefault(QueueableJob job, FinalizerContext defaultCtx) {
+        if (Test.isRunningTest() && AsyncMock.hasFinalizerMock(job.mockId)) {
+            job.finalizerCtx = AsyncMock.getFinalizerContext(job.mockId);
+            return;
+        }
+        job.finalizerCtx = defaultCtx;
     }
 }

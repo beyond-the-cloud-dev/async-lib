@@ -2,7 +2,7 @@
 
 Apex classes `BatchableBuilder.cls` and `BatchableManager.cls`.
 
-Common Batchable example:
+**Common Batchable example:**
 
 ```apex
 Database.Batchable<Object> job = new MyBatchJob();
@@ -89,7 +89,7 @@ Async.batchable(new MyBatchJob())
 #### asSchedulable
 
 Converts the batch builder to a schedulable builder for cron-based scheduling.
-For scheduling, look into the [SchedulableBuilder](/api/schedulable.md) API.
+See [Schedulable API](/api/schedulable) for scheduling options.
 
 **Signature**
 
@@ -122,6 +122,6 @@ Async.Result execute();
 Async.Result result = Async.batchable(new MyBatchJob())
 	.scopeSize(100)
 	.execute();
-
-result.salesforceJobId; // MyBatchJob Salesforce Job Id
 ```
+
+Returns `result.salesforceJobId` containing the Salesforce Job Id.

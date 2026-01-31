@@ -1570,45 +1570,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    static void shouldTestBatchJobExecuteDirectly() {
-        Account testAcc = new Account(Name = 'Test');
-        insert testAcc;
-
-        AsyncMock.MockBatchableContext mockCtx = new AsyncMock.MockBatchableContext();
-
-        AsyncTest batchJob = new AsyncTest();
-
-        batchJob.execute(mockCtx, new List<Account>{ testAcc });
-
-        Account updatedAcc = [SELECT Description FROM Account WHERE Id = :testAcc.Id];
-        Assert.isTrue(updatedAcc.Description.startsWith('Processed by:'));
-    }
-
-    @IsTest
-    static void shouldTestBatchJobFinishDirectly() {
-        AsyncMock.MockBatchableContext mockCtx = new AsyncMock.MockBatchableContext();
-
-        AsyncTest batchJob = new AsyncTest();
-        batchJob.finish(mockCtx);
-
-        Account finishLog = [SELECT Name, Description FROM Account LIMIT 1];
-        Assert.areEqual('Batch Complete', finishLog.Name);
-        Assert.isTrue(finishLog.Description.startsWith('Job:'));
-    }
-
-    @IsTest
-    static void shouldTestSchedulableJobDirectly() {
-        AsyncMock.MockSchedulableContext mockCtx = new AsyncMock.MockSchedulableContext();
-
-        SchedulableForMockTest job = new SchedulableForMockTest();
-        job.execute(mockCtx);
-
-        Account acc = [SELECT Name, Description FROM Account LIMIT 1];
-        Assert.areEqual('Scheduled Cleanup', acc.Name);
-        Assert.isTrue(acc.Description.startsWith('Trigger:'));
-    }
-
-    @IsTest
     static void shouldResetMocks() {
         AsyncMock.whenFinalizer('test').thenReturn(ParentJobResult.SUCCESS);
         AsyncMock.whenQueueable('test').thenReturn(new AsyncMock.MockQueueableContext());
@@ -1812,12 +1773,4 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class SchedulableForMockTest implements Schedulable {
-        public void execute(SchedulableContext sc) {
-            insert new Account(
-                Name = 'Scheduled Cleanup',
-                Description = 'Trigger: ' + sc.getTriggerId()
-            );
-        }
-    }
 }

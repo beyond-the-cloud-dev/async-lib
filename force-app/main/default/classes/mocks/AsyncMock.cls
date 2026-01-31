@@ -154,40 +154,4 @@ public class AsyncMock {
             return jobId;
         }
     }
-
-    public class MockSchedulableContext implements System.SchedulableContext {
-        private Id triggerId;
-
-        public MockSchedulableContext setTriggerId(Id triggerId) {
-            this.triggerId = triggerId;
-            return this;
-        }
-
-        public Id getTriggerId() {
-            return triggerId;
-        }
-    }
-
-    public class MockBatchableContext implements Database.BatchableContext {
-        private Id jobId;
-        private Id childJobId;
-
-        public MockBatchableContext setJobId(Id jobId) {
-            this.jobId = jobId;
-            return this;
-        }
-
-        public MockBatchableContext setChildJobId(Id childJobId) {
-            this.childJobId = childJobId;
-            return this;
-        }
-
-        public Id getJobId() {
-            return jobId;
-        }
-
-        public Id getChildJobId() {
-            return childJobId;
-        }
-    }
 }

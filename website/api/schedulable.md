@@ -2,7 +2,7 @@
 
 Apex classes `SchedulableBuilder.cls`, `SchedulableManager.cls`, and `CronBuilder.cls`.
 
-Common Schedulable example:
+**Common Schedulable example:**
 
 ```apex
 Schedulable job = new MySchedulableJob();
@@ -465,11 +465,8 @@ List<Async.Result> schedule();
 ```apex
 List<Async.Result> results = Async.schedulable(new MySchedulableJob())
 	.name('Every Hour Processing')
-	.cronExpression(
-            new CronBuilder()
-                .everyHour(1)
-        )
+	.cronExpression(new CronBuilder().everyHour(1))
 	.schedule();
-
-results.get(0).salesforceJobId; // MySchedulableJob Salesforce Job Id
 ```
+
+Returns a list with one result per cron expression. Each `result.salesforceJobId` contains the Salesforce Job Id.

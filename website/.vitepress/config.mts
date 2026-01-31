@@ -48,7 +48,8 @@ export default defineConfig({
         items: [
           { text: 'Queueable', link: '/api/queueable' },
           { text: 'Batchable', link: '/api/batchable' },
-          { text: 'Schedulable', link: '/api/schedulable' }
+          { text: 'Schedulable', link: '/api/schedulable' },
+          { text: 'AsyncMock', link: '/api/async-mock' }
         ]
       },
       {
@@ -59,7 +60,8 @@ export default defineConfig({
             text: 'Initial Queueable Chain Schedulable',
             link: '/explanations/initial-scheduled-queuable-batch-job'
           },
-          { text: 'Job Cloning', link: '/explanations/job-cloning' }
+          { text: 'Job Cloning', link: '/explanations/job-cloning' },
+          { text: 'Testing Async Jobs', link: '/explanations/testing-async-jobs' }
         ]
       }
     ],

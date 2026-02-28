@@ -6,7 +6,19 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
     exit 1
 fi
 
-trap 'echo "Reverting Apex changes..."; git checkout -- .' EXIT
+PACKAGE_CREATED=false
+cleanup() {
+    if [ "$PACKAGE_CREATED" = true ]; then
+        echo "Staging sfdx-project.json with new version alias..."
+        git add sfdx-project.json
+        echo "Reverting Apex changes..."
+        git checkout -- .
+    else
+        echo "Package creation failed. Reverting all changes..."
+        git checkout -- .
+    fi
+}
+trap cleanup EXIT
 
 TARGET_FILES=(
     "force-app/main/default/classes/Async.cls"
@@ -41,4 +53,5 @@ sf package version create \
     --json \
     "$@"
 
+PACKAGE_CREATED=true
 echo "Package version created successfully."

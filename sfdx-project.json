@@ -4,7 +4,7 @@
             "versionName": "Async Lib 2.4.0",
             "versionNumber": "2.4.0.NEXT",
             "path": "force-app",
-            "default": false,
+            "default": true,
             "package": "Async Lib",
             "versionDescription": ""
         }

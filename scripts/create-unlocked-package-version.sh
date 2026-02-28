@@ -33,9 +33,12 @@ sed -i '' 's/global void enqueue(QueueableChain chain)/public void enqueue(Queue
 
 echo "Creating unlocked package version..."
 sf package version create \
-    --code-coverage \
+    --package "Async Lib" \
+    --definition-file ./config/project-scratch-def.json \
     --installation-key-bypass \
-    --wait 30 \
+    --code-coverage \
+    --wait 50 \
+    --json \
     "$@"
 
 echo "Package version created successfully."

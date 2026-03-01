@@ -86,9 +86,18 @@ public abstract class QueueableJob implements Queueable, Comparable {
 
     public QueueableJob cloneJob() {
         if (deepClone) {
+            String fullName = this.className;
+            String namespace = null;
+            String typeName = fullName;
+
+            if (fullName.contains('.')) {
+                namespace = fullName.substringBefore('.');
+                typeName = fullName.substringAfter('.');
+            }
+
             return (QueueableJob) JSON.deserialize(
                 JSON.serialize(this),
-                Type.forName(this.className)
+                Type.forName(namespace, typeName)
             );
         } else {
             return this.clone();

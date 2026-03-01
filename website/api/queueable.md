@@ -200,7 +200,11 @@ Async.queueable(new MyQueueableJob())
 
 Clones provided QueueableJob by value for all the member variables. By default
 only primitive member variables (String, Boolean, ...) are cloned by value.
-Deeper explanation is [here](/explanations/job-cloning.md).
+Deeper explanation is [here](/explanations/job-cloning).
+
+::: warning Package Usage
+When using Async Lib as a package (`btcdev` namespace), deep clone requires overriding `cloneForDeepCopy()` in your subclass. See [Deep Clone in Packages](/explanations/deep-clone-in-packages).
+:::
 
 **Signature**
 

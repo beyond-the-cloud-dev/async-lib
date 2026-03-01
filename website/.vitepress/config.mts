@@ -61,6 +61,10 @@ export default defineConfig({
             link: '/explanations/initial-scheduled-queuable-batch-job'
           },
           { text: 'Job Cloning', link: '/explanations/job-cloning' },
+          {
+            text: 'Deep Clone in Packages',
+            link: '/explanations/deep-clone-in-packages'
+          },
           { text: 'Testing Async Jobs', link: '/explanations/testing-async-jobs' }
         ]
       }

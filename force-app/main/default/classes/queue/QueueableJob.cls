@@ -86,22 +86,37 @@ public abstract class QueueableJob implements Queueable, Comparable {
 
     public QueueableJob cloneJob() {
         if (deepClone) {
-            String fullName = this.className;
-            String namespace = null;
-            String typeName = fullName;
-
-            if (fullName.contains('.')) {
-                namespace = fullName.substringBefore('.');
-                typeName = fullName.substringAfter('.');
+            try {
+                return deepCloneJob(toJSON());
+            } catch (JSONException e) {
+                throw new IllegalArgumentException(
+                    'deepClone() failed to serialize the job "' + className + '". ' +
+                    'When using a namespaced package, override toJSON() in your QueueableJob subclass: ' +
+                    'public override String toJSON() { return JSON.serialize(this); }'
+                );
             }
-
-            return (QueueableJob) JSON.deserialize(
-                JSON.serialize(this),
-                Type.forName(namespace, typeName)
-            );
-        } else {
-            return this.clone();
         }
+        return this.clone();
+    }
+
+    public virtual String toJSON() {
+        return JSON.serialize(this);
+    }
+
+    public QueueableJob deepCloneJob(String serialized) {
+        String fullName = this.className;
+        String namespace = null;
+        String typeName = fullName;
+
+        if (fullName.contains('.')) {
+            namespace = fullName.substringBefore('.');
+            typeName = fullName.substringAfter('.');
+        }
+
+        return (QueueableJob) JSON.deserialize(
+            serialized,
+            Type.forName(namespace, typeName)
+        );
     }
 
     private String getFullClassName(Object job) {

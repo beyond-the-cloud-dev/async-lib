@@ -1,12 +1,20 @@
 {
     "packageDirectories": [
         {
+            "versionName": "Async Lib 2.4.0",
+            "versionNumber": "2.4.0.NEXT",
             "path": "force-app",
-            "default": true
+            "default": true,
+            "package": "Async Lib",
+            "versionDescription": ""
         }
     ],
-    "name": "BeyondTheCloud",
-    "namespace": "",
+    "name": "async-lib",
+    "namespace": "btcdev",
     "sfdcLoginUrl": "https://login.salesforce.com",
-    "sourceApiVersion": "65.0"
+    "sourceApiVersion": "65.0",
+    "packageAliases": {
+        "Async Lib": "0HoP600000002JZKAY",
+        "Async Lib@2.4.0-4": "04tP6000002cgEnIAI"
+    }
 }

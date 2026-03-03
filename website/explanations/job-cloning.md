@@ -192,6 +192,10 @@ Async.queueable(myJob)
 - **CPU**: More intensive
 - **Recommended for**: Jobs with complex object relationships
 
+## Package Usage
+
+When Async Lib is installed as a package (with the `btcdev` namespace), deep clone requires an additional override due to Salesforce cross-namespace serialization limitations. See [Deep Clone in Packages](/explanations/deep-clone-in-packages) for details.
+
 ## Summary
 
 Job cloning is a critical feature that prevents reference corruption in

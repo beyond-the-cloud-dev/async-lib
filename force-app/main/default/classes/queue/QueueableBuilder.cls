@@ -5,6 +5,16 @@ public inherited sharing class QueueableBuilder {
         this.job = job.clone();
     }
 
+    public QueueableBuilder(List<QueueableJob> jobs) {
+        if (jobs == null || jobs.isEmpty()) {
+            throw new Async.IllegalArgumentException(QueueableManager.ERROR_MESSAGE_NO_JOB_SET);
+        }
+        for (Integer i = 0; i < jobs.size() - 1; i++) {
+            QueueableManager.get().chain(jobs.get(i));
+        }
+        this.job = jobs.get(jobs.size() - 1).clone();
+    }
+
     public QueueableBuilder asyncOptions(AsyncOptions asyncOptions) {
         if (job.delay != null) {
             throw new IllegalArgumentException(

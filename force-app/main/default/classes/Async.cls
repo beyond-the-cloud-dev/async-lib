@@ -27,12 +27,12 @@ public inherited sharing class Async {
         public QueueableJob currentJob;
         public QueueableContext queueableCtx {
             get {
-                return currentJob.queueableCtx;
+                return currentJob?.queueableCtx;
             }
         }
         public FinalizerContext finalizerCtx {
             get {
-                return currentJob.finalizerCtx;
+                return currentJob?.finalizerCtx;
             }
         }
     }

@@ -1611,6 +1611,92 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(ParentJobResult.SUCCESS, ctx2.getResult());
     }
 
+    @IsTest
+    static void shouldHandleCircularFinalizerDependenciesWithoutInfiniteLoop() {
+        QueueableChain chain = new QueueableChain();
+
+        QueueableJob job1 = new QueueableJobTest3();
+        QueueableJob job2 = new QueueableJobTest4();
+        chain.addJob(job1);
+        chain.addJob(job2);
+        job2.parentCustomJobId = job1.customJobId;
+        job1.parentCustomJobId = job2.customJobId;
+
+        String job1ClassName = getClassNameWithNamespaceDotPrefix('AsyncTest.QueueableJobTest3');
+        String job2ClassName = getClassNameWithNamespaceDotPrefix('AsyncTest.QueueableJobTest4');
+
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            job1ClassName => new QueueableJobSetting__mdt(
+                QueueableJobName__c = job1ClassName,
+                IsDisabled__c = true
+            )
+        };
+
+        Test.startTest();
+        chain.removeJobsThatAreDisabledAndDependentFinalizers();
+        Test.stopTest();
+
+        Assert.areEqual(0, chain.getJobs().size(), 'Both jobs should be removed (circular dependency)');
+    }
+
+    @IsTest
+    static void shouldFailWhenBatchScopeSizeExceedsMaximum() {
+        Exception thrownEx;
+
+        try {
+            Async.batchable(new AsyncTest()).scopeSize(2001).execute();
+        } catch (Exception ex) {
+            thrownEx = ex;
+        }
+
+        Assert.isNotNull(thrownEx);
+        Assert.isTrue(thrownEx.getMessage().contains('2000'));
+    }
+
+    @IsTest
+    static void shouldNotMutateCronBuilderAfterBuildForEveryXMinutes() {
+        CronBuilder builder = new CronBuilder().hour('5');
+        String minuteBefore = builder.minute;
+
+        List<CronBuilder> crons = builder.buildForEveryXMinutes(15);
+
+        Assert.areEqual(minuteBefore, builder.minute, 'buildForEveryXMinutes should not mutate the original builder minute');
+        Assert.areEqual(4, crons.size());
+        for (CronBuilder c : crons) {
+            Assert.isTrue(c.getCronExpression().contains('5'), 'Each cron should preserve the hour setting');
+        }
+    }
+
+    @IsTest
+    static void shouldCleanUpSchedulableWhenAllJobsDisabled() {
+        SuccessfulQueueableTest q = new SuccessfulQueueableTest();
+        String qClassName = getClassNameWithNamespaceDotPrefix('SuccessfulQueueableTest');
+
+        Test.startTest();
+        for (Integer i = 0; i < 52; i++) {
+            Async.queueable(q).enqueue();
+        }
+
+        Id schedulableId = Async.getQueueableChainSchedulableId();
+        Assert.isNotNull(schedulableId, 'Overflow schedulable should exist');
+
+        QueueableChain chain = QueueableManager.get().getChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                IsDisabled__c = true
+            )
+        };
+
+        chain.enqueueNextJobIfAny();
+        Test.stopTest();
+
+        List<CronTrigger> remainingTriggers = [
+            SELECT Id FROM CronTrigger WHERE Id = :schedulableId
+        ];
+        Assert.areEqual(0, remainingTriggers.size(), 'Schedulable should be cleaned up when all jobs disabled');
+    }
+
     private static String getClassNameWithNamespaceDotPrefix(String className) {
         return getNamespaceDotPrefix() + className;
     }

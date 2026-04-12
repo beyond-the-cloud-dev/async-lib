@@ -11,6 +11,9 @@ public inherited sharing class BatchableBuilder {
         if (scopeSize <= 0) {
             throw new IllegalArgumentException('Scope size must be greater than zero.');
         }
+        if (scopeSize > 2000) {
+            throw new IllegalArgumentException('Scope size must be 2000 or less.');
+        }
         this.scopeSize = scopeSize;
         return this;
     }

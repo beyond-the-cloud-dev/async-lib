@@ -87,9 +87,10 @@ public inherited sharing class QueueableChain {
     public void enqueueNextJobIfAny() {
         removeJobsThatAreDisabledAndDependentFinalizers();
         if (!hasNextJob() || (Test.isRunningTest() && System.isQueueable())) {
+            QueueableChainSchedulable.removeInitialQueuableChainSchedulableIfExists(initialQueuableChainSchedulableId);
             return;
         }
-        
+
         QueueableJob nextJob = getNextJobToProcess();
         try {
             isChainedContext = true;
@@ -183,19 +184,21 @@ public inherited sharing class QueueableChain {
     }
 
     private Set<String> getAllCustomJobIdsToRemove(Set<String> customJobIdsToRemove) {
-        Set<String> dependentCustomJobIdsToRemove = new Set<String>();
-        for (QueueableJob job : jobs) {
-            if (customJobIdsToRemove.contains(job.parentCustomJobId)) {
-                dependentCustomJobIdsToRemove.add(job.customJobId);
+        Set<String> allIds = new Set<String>(customJobIdsToRemove);
+        Set<String> currentBatch = new Set<String>(customJobIdsToRemove);
+
+        while (!currentBatch.isEmpty()) {
+            Set<String> nextBatch = new Set<String>();
+            for (QueueableJob job : jobs) {
+                if (currentBatch.contains(job.parentCustomJobId) && !allIds.contains(job.customJobId)) {
+                    nextBatch.add(job.customJobId);
+                }
             }
+            allIds.addAll(nextBatch);
+            currentBatch = nextBatch;
         }
-        
-        if (dependentCustomJobIdsToRemove.isEmpty()) {
-            return customJobIdsToRemove;
-        } else {
-            customJobIdsToRemove.addAll(getAllCustomJobIdsToRemove(dependentCustomJobIdsToRemove));
-            return customJobIdsToRemove;
-        }
+
+        return allIds;
     }
 
     private QueueableJob getNextJobToProcess() {

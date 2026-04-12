@@ -85,12 +85,14 @@ public class CronBuilder {
             throw new IllegalArgumentException('Every X minutes must be 30 or less.');
         }
 
+        String originalMinute = this.minute;
         List<CronBuilder> crons = new List<CronBuilder>();
         for (Integer min = 0; min < 60; min += everyXMinutes) {
             this.minute = String.valueOf(min);
             crons.add(new CronBuilder(this.getCronExpression()));
         }
-        
+        this.minute = originalMinute;
+
         return crons;
     }
 

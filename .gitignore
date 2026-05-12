@@ -58,3 +58,7 @@ $RECYCLE.BIN/
 # VitePress cache
 website/.vitepress/cache/
 website/.vitepress/dist/
+
+# Local agent tooling — not for the repo
+.claude/
+scripts/agent/

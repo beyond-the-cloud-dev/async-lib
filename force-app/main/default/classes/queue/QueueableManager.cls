@@ -79,22 +79,34 @@ public inherited sharing class QueueableManager {
             .setJobs(chain.getJobs())
             .setNextCustomJobIdFromFirstJob();
 
+        Id enqueuedJobId;
+
         if (shouldExecuteOrReplaceInitialQueueableChainSchedulable()) {
             chain.executeOrReplaceInitialQueueableChainSchedulableJob();
+            enqueuedJobId = chain.getQueueableChainSchedulableId();
             queueableChainState
-                .setNextSalesforceJobId(chain.getQueueableChainSchedulableId())
+                .setNextSalesforceJobId(enqueuedJobId)
                 .setEnqueueType(EnqueueType.INITIAL_QUEUEABLE_CHAIN_SCHEDULABLE);
         } else if (!chain.isChainedContext()) {
             chain.enqueueNextJobIfAny();
             queueableChainState
                 .setNextSalesforceJobIdFromFirstJob()
                 .setEnqueueType(EnqueueType.NEW_CHAIN);
+            List<QueueableJob> jobsAfterEnqueue = chain.getJobs();
+            if (jobsAfterEnqueue != null && !jobsAfterEnqueue.isEmpty()) {
+                enqueuedJobId = jobsAfterEnqueue.get(0).salesforceJobId;
+            }
             chain = new QueueableChain();
         } else {
             queueableChainState.setEnqueueType(EnqueueType.EXISTING_CHAIN);
+            enqueuedJobId = job.salesforceJobId;
         }
 
-        return new Async.Result(job).setQueueableChainState(queueableChainState);
+        Async.Result result = new Async.Result(job).setQueueableChainState(queueableChainState);
+        if (enqueuedJobId != null) {
+            result.salesforceJobId = enqueuedJobId;
+        }
+        return result;
     }
 
     private Boolean shouldExecuteOrReplaceInitialQueueableChainSchedulable() {

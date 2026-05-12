@@ -32,11 +32,12 @@ public inherited sharing class SchedulableManager {
             throw new IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_SET);
         }
 
-        if (shouldSkipWhenAlreadyScheduled(builder)) {
-            return null;
-        }
-        
         List<Async.Result> results = new List<Async.Result>();
+
+        if (shouldSkipWhenAlreadyScheduled(builder)) {
+            return results;
+        }
+
         if (builder.batchableBuilder?.minutesFromNow != null) {
             results.add(
                 new Async.Result(

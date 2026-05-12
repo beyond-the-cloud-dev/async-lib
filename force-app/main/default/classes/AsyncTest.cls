@@ -1342,6 +1342,82 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    static void shouldReturnFirstEnqueuedJobIdWhenEnqueueAfterChainBuilder() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+
+        Test.startTest();
+        Async.Result ar = Async.queueable(job1).chain(job2).enqueue();
+        Test.stopTest();
+
+        Assert.isNotNull(ar);
+        Assert.isNotNull(
+            ar.salesforceJobId,
+            'salesforceJobId must reflect the job that was actually enqueued, not the last builder argument'
+        );
+        Assert.areEqual(Async.AsyncType.QUEUEABLE, ar.asyncType);
+        Assert.isNotNull(ar.queueableChainState);
+        Assert.areEqual(2, ar.queueableChainState.jobs.size());
+        Assert.areEqual(
+            ar.salesforceJobId,
+            ar.queueableChainState.jobs.get(0).salesforceJobId,
+            'Result salesforceJobId must match the first job in the chain state'
+        );
+    }
+
+    @IsTest
+    static void shouldReturnFirstEnqueuedJobIdAfterMultipleChainCallsBeforeEnqueue() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+        QueueableJobTest3 job3 = new QueueableJobTest3();
+
+        Async.queueable(job1).chain();
+        Async.queueable(job2).chain();
+
+        Test.startTest();
+        Async.Result ar = Async.queueable(job3).enqueue();
+        Test.stopTest();
+
+        Assert.isNotNull(ar);
+        Assert.isNotNull(
+            ar.salesforceJobId,
+            'salesforceJobId must be non-null when chain has accumulated jobs before enqueue'
+        );
+        Assert.isNotNull(ar.queueableChainState);
+        Assert.areEqual(3, ar.queueableChainState.jobs.size());
+    }
+
+    @IsTest
+    static void shouldReturnEmptyListWhenScheduleSkippedDueToDuplicate() {
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+        String name = 'RegressionTest_SkipDuplicate_' + System.currentTimeMillis();
+
+        Test.startTest();
+        List<Async.Result> first = Async.queueable(job)
+            .asSchedulable()
+            .name(name)
+            .cronExpression(new CronBuilder().everyDay(23, 58))
+            .skipWhenAlreadyScheduled()
+            .schedule();
+
+        List<Async.Result> second = Async.queueable(job)
+            .asSchedulable()
+            .name(name)
+            .cronExpression(new CronBuilder().everyDay(23, 58))
+            .skipWhenAlreadyScheduled()
+            .schedule();
+        Test.stopTest();
+
+        Assert.isNotNull(first);
+        Assert.areEqual(1, first.size());
+        Assert.isNotNull(
+            second,
+            'schedule() with skipWhenAlreadyScheduled must return an empty list, not null, when the job already exists'
+        );
+        Assert.isTrue(second.isEmpty());
+    }
+
+    @IsTest
     static void shouldConvertQueueableToSchedulable() {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 

@@ -102,18 +102,16 @@ public abstract class QueueableJob implements Queueable, Comparable {
 
     public virtual QueueableJob cloneForDeepCopy() {
         String fullName = this.className;
-        String namespace = null;
-        String typeName = fullName;
+        Type resolvedType = Type.forName(fullName);
 
-        if (fullName.contains('.')) {
-            namespace = fullName.substringBefore('.');
-            typeName = fullName.substringAfter('.');
+        if (resolvedType == null && fullName.contains('.')) {
+            resolvedType = Type.forName(
+                fullName.substringBefore('.'),
+                fullName.substringAfter('.')
+            );
         }
 
-        return (QueueableJob) JSON.deserialize(
-            JSON.serialize(this),
-            Type.forName(namespace, typeName)
-        );
+        return (QueueableJob) JSON.deserialize(JSON.serialize(this), resolvedType);
     }
 
     private String getFullClassName(Object job) {

@@ -3,7 +3,7 @@ public inherited sharing class QueueableManager {
     public static final String ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY = 'Cannot set asyncOptions after delay has been set';
     public static final String ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS = 'Cannot set delay after asyncOptions has been set';
     private static final String ERROR_MESSAGE_CHAIN_NULL = 'QueueableChain cannot be null';
-    private static final String ERROR_MESSAGE_NO_JOB_SET = 'No Queueable job has been set to enqueue';
+    public static final String ERROR_MESSAGE_NO_JOB_SET = 'No Queueable job has been set to enqueue';
     private static final String ERROR_MESSAGE_FINALIZER_JOB_NOT_SET = 'No Finalizer job has been set to attach finalizer';
     @TestVisible
     private static final String ERROR_MESSAGE_CANNOT_ATTACH_FINALIZER = 'Cannot attach finalizer when not in a QueueableChain context';

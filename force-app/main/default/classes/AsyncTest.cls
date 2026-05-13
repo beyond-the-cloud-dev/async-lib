@@ -2,8 +2,11 @@
  * PMD False Positives:
  * - ApexAssertionsShouldIncludeMessage: IMO not all assertions need a message
  * - EmptyStatementBlock: It is test class, some methods are just to create jobs placeholders
+ * - CognitiveComplexity: Test class with many test methods
  **/
-@SuppressWarnings('PMD.ApexAssertionsShouldIncludeMessage,PMD.EmptyStatementBlock')
+@SuppressWarnings(
+    'PMD.ApexAssertionsShouldIncludeMessage,PMD.EmptyStatementBlock,PMD.CognitiveComplexity'
+)
 @IsTest
 @TestVisible
 private class AsyncTest implements Database.Batchable<SObject> {
@@ -1849,4 +1852,198 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
+    // -- Bulk chaining API tests --
+
+    @IsTest
+    private static void shouldEnqueueListOfQueueablesSuccessfully() {
+        List<QueueableJob> jobs = new List<QueueableJob>();
+        for (Integer i = 0; i < 5; i++) {
+            jobs.add(new SuccessfulQueueableTest());
+        }
+
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.Result ar = Async.queueable(jobs).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            QueueableManager.EnqueueType.NEW_CHAIN,
+            ar.queueableChainState.enqueueType,
+            'Should be enqueued as a new chain.'
+        );
+        Assert.areEqual(5, [SELECT COUNT() FROM Account], 'All 5 jobs should have executed.');
+    }
+
+    @IsTest
+    private static void shouldEnqueueListOfQueueablesWithDelaySuccessfully() {
+        List<QueueableJob> jobs = new List<QueueableJob>();
+        for (Integer i = 0; i < 3; i++) {
+            jobs.add(new SuccessfulQueueableTest());
+        }
+
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.Result ar = Async.queueable(jobs).delay(1).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            QueueableManager.EnqueueType.NEW_CHAIN,
+            ar.queueableChainState.enqueueType,
+            'Should be enqueued as a new chain.'
+        );
+        Assert.areEqual(3, [SELECT COUNT() FROM Account], 'All 3 jobs should have executed.');
+    }
+
+    @IsTest
+    private static void shouldFailOnEmptyListOfQueueables() {
+        List<QueueableJob> jobs = new List<QueueableJob>();
+
+        Test.startTest();
+        try {
+            Async.queueable(jobs).enqueue();
+            Assert.fail('Should have thrown an exception for empty list.');
+        } catch (Async.IllegalArgumentException e) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_NO_JOB_SET,
+                e.getMessage(),
+                'Should throw no job set error.'
+            );
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void shouldFailOnNullListOfQueueables() {
+        List<QueueableJob> jobs = null;
+
+        Test.startTest();
+        try {
+            Async.queueable(jobs).enqueue();
+            Assert.fail('Should have thrown an exception for null list.');
+        } catch (Async.IllegalArgumentException e) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_NO_JOB_SET,
+                e.getMessage(),
+                'Should throw no job set error.'
+            );
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    private static void shouldEnqueueChainBuilderSuccessfully() {
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.Result ar = Async.chainBuilder()
+            .add(new SuccessfulQueueableTest())
+            .add(new SuccessfulQueueableTest())
+            .add(new SuccessfulQueueableTest())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            QueueableManager.EnqueueType.NEW_CHAIN,
+            ar.queueableChainState.enqueueType,
+            'Should be enqueued as a new chain.'
+        );
+        Assert.areEqual(
+            3,
+            [SELECT COUNT() FROM Account],
+            'All 3 jobs from chainBuilder should have executed.'
+        );
+    }
+
+    @IsTest
+    private static void shouldChainWithChainBuilderWithoutEnqueue() {
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.Result ar = Async.chainBuilder()
+            .add(new SuccessfulQueueableTest())
+            .add(new SuccessfulQueueableTest())
+            .chain();
+
+        // chain() only adds to the chain; enqueue triggers execution
+        Async.queueable(new SuccessfulQueueableTest()).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            [SELECT COUNT() FROM Account],
+            'All 3 jobs should have executed (2 chained + 1 enqueued).'
+        );
+    }
+
+    @IsTest
+    private static void shouldEnqueueChainBuilderWithTwoJobs() {
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.Result ar = Async.chainBuilder()
+            .add(new SuccessfulQueueableTest())
+            .add(new SuccessfulQueueableTest())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(QueueableManager.EnqueueType.NEW_CHAIN, ar.queueableChainState.enqueueType);
+        Assert.areEqual(2, ar.queueableChainState.jobs.size(), 'Chain state should show 2 jobs.');
+        Assert.areEqual(2, [SELECT COUNT() FROM Account], 'Both jobs should have executed.');
+    }
+
+    @IsTest
+    private static void shouldEnqueueChainBuilderWithListOfJobs() {
+        List<QueueableJob> jobs = new List<QueueableJob>();
+        for (Integer i = 0; i < 4; i++) {
+            jobs.add(new SuccessfulQueueableTest());
+        }
+
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.Result ar = Async.chainBuilder().add(jobs).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            QueueableManager.EnqueueType.NEW_CHAIN,
+            ar.queueableChainState.enqueueType,
+            'Should be enqueued as a new chain.'
+        );
+        Assert.areEqual(
+            4,
+            [SELECT COUNT() FROM Account],
+            'All 4 jobs from list should have executed.'
+        );
+    }
+
+    @IsTest
+    private static void shouldEnqueueChainBuilderWithListAndSingleJobs() {
+        List<QueueableJob> jobs = new List<QueueableJob>();
+        for (Integer i = 0; i < 3; i++) {
+            jobs.add(new SuccessfulQueueableTest());
+        }
+
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.Result ar = Async.chainBuilder()
+            .add(new SuccessfulQueueableTest())
+            .add(jobs)
+            .add(new SuccessfulQueueableTest())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            QueueableManager.EnqueueType.NEW_CHAIN,
+            ar.queueableChainState.enqueueType,
+            'Should be enqueued as a new chain.'
+        );
+        Assert.areEqual(
+            5,
+            [SELECT COUNT() FROM Account],
+            'All 5 jobs (1 single + 3 list + 1 single) should have executed.'
+        );
+    }
 }

@@ -1,0 +1,15 @@
+# Dependencies / caches / build output
+node_modules/
+website/.vitepress/cache/
+website/.vitepress/dist/
+.sf/
+.sfdx/
+
+# Auto-generated lockfile
+package-lock.json
+
+# Boilerplate from CI template (.github/workflows/ci.yml delegates to the external salesforce-ci workflow)
+.github/
+
+# Deployment platform config
+vercel.json

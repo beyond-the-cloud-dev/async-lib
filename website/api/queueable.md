@@ -361,12 +361,13 @@ Async.Result result = Async.queueable(new MyQueueableJob())
 
 **Result properties:**
 
-| Property              | Description                                                                                                                       |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `salesforceJobId`     | Salesforce Job Id of either Queueable Job or Initial Queueable Chain Schedulable (empty if job was not the enqueued one in chain) |
-| `customJobId`         | Unique Custom Job Id                                                                                                              |
-| `asyncType`           | `Async.AsyncType.QUEUEABLE`                                                                                                       |
-| `queueableChainState` | Chain state object (see below)                                                                                                    |
+| Property              | Description                                                                                                                                                                                                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `salesforceJobId`     | Salesforce Job Id of the actually-enqueued first-chain Queueable Job or Initial Queueable Chain Schedulable. `null` when `enqueue()` is called on an empty `Async.queueable()` builder with no jobs added.                                         |
+| `customJobId`         | Unique Custom Job Id                                                                                                                                                                                                                               |
+| `asyncType`           | `Async.AsyncType.QUEUEABLE`                                                                                                                                                                                                                        |
+| `job`                 | The `QueueableJob` instance that the builder was finalized with. Useful for inspecting post-enqueue state, especially the cloned instance when `.deepClone()` was used. `null` when `enqueue()` is called on an empty `Async.queueable()` builder. |
+| `queueableChainState` | Chain state object (see below)                                                                                                                                                                                                                     |
 
 **`queueableChainState` properties:**
 

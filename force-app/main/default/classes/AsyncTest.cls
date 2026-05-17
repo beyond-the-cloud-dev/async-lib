@@ -1003,6 +1003,96 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    static void shouldEnqueueNothingForEmptyBuilder() {
+        Test.startTest();
+        Async.Result result = Async.queueable().enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            [
+                SELECT COUNT()
+                FROM AsyncApexJob
+                WHERE JobType = 'Queueable' AND ApexClass.Name = 'AsyncTest'
+            ],
+            'No queueable should be enqueued from an empty builder.'
+        );
+        Assert.areEqual(null, result.salesforceJobId, 'No salesforceJobId expected.');
+        Assert.areEqual(
+            0,
+            result.queueableChainState.jobs.size(),
+            'Chain state should report zero jobs.'
+        );
+    }
+
+    @IsTest
+    static void shouldEnqueueSingleJobAddedViaChainOnEmptyBuilder() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+
+        Test.startTest();
+        Async.Result result = Async.queueable().chain(job1).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            result.queueableChainState.jobs.size(),
+            'Chain should contain the single added job.'
+        );
+        Assert.areNotEqual(null, result.salesforceJobId, 'A job should have been enqueued.');
+    }
+
+    @IsTest
+    static void shouldEnqueueMultipleJobsAddedViaRepeatedChainOnEmptyBuilder() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+        QueueableJobTest3 job3 = new QueueableJobTest3();
+
+        Test.startTest();
+        QueueableBuilder builder = Async.queueable();
+        builder.chain(job1);
+        builder.chain(job2);
+        builder.chain(job3);
+        Async.Result result = builder.enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            result.queueableChainState.jobs.size(),
+            'Chain should contain all three jobs in the order they were added.'
+        );
+    }
+
+    @IsTest
+    static void shouldOnlyChainBranchesThatMatchConditionOnEmptyBuilder() {
+        QueueableJobTest1 job1 = new QueueableJobTest1();
+        QueueableJobTest2 job2 = new QueueableJobTest2();
+        QueueableJobTest3 job3 = new QueueableJobTest3();
+        Boolean addJob1 = true;
+        Boolean addJob2 = false;
+        Boolean addJob3 = true;
+
+        Test.startTest();
+        QueueableBuilder builder = Async.queueable();
+        if (addJob1) {
+            builder.chain(job1);
+        }
+        if (addJob2) {
+            builder.chain(job2);
+        }
+        if (addJob3) {
+            builder.chain(job3);
+        }
+        Async.Result result = builder.enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            2,
+            result.queueableChainState.jobs.size(),
+            'Only branches whose condition was true should be in the chain.'
+        );
+    }
+
+    @IsTest
     static void shouldFailToSetAsyncOptionsAfterDelay() {
         SuccessfulQueueableTest q = new SuccessfulQueueableTest();
 
@@ -1848,5 +1938,4 @@ private class AsyncTest implements Database.Batchable<SObject> {
             insert new Account(Name = accountName, Description = 'Job: ' + jobId);
         }
     }
-
 }

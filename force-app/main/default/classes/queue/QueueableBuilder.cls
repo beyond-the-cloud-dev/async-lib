@@ -5,6 +5,9 @@ public inherited sharing class QueueableBuilder {
         this.job = job.clone();
     }
 
+    public QueueableBuilder() {
+    }
+
     public QueueableBuilder asyncOptions(AsyncOptions asyncOptions) {
         if (job.delay != null) {
             throw new IllegalArgumentException(
@@ -58,7 +61,9 @@ public inherited sharing class QueueableBuilder {
     }
 
     public QueueableBuilder chain(QueueableJob job) {
-        chain();
+        if (this.job != null) {
+            chain();
+        }
         this.job = job;
         return this;
     }
@@ -76,6 +81,12 @@ public inherited sharing class QueueableBuilder {
     }
 
     public Async.Result enqueue() {
+        if (this.job == null) {
+            return new Async.Result((Id) null)
+                .setQueueableChainState(
+                    new Async.QueueableChainState().setJobs(new List<QueueableJob>())
+                );
+        }
         return QueueableManager.get().chainAndEnqueue(job);
     }
 }

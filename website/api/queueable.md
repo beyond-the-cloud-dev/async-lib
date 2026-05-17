@@ -1,8 +1,10 @@
 # Queueable API
 
-Apex classes `QueueableBuilder.cls`, `QueueableManager.cls`, and `QueueableJob.cls`.
+Apex classes `QueueableBuilder.cls`, `QueueableManager.cls`, and
+`QueueableJob.cls`.
 
-For testing patterns and best practices, see [Testing Async Jobs](/explanations/testing-async-jobs).
+For testing patterns and best practices, see
+[Testing Async Jobs](/explanations/testing-async-jobs).
 
 **Common Queueable example:**
 
@@ -21,10 +23,10 @@ Returns `result.customJobId` containing MyQueueableJob's unique Custom Job Id.
 
 ```apex
 public class AccountProcessorJob extends QueueableJob {
-	public override void work() {
-		// Get job context
-		Async.QueueableJobContext ctx = Async.getQueueableJobContext();
-	}
+  public override void work() {
+    // Get job context
+    Async.QueueableJobContext ctx = Async.getQueueableJobContext();
+  }
 }
 ```
 
@@ -32,10 +34,10 @@ public class AccountProcessorJob extends QueueableJob {
 
 ```apex
 private class ProcessorFinalizer extends QueueableJob.Finalizer {
-	public override void work() {
-		// Get finalizer context
-		FinalizerContext finalizerCtx = Async.getQueueableJobContext().finalizerCtx;
-	}
+  public override void work() {
+    // Get finalizer context
+    FinalizerContext finalizerCtx = Async.getQueueableJobContext().finalizerCtx;
+  }
 }
 ```
 
@@ -46,6 +48,7 @@ The following are methods for using Async with Queueable jobs:
 [**INIT**](#init)
 
 - [`queueable(QueueableJob job)`](#queueable)
+- [`queueable()`](#queueable-no-args)
 
 [**Build**](#build)
 
@@ -88,6 +91,36 @@ Async queueable(QueueableJob job);
 
 ```apex
 Async.queueable(new MyQueueableJob());
+```
+
+#### queueable (no args) {#queueable-no-args}
+
+Constructs an empty QueueableBuilder so jobs can be added incrementally via
+`chain(QueueableJob)`. Useful when the number of jobs to enqueue depends on
+runtime conditions — calling `enqueue()` on a builder with zero jobs is a safe
+no-op.
+
+**Signature**
+
+```apex
+QueueableBuilder queueable();
+```
+
+**Example**
+
+```apex
+QueueableBuilder builder = Async.queueable();
+if (needsJob1) {
+	builder.chain(new Job1());
+}
+if (needsJob2) {
+	builder.chain(new Job2());
+}
+if (needsJob3) {
+	builder.chain(new Job3());
+}
+// Enqueues whatever was added; does nothing if none were.
+builder.enqueue();
 ```
 
 ### Build
@@ -202,8 +235,9 @@ Clones provided QueueableJob by value for all the member variables. By default
 only primitive member variables (String, Boolean, ...) are cloned by value.
 Deeper explanation is [here](/explanations/job-cloning).
 
-::: warning Package Usage
-When using Async Lib as a package (`btcdev` namespace), deep clone requires overriding `cloneForDeepCopy()` in your subclass. See [Deep Clone in Packages](/explanations/deep-clone-in-packages).
+::: warning Package Usage When using Async Lib as a package (`btcdev`
+namespace), deep clone requires overriding `cloneForDeepCopy()` in your
+subclass. See [Deep Clone in Packages](/explanations/deep-clone-in-packages).
 :::
 
 **Signature**
@@ -257,7 +291,8 @@ Async.Result result = Async.queueable(new MyQueueableJob())
 	.chain(new MyOtherQueueableJob());
 ```
 
-Returns `result.customJobId` containing MyOtherQueueableJob's unique Custom Job Id. To obtain MyQueueableJob's Id, use `chain()` method separately.
+Returns `result.customJobId` containing MyOtherQueueableJob's unique Custom Job
+Id. To obtain MyQueueableJob's Id, use `chain()` method separately.
 
 #### asSchedulable
 
@@ -326,21 +361,22 @@ Async.Result result = Async.queueable(new MyQueueableJob())
 
 **Result properties:**
 
-| Property | Description |
-|----------|-------------|
-| `salesforceJobId` | Salesforce Job Id of either Queueable Job or Initial Queueable Chain Schedulable (empty if job was not the enqueued one in chain) |
-| `customJobId` | Unique Custom Job Id |
-| `asyncType` | `Async.AsyncType.QUEUEABLE` |
-| `queueableChainState` | Chain state object (see below) |
+| Property              | Description                                                                                                                                                                                                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `salesforceJobId`     | Salesforce Job Id of the actually-enqueued first-chain Queueable Job or Initial Queueable Chain Schedulable. `null` when `enqueue()` is called on an empty `Async.queueable()` builder with no jobs added.                                         |
+| `customJobId`         | Unique Custom Job Id                                                                                                                                                                                                                               |
+| `asyncType`           | `Async.AsyncType.QUEUEABLE`                                                                                                                                                                                                                        |
+| `job`                 | The `QueueableJob` instance that the builder was finalized with. Useful for inspecting post-enqueue state, especially the cloned instance when `.deepClone()` was used. `null` when `enqueue()` is called on an empty `Async.queueable()` builder. |
+| `queueableChainState` | Chain state object (see below)                                                                                                                                                                                                                     |
 
 **`queueableChainState` properties:**
 
-| Property | Description |
-|----------|-------------|
-| `jobs` | All jobs in chain including finalizers and processed jobs |
-| `nextSalesforceJobId` | Salesforce Job Id that will run next from chain |
-| `nextCustomJobId` | Custom Job Id that will run next from chain |
-| `enqueueType` | How the chain was enqueued: `EXISTING_CHAIN`, `NEW_CHAIN`, or `INITIAL_QUEUEABLE_CHAIN_SCHEDULABLE` |
+| Property              | Description                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| `jobs`                | All jobs in chain including finalizers and processed jobs                                           |
+| `nextSalesforceJobId` | Salesforce Job Id that will run next from chain                                                     |
+| `nextCustomJobId`     | Custom Job Id that will run next from chain                                                         |
+| `enqueueType`         | How the chain was enqueued: `EXISTING_CHAIN`, `NEW_CHAIN`, or `INITIAL_QUEUEABLE_CHAIN_SCHEDULABLE` |
 
 #### attachFinalizer
 
@@ -384,16 +420,16 @@ Async.QueueableJobContext ctx = Async.getQueueableJobContext();
 
 **Context properties:**
 
-| Property | Description |
-|----------|-------------|
-| `ctx.currentJob` | Current `QueueableJob` instance |
-| `ctx.queueableCtx` | Salesforce `QueueableContext` |
+| Property           | Description                                             |
+| ------------------ | ------------------------------------------------------- |
+| `ctx.currentJob`   | Current `QueueableJob` instance                         |
+| `ctx.queueableCtx` | Salesforce `QueueableContext`                           |
 | `ctx.finalizerCtx` | Salesforce `FinalizerContext` (available in finalizers) |
 
 #### getQueueableChainSchedulableId
 
-Gets the ID of the initial Queueable Chain Schedulable if the current execution is part of
-a scheduled-based chain.
+Gets the ID of the initial Queueable Chain Schedulable if the current execution
+is part of a scheduled-based chain.
 
 **Signature**
 
@@ -427,9 +463,9 @@ QueueableChainState currentChain = Async.getCurrentQueueableChainState();
 
 **Chain state properties:**
 
-| Property | Description |
-|----------|-------------|
-| `jobs` | All jobs in chain including processed ones and finalizers |
+| Property              | Description                                                        |
+| --------------------- | ------------------------------------------------------------------ |
+| `jobs`                | All jobs in chain including processed ones and finalizers          |
 | `nextSalesforceJobId` | Salesforce Job Id that will run next (empty if chain not enqueued) |
-| `nextCustomJobId` | Custom Job Id that will run next from chain |
-| `enqueueType` | Empty until set during `enqueue()` method |
+| `nextCustomJobId`     | Custom Job Id that will run next from chain                        |
+| `enqueueType`         | Empty until set during `enqueue()` method                          |

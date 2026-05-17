@@ -3,6 +3,10 @@ public inherited sharing class Async {
         return new QueueableBuilder(job);
     }
 
+    public static QueueableBuilder queueable() {
+        return new QueueableBuilder();
+    }
+
     public static BatchableBuilder batchable(Object job) {
         return new BatchableBuilder(job);
     }

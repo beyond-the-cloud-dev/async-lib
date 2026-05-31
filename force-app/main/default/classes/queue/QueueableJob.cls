@@ -19,6 +19,21 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public Boolean deepClone = false;
     public QueueableContext queueableCtx;
 
+    public List<Async.Dependency> dependencies;
+    public String chainId;
+    public String skipStatus;
+    public String skipReason;
+    public Boolean resultCreated = false;
+
+    public Integer maxRetries = 0;
+    public Integer retryAttempt = 0;
+    public Backoff backoff;
+    public Set<String> retryOnExceptionTypes;
+    public Boolean hasFailed = false;
+    public String failedExceptionType;
+    public String failedExceptionMessage;
+    public String retryHistory;
+
     public String parentCustomJobId;
     public FinalizerContext finalizerCtx;
     public String mockId;
@@ -76,12 +91,38 @@ public abstract class QueueableJob implements Queueable, Comparable {
         this.uniqueName = this.uniqueName + '::' + String.valueOf(chainCounter);
     }
 
-    public void createAsyncResult() {
-        insert new AsyncResult__c(
-            SalesforceJobId__c = salesforceJobId,
-            CustomJobId__c = customJobId,
-            Result__c = finalizerCtx.getResult().toString()
-        );
+    public Boolean canRetry() {
+        return hasFailed && retryAttempt < maxRetries && isRetryableException();
+    }
+
+    private Boolean isRetryableException() {
+        if (String.isBlank(failedExceptionType)) {
+            return false;
+        }
+        if (retryOnExceptionTypes == null || retryOnExceptionTypes.isEmpty()) {
+            return true;
+        }
+        for (String allowedType : retryOnExceptionTypes) {
+            if (
+                failedExceptionType.equalsIgnoreCase(allowedType) ||
+                failedExceptionType.endsWithIgnoreCase('.' + allowedType)
+            ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void recordRetryHistory(Integer attemptNumber, Integer delayMinutes) {
+        String line =
+            'Attempt ' +
+            attemptNumber +
+            ': ' +
+            failedExceptionType +
+            ' - ' +
+            failedExceptionMessage +
+            (delayMinutes != null ? ' (retry in ' + delayMinutes + 'm)' : ' (no further retry)');
+        retryHistory = String.isBlank(retryHistory) ? line : retryHistory + '\n' + line;
     }
 
     public QueueableJob cloneJob() {
@@ -90,10 +131,12 @@ public abstract class QueueableJob implements Queueable, Comparable {
                 return cloneForDeepCopy();
             } catch (JSONException e) {
                 throw new IllegalArgumentException(
-                    'deepClone() failed for the job "' + className + '". ' +
-                    'When using a namespaced package, override cloneForDeepCopy() in your QueueableJob subclass: ' +
-                    'public override QueueableJob cloneForDeepCopy() { ' +
-                    'return (QueueableJob) JSON.deserialize(JSON.serialize(this), YourClassName.class); }'
+                    'deepClone() failed for the job "' +
+                        className +
+                        '". ' +
+                        'When using a namespaced package, override cloneForDeepCopy() in your QueueableJob subclass: ' +
+                        'public override QueueableJob cloneForDeepCopy() { ' +
+                        'return (QueueableJob) JSON.deserialize(JSON.serialize(this), YourClassName.class); }'
                 );
             }
         }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>RetryHistory__c</fullName>
+    <description>Per-attempt retry log (attempt number, exception, computed delay) aggregated for a job that exhausted its retries. Empty when the job did not retry.</description>
+    <label>Retry History</label>
+    <length>32768</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>LongTextArea</type>
+    <visibleLines>5</visibleLines>
+</CustomField>

@@ -1777,6 +1777,834 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(ParentJobResult.SUCCESS, ctx2.getResult());
     }
 
+    @IsTest
+    private static void shouldComputeFixedBackoff() {
+        Backoff policy = Backoff.fixed(3);
+        Assert.areEqual(3, policy.delayMinutes(1));
+        Assert.areEqual(3, policy.delayMinutes(5));
+        Assert.areEqual(
+            10,
+            Backoff.fixed(20).delayMinutes(1),
+            'Delay must be capped at 10 minutes.'
+        );
+    }
+
+    @IsTest
+    private static void shouldComputeExponentialBackoff() {
+        Backoff policy = Backoff.exponential(1);
+        Assert.areEqual(1, policy.delayMinutes(1));
+        Assert.areEqual(2, policy.delayMinutes(2));
+        Assert.areEqual(4, policy.delayMinutes(3));
+        Assert.areEqual(8, policy.delayMinutes(4));
+        Assert.areEqual(10, policy.delayMinutes(5), 'Should be capped at 10 minutes.');
+        Assert.areEqual(10, policy.delayMinutes(9), 'Should stay capped at 10 minutes.');
+    }
+
+    @IsTest
+    private static void shouldComputeExponentialJitterWithinBounds() {
+        Backoff policy = Backoff.exponentialWithJitter(2);
+        for (Integer attempt = 1; attempt <= 6; attempt++) {
+            Integer delay = policy.delayMinutes(attempt);
+            Assert.isTrue(delay >= 0, 'Delay must be non-negative.');
+            Assert.isTrue(delay <= 10, 'Delay must be capped at 10 minutes.');
+        }
+    }
+
+    @IsTest
+    private static void shouldBuildBackoffFromName() {
+        Assert.isNotNull(Backoff.fromName('EXPONENTIAL', 2));
+        Assert.isNotNull(Backoff.fromName('fixed', 2));
+        Assert.isNull(Backoff.fromName('NOT_A_STRATEGY', 2));
+        Assert.isNull(Backoff.fromName(null, 2));
+    }
+
+    @IsTest
+    private static void shouldThrowOnNegativeBackoffBase() {
+        try {
+            Backoff.fixed(-1);
+            Assert.fail('Should reject a negative base.');
+        } catch (Async.IllegalArgumentException ex) {
+            Assert.isTrue(ex.getMessage().contains('non-negative'));
+        }
+    }
+
+    @IsTest
+    private static void shouldRetryOnAnyExceptionByDefault() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.hasFailed = true;
+        job.failedExceptionType = 'System.DmlException';
+        job.maxRetries = 2;
+        job.retryAttempt = 0;
+
+        Assert.isTrue(job.canRetry());
+    }
+
+    @IsTest
+    private static void shouldRetryLimitExceptionByDefault() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.hasFailed = true;
+        job.failedExceptionType = 'System.LimitException';
+        job.maxRetries = 3;
+
+        Assert.isTrue(job.canRetry(), 'With no retryOn filter, every exception is retried.');
+    }
+
+    @IsTest
+    private static void shouldRetryLimitExceptionWhenWhitelisted() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.hasFailed = true;
+        job.failedExceptionType = 'System.LimitException';
+        job.maxRetries = 3;
+        job.retryOnExceptionTypes = new Set<String>{ 'System.LimitException' };
+
+        Assert.isTrue(job.canRetry());
+    }
+
+    @IsTest
+    private static void shouldNotRetryExceptionOutsideWhitelist() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.hasFailed = true;
+        job.failedExceptionType = 'System.CalloutException';
+        job.maxRetries = 3;
+        job.retryOnExceptionTypes = new Set<String>{ 'System.DmlException' };
+
+        Assert.isFalse(job.canRetry());
+    }
+
+    @IsTest
+    private static void shouldRetryExceptionMatchingShortName() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.hasFailed = true;
+        job.failedExceptionType = 'System.DmlException';
+        job.maxRetries = 3;
+        job.retryOnExceptionTypes = new Set<String>{ 'DmlException' };
+
+        Assert.isTrue(job.canRetry());
+    }
+
+    @IsTest
+    private static void shouldNotRetryWhenAttemptsExhausted() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.hasFailed = true;
+        job.failedExceptionType = 'System.DmlException';
+        job.maxRetries = 2;
+        job.retryAttempt = 2;
+
+        Assert.isFalse(job.canRetry());
+    }
+
+    @IsTest
+    private static void shouldNotRetryWhenNotFailed() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.hasFailed = false;
+        job.maxRetries = 2;
+
+        Assert.isFalse(job.canRetry());
+    }
+
+    @IsTest
+    private static void shouldRejectNegativeRetryCount() {
+        try {
+            Async.queueable(new QueueableJobTest1()).retry(-1);
+            Assert.fail('Should reject a negative retry count.');
+        } catch (Exception ex) {
+            Assert.areEqual(QueueableManager.ERROR_MESSAGE_INVALID_MAX_RETRIES, ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldRejectRetryCountAboveCap() {
+        try {
+            Async.queueable(new QueueableJobTest1()).retry(QueueableManager.MAX_RETRY_CAP + 1);
+            Assert.fail('Should reject a retry count above the framework cap.');
+        } catch (Exception ex) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP,
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRegisterRetryOnExceptionTypes() {
+        Test.startTest();
+        Async.Result result = Async.queueable(new QueueableJobTest1())
+            .retry(2)
+            .retryOn(DmlException.class)
+            .retryOn(CalloutException.class)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(2, result.job.retryOnExceptionTypes.size());
+    }
+
+    @IsTest
+    private static void shouldApplyRetryDefaultsFromCmdt() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                MaxRetries__c = 3,
+                BackoffStrategy__c = 'EXPONENTIAL',
+                BackoffBaseMinutes__c = 2,
+                RetryableExceptions__c = 'System.DmlException, System.CalloutException'
+            )
+        };
+        chain.addJob(job);
+
+        Assert.areEqual(3, job.maxRetries);
+        Assert.isNotNull(job.backoff);
+        Assert.areEqual(2, job.retryOnExceptionTypes.size());
+        Assert.isTrue(job.retryOnExceptionTypes.contains('System.DmlException'));
+    }
+
+    @IsTest
+    private static void shouldNotOverrideExplicitRetryWithCmdt() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.maxRetries = 5;
+
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                MaxRetries__c = 3
+            )
+        };
+        chain.addJob(job);
+
+        Assert.areEqual(5, job.maxRetries, 'Explicit fluent config must win over CMDT.');
+    }
+
+    @IsTest
+    private static void shouldRejectCmdtMaxRetriesAboveCap() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                MaxRetries__c = QueueableManager.MAX_RETRY_CAP + 1
+            )
+        };
+
+        try {
+            chain.addJob(job);
+            Assert.fail('Should reject a CMDT retry count above the framework cap.');
+        } catch (Exception ex) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP,
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldReEnqueueRetryJobOnFailure() {
+        FailureQueueableTest job = new FailureQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        job.maxRetries = 2;
+        job.backoff = Backoff.fixed(5);
+        job.continueOnJobExecuteFail = true;
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+        Test.stopTest();
+
+        Assert.areEqual(2, chain.jobs.size(), 'A retry clone should have been inserted.');
+        Assert.areEqual(1, chain.jobs[0].retryAttempt);
+        Assert.areEqual(5, chain.jobs[0].delay, 'Backoff delay should be applied to the retry.');
+        Assert.isTrue(
+            String.isNotBlank(chain.jobs[0].retryHistory),
+            'Retry history should be recorded.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRetryFailedQueueableUntilExhausted() {
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.queueable(new FailureQueueableTest()).continueOnJobExecuteFail().retry(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            [SELECT COUNT() FROM Account],
+            'Original run plus 2 retries should each execute work() once.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotRetryWhenNotConfigured() {
+        Assert.areEqual(0, [SELECT COUNT() FROM Account]);
+
+        Test.startTest();
+        Async.queueable(new FailureQueueableTest()).continueOnJobExecuteFail().enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM Account],
+            'No retry config means a single execution.'
+        );
+    }
+
+    private static Async.Dependency dependencyOn(String customJobId, Async.Outcome outcome) {
+        Async.Dependency dependency = new Async.Dependency();
+        dependency.resolvedTargetCustomJobId = customJobId;
+        dependency.requiredOutcome = outcome;
+        return dependency;
+    }
+
+    @IsTest
+    private static void shouldRunDependentJobWhenRequiredOutcomeMatches() {
+        SuccessfulQueueableTest jobA = new SuccessfulQueueableTest();
+        SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(jobA);
+        jobB.dependencies = new List<Async.Dependency>{
+            dependencyOn(jobA.customJobId, Async.Outcome.SUCCESS)
+        };
+        chain.addJob(jobB);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+        Test.stopTest();
+
+        Assert.isFalse(jobB.isProcessed, 'Dependent job should not be skipped.');
+        Assert.isNotNull(jobB.salesforceJobId, 'Dependent job should be enqueued.');
+    }
+
+    @IsTest
+    private static void shouldSkipDependentJobWhenRequiredOutcomeMismatches() {
+        FailureQueueableTest jobA = new FailureQueueableTest();
+        jobA.continueOnJobExecuteFail = true;
+        SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(jobA);
+        jobB.dependencies = new List<Async.Dependency>{
+            dependencyOn(jobA.customJobId, Async.Outcome.SUCCESS)
+        };
+        chain.addJob(jobB);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        Assert.isTrue(
+            jobB.isProcessed,
+            'Dependent job should be skipped when its dependency failed.'
+        );
+        Assert.isNull(jobB.salesforceJobId, 'Skipped job should not be enqueued.');
+    }
+
+    @IsTest
+    private static void shouldRunCompensationJobWhenDependencyFails() {
+        FailureQueueableTest jobA = new FailureQueueableTest();
+        jobA.continueOnJobExecuteFail = true;
+        SuccessfulQueueableTest compensation = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(jobA);
+        compensation.dependencies = new List<Async.Dependency>{
+            dependencyOn(jobA.customJobId, Async.Outcome.FAILURE)
+        };
+        chain.addJob(compensation);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        Assert.isFalse(
+            compensation.isProcessed,
+            'Compensation job should run when dependency failed.'
+        );
+        Assert.isNotNull(compensation.salesforceJobId, 'Compensation job should be enqueued.');
+    }
+
+    @IsTest
+    private static void shouldRunFinishedDependencyRegardlessOfOutcome() {
+        FailureQueueableTest jobA = new FailureQueueableTest();
+        jobA.continueOnJobExecuteFail = true;
+        SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(jobA);
+        jobB.dependencies = new List<Async.Dependency>{
+            dependencyOn(jobA.customJobId, Async.Outcome.COMPLETED)
+        };
+        chain.addJob(jobB);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        Assert.isFalse(jobB.isProcessed, 'finished() should match a failed dependency.');
+        Assert.isNotNull(jobB.salesforceJobId);
+    }
+
+    @IsTest
+    private static void shouldCascadeSkipToTransitiveDependents() {
+        FailureQueueableTest jobA = new FailureQueueableTest();
+        jobA.continueOnJobExecuteFail = true;
+        SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
+        SuccessfulQueueableTest jobC = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(jobA);
+        jobB.dependencies = new List<Async.Dependency>{
+            dependencyOn(jobA.customJobId, Async.Outcome.SUCCESS)
+        };
+        chain.addJob(jobB);
+        jobC.dependencies = new List<Async.Dependency>{
+            dependencyOn(jobB.customJobId, Async.Outcome.SUCCESS)
+        };
+        chain.addJob(jobC);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        Assert.isTrue(jobB.isProcessed, 'B skipped because A failed.');
+        Assert.isTrue(jobC.isProcessed, 'C skipped because B never ran.');
+        Assert.isNull(jobC.salesforceJobId);
+    }
+
+    @IsTest
+    private static void shouldResolveAfterPreviousToPriorJob() {
+        Async.Result result = Async.queueable(new SuccessfulQueueableTest())
+            .chain(new SuccessfulQueueableTest())
+            .dependsOn(Async.afterPrevious().succeeded())
+            .chain();
+
+        QueueableJob dependent = result.queueableChainState.jobs[1];
+        Assert.areEqual(1, dependent.dependencies.size());
+        Assert.isTrue(dependent.dependencies[0].previous);
+        Assert.areEqual(
+            result.queueableChainState.jobs[0].customJobId,
+            dependent.dependencies[0].resolvedTargetCustomJobId,
+            'afterPrevious() should resolve to the preceding job.'
+        );
+    }
+
+    @IsTest
+    private static void shouldResolveAfterResultToTargetJob() {
+        Async.Result first = Async.queueable(new SuccessfulQueueableTest()).chain();
+        Async.Result result = Async.queueable(new SuccessfulQueueableTest())
+            .dependsOn(Async.after(first).succeeded())
+            .chain();
+
+        QueueableJob dependent = result.queueableChainState.jobs[1];
+        Assert.areEqual(
+            first.customJobId,
+            dependent.dependencies[0].resolvedTargetCustomJobId,
+            'after(Result) should resolve to the dependency job customJobId.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectAfterPreviousWithoutPriorJob() {
+        try {
+            Async.queueable(new SuccessfulQueueableTest())
+                .dependsOn(Async.afterPrevious().succeeded());
+            Assert.fail('Should reject afterPrevious() with no preceding job.');
+        } catch (Exception ex) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB,
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRejectDependencyWithoutOutcome() {
+        try {
+            Async.queueable(new SuccessfulQueueableTest()).dependsOn(Async.after('a'));
+            Assert.fail('Should reject a dependency missing a required outcome.');
+        } catch (Exception ex) {
+            Assert.areEqual(QueueableManager.ERROR_MESSAGE_INVALID_DEPENDENCY, ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldRollbackAndContinueWhenOnlyRollbackFlagSet() {
+        Test.startTest();
+        Async.queueable(new FailureQueueableTest())
+            .rollbackOnJobExecuteFail()
+            .chain(new SuccessfulQueueableTest())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM Account],
+            'Failing job DML rolled back; chain continued to the next job, which committed.'
+        );
+    }
+
+    @IsTest
+    private static void shouldReconcileOutcomeFromFinalizerContext() {
+        SuccessfulQueueableTest jobA = new SuccessfulQueueableTest();
+        SuccessfulQueueableTest compensation = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(jobA);
+        compensation.dependencies = new List<Async.Dependency>{
+            dependencyOn(jobA.customJobId, Async.Outcome.FAILURE)
+        };
+        chain.addJob(compensation);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        Assert.isTrue(jobA.hasFailed, 'Failure should be reconciled from the FinalizerContext.');
+        Assert.isFalse(
+            compensation.isProcessed,
+            'Compensation runs because the reconciled outcome is FAILURE.'
+        );
+        Assert.isNotNull(compensation.salesforceJobId);
+    }
+
+    @IsTest
+    private static void shouldStopChainSkippingRemainingJobs() {
+        SuccessfulQueueableTest jobA = new SuccessfulQueueableTest();
+        SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(jobA);
+        chain.addJob(jobB);
+        QueueableManager.get().setChain(chain);
+
+        Async.stopChain();
+
+        Assert.isTrue(jobA.isProcessed);
+        Assert.isTrue(jobB.isProcessed);
+        Assert.isFalse(chain.hasNextJob(), 'No jobs remain after stopChain().');
+    }
+
+    @IsTest
+    private static void shouldSkipJobByCustomJobId() {
+        SuccessfulQueueableTest jobA = new SuccessfulQueueableTest();
+        SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(jobA);
+        chain.addJob(jobB);
+        QueueableManager.get().setChain(chain);
+
+        Async.skipJob(jobB.customJobId);
+
+        Assert.isFalse(jobA.isProcessed, 'Other jobs are untouched.');
+        Assert.isTrue(jobB.isProcessed, 'The targeted job is skipped.');
+    }
+
+    @IsTest
+    private static void shouldRejectSkipJobWithUnknownCustomJobId() {
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(new SuccessfulQueueableTest());
+        QueueableManager.get().setChain(chain);
+
+        try {
+            Async.skipJob('nope');
+            Assert.fail('Should reject skipping an unknown custom job id.');
+        } catch (Exception ex) {
+            Assert.isTrue(ex.getMessage().contains('nope'));
+        }
+    }
+
+    @IsTest
+    private static void shouldStopChainFromAttachedFinalizer() {
+        Test.startTest();
+        Async.queueable(new ChainStoppingJob()).chain(new SuccessfulQueueableTest()).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM Account],
+            'Downstream job is skipped after the finalizer stopped the chain.'
+        );
+    }
+
+    private static Map<String, QueueableJobSetting__mdt> resultsEnabledForAll() {
+        return new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                CreateResult__c = true
+            )
+        };
+    }
+
+    @IsTest
+    private static void shouldCreateCompletedResultWithIdentityFields() {
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT Status__c, ClassName__c, ChainId__c, RetryAttempts__c, Result__c
+            FROM AsyncResult__c
+            WHERE CustomJobId__c = :job.customJobId
+        ];
+        Assert.areEqual(QueueableManager.STATUS_COMPLETED, result.Status__c);
+        Assert.isTrue(result.ClassName__c.contains('SuccessfulQueueableTest'));
+        Assert.isNotNull(result.ChainId__c);
+        Assert.areEqual(0, result.RetryAttempts__c);
+        Assert.areEqual('SUCCESS', result.Result__c);
+    }
+
+    @IsTest
+    private static void shouldCreateSkippedDependencyResultLinkedToBlocker() {
+        FailureQueueableTest jobA = new FailureQueueableTest();
+        jobA.continueOnJobExecuteFail = true;
+        SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
+
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        chain.addJob(jobA);
+        jobB.dependencies = new List<Async.Dependency>{
+            dependencyOn(jobA.customJobId, Async.Outcome.SUCCESS)
+        };
+        chain.addJob(jobB);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        AsyncResult__c aResult = [
+            SELECT Id, Status__c, ChainId__c, ExceptionType__c
+            FROM AsyncResult__c
+            WHERE CustomJobId__c = :jobA.customJobId
+        ];
+        AsyncResult__c bResult = [
+            SELECT
+                Status__c,
+                SkipReason__c,
+                DependsOnResult__c,
+                RequiredOutcome__c,
+                ActualOutcome__c,
+                ChainId__c
+            FROM AsyncResult__c
+            WHERE CustomJobId__c = :jobB.customJobId
+        ];
+
+        Assert.areEqual(QueueableManager.STATUS_FAILED, aResult.Status__c);
+        Assert.isNotNull(aResult.ExceptionType__c, 'Failed job records the exception type.');
+        Assert.areEqual(QueueableManager.STATUS_SKIPPED_DEPENDENCY, bResult.Status__c);
+        Assert.areEqual(
+            aResult.Id,
+            bResult.DependsOnResult__c,
+            'B links to the result that blocked it.'
+        );
+        Assert.areEqual('SUCCESS', bResult.RequiredOutcome__c);
+        Assert.areEqual('FAILURE', bResult.ActualOutcome__c);
+        Assert.isNotNull(bResult.SkipReason__c);
+        Assert.areEqual(aResult.ChainId__c, bResult.ChainId__c, 'Both rows share the chain id.');
+    }
+
+    @IsTest
+    private static void shouldCreateDisabledSkipResult() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+
+        QueueableChain chain = new QueueableChain();
+        Map<String, QueueableJobSetting__mdt> settings = resultsEnabledForAll();
+        settings.put(
+            getClassNameWithNamespaceDotPrefix('AsyncTest.QueueableJobTest1'),
+            new QueueableJobSetting__mdt(
+                DeveloperName = getClassNameWithNamespaceDotPrefix('AsyncTest.QueueableJobTest1'),
+                IsDisabled__c = true
+            )
+        );
+        chain.queueableJobSettingByJobName = settings;
+        chain.addJob(job);
+
+        Test.startTest();
+        chain.removeJobsThatAreDisabledAndDependentFinalizers();
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT Status__c, SkipReason__c
+            FROM AsyncResult__c
+            WHERE CustomJobId__c = :job.customJobId
+        ];
+        Assert.areEqual(QueueableManager.STATUS_SKIPPED_DISABLED, result.Status__c);
+        Assert.isNotNull(result.SkipReason__c);
+    }
+
+    private static MarkerJob markerJob(String tag, Boolean shouldFail) {
+        MarkerJob job = new MarkerJob();
+        job.tag = tag;
+        job.shouldFail = shouldFail;
+        return job;
+    }
+
+    private static Integer accountCount(String name) {
+        return [SELECT COUNT() FROM Account WHERE Name = :name];
+    }
+
+    @IsTest
+    private static void shouldGateChainOnDependencyOutcomesEndToEnd() {
+        Test.startTest();
+        Async.Result a = Async.queueable(markerJob('A', true)).continueOnJobExecuteFail().chain();
+        Async.queueable(markerJob('B', false)).dependsOn(Async.after(a).succeeded()).chain();
+        Async.queueable(markerJob('C', false)).dependsOn(Async.after(a).failed()).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, accountCount('A'), 'A ran (and committed despite failing).');
+        Assert.areEqual(0, accountCount('B'), 'B is skipped: it needs A to succeed, but A failed.');
+        Assert.areEqual(1, accountCount('C'), 'C runs: it is the compensation for A failing.');
+    }
+
+    @IsTest
+    private static void shouldRecordChainResultsEndToEnd() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        Async.Result a = Async.queueable(markerJob('A', true)).continueOnJobExecuteFail().chain();
+        Async.queueable(markerJob('B', false)).dependsOn(Async.after(a).succeeded()).chain();
+        Async.queueable(markerJob('C', false)).dependsOn(Async.after(a).failed()).enqueue();
+        Test.stopTest();
+
+        Map<String, AsyncResult__c> byStatus = new Map<String, AsyncResult__c>();
+        Set<String> chainIds = new Set<String>();
+        for (AsyncResult__c result : [
+            SELECT
+                Status__c,
+                ChainId__c,
+                DependsOnResult__c,
+                ExceptionType__c,
+                RequiredOutcome__c,
+                ActualOutcome__c
+            FROM AsyncResult__c
+        ]) {
+            byStatus.put(result.Status__c, result);
+            chainIds.add(result.ChainId__c);
+        }
+
+        Assert.areEqual(3, byStatus.size(), 'One result row per job (ran and skipped).');
+        Assert.areEqual(1, chainIds.size(), 'All rows share one ChainId.');
+
+        AsyncResult__c failed = byStatus.get(QueueableManager.STATUS_FAILED);
+        AsyncResult__c skipped = byStatus.get(QueueableManager.STATUS_SKIPPED_DEPENDENCY);
+        Assert.isNotNull(byStatus.get(QueueableManager.STATUS_COMPLETED), 'C completed.');
+        Assert.isNotNull(failed.ExceptionType__c, 'Failed row captures the exception type.');
+        Assert.areEqual(
+            failed.Id,
+            skipped.DependsOnResult__c,
+            'Skipped B links to the result that blocked it (A).'
+        );
+        Assert.areEqual('SUCCESS', skipped.RequiredOutcome__c);
+        Assert.areEqual('FAILURE', skipped.ActualOutcome__c);
+    }
+
+    @IsTest
+    private static void shouldRunLinearDependencyChainEndToEnd() {
+        Test.startTest();
+        Async.queueable(markerJob('X', false))
+            .chain(markerJob('Y', false))
+            .dependsOn(Async.afterPrevious().succeeded())
+            .chain(markerJob('Z', false))
+            .dependsOn(Async.afterPrevious().succeeded())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, accountCount('X'));
+        Assert.areEqual(1, accountCount('Y'), 'Y runs after X succeeds.');
+        Assert.areEqual(1, accountCount('Z'), 'Z runs after Y succeeds.');
+    }
+
+    @IsTest
+    private static void shouldSkipDownstreamWhenLinearDependencyFailsEndToEnd() {
+        Test.startTest();
+        Async.queueable(markerJob('X', true))
+            .continueOnJobExecuteFail()
+            .chain(markerJob('Y', false))
+            .dependsOn(Async.afterPrevious().succeeded())
+            .chain(markerJob('Z', false))
+            .dependsOn(Async.afterPrevious().succeeded())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, accountCount('X'), 'X ran (committed despite failing).');
+        Assert.areEqual(0, accountCount('Y'), 'Y skipped: X failed.');
+        Assert.areEqual(0, accountCount('Z'), 'Z skipped transitively: Y never ran.');
+    }
+
+    @IsTest
+    private static void shouldRecordRetryHistoryOnExhaustionEndToEnd() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        Async.queueable(markerJob('R', true)).continueOnJobExecuteFail().retry(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(3, accountCount('R'), 'Original run plus 2 retries each execute work().');
+
+        AsyncResult__c result = [
+            SELECT Status__c, RetryAttempts__c, RetryHistory__c
+            FROM AsyncResult__c
+        ];
+        Assert.areEqual(
+            QueueableManager.STATUS_FAILED,
+            result.Status__c,
+            'Only the final, exhausted attempt produces a result row.'
+        );
+        Assert.areEqual(2, result.RetryAttempts__c);
+        Assert.isTrue(String.isNotBlank(result.RetryHistory__c), 'Retry history is recorded.');
+    }
+
     private static String getClassNameWithNamespaceDotPrefix(String className) {
         return getNamespaceDotPrefix() + className;
     }
@@ -1814,6 +2642,29 @@ private class AsyncTest implements Database.Batchable<SObject> {
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class ChainStoppingJob extends QueueableJob {
+        public override void work() {
+            Async.queueable(new StopChainFinalizer()).attachFinalizer();
+        }
+    }
+
+    private class MarkerJob extends QueueableJob {
+        public String tag;
+        public Boolean shouldFail = false;
+        public override void work() {
+            insert new Account(Name = tag);
+            if (shouldFail) {
+                throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private class StopChainFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            Async.stopChain();
         }
     }
 

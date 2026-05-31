@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>MaxRetries__c</fullName>
+    <description>Default maximum number of retries for the matching job (overridden by the fluent .retry(n) API). 0 or blank disables retry.</description>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>Max Retries</label>
+    <precision>2</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

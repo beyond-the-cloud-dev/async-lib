@@ -1,5 +1,18 @@
 public inherited sharing class QueueableManager {
     public static final String QUEUEABLE_JOB_SETTING_ALL = 'All';
+    public static final String STATUS_COMPLETED = 'COMPLETED';
+    public static final String STATUS_FAILED = 'FAILED';
+    public static final String STATUS_SKIPPED_DEPENDENCY = 'SKIPPED_DEPENDENCY';
+    public static final String STATUS_SKIPPED_CHAIN_STOPPED = 'SKIPPED_CHAIN_STOPPED';
+    public static final String STATUS_SKIPPED_EXPLICIT = 'SKIPPED_EXPLICIT';
+    public static final String STATUS_SKIPPED_DISABLED = 'SKIPPED_DISABLED';
+    public static final Integer MAX_RETRY_CAP = 10;
+    public static final String ERROR_MESSAGE_INVALID_MAX_RETRIES = 'Max retries must be a non-negative integer';
+    public static final String ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP =
+        'Max retries cannot exceed the framework cap of ' + MAX_RETRY_CAP;
+    public static final String ERROR_MESSAGE_INVALID_DEPENDENCY = 'A dependency requires a target and an outcome (e.g. Async.after(result).succeeded())';
+    public static final String ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB = 'dependsOn(Async.afterPrevious()) requires a previously chained job';
+    public static final String ERROR_MESSAGE_UNKNOWN_JOB = 'No job in this chain has custom job id "{0}".';
     public static final String ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY = 'Cannot set asyncOptions after delay has been set';
     public static final String ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS = 'Cannot set delay after asyncOptions has been set';
     private static final String ERROR_MESSAGE_CHAIN_NULL = 'QueueableChain cannot be null';
@@ -26,6 +39,14 @@ public inherited sharing class QueueableManager {
 
     public QueueableChain getChain() {
         return chain;
+    }
+
+    public void stopChain() {
+        chain.stop();
+    }
+
+    public void skipJob(String customJobId) {
+        chain.skipJobByCustomJobId(customJobId);
     }
 
     public Async.QueueableJobContext getQueueableJobContext() {

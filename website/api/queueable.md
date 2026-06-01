@@ -84,6 +84,12 @@ The following are methods for using Async with Queueable jobs:
 - [`stopChain()`](#stopchain)
 - [`skipJob(String customJobId)`](#skipjob)
 
+[**Override hooks**](#override-hooks) — methods you override on your
+`QueueableJob` subclass (not fluent builder calls)
+
+- [`isRetryable(Exception ex)`](#isretryable)
+- [`resetForRetry()`](#resetforretry)
+
 ### INIT
 
 #### queueable
@@ -264,10 +270,21 @@ a higher value (whether passed to `retry(...)` or configured via
 `QueueableJobSetting__mdt`) throws an exception.
 
 On each failed attempt the framework re-enqueues a fresh clone of the job with
-an incremented attempt counter. By default **every** exception is retried. As a
-best practice, narrow retries to the failures you know are worth re-running with
-[`retryOn(...)`](#retryon). Retry composes with `continueOnJobExecuteFail`: once
-retries are exhausted the chain behaves exactly as it would for a non-retry job.
+an incremented attempt counter. By default **every** exception is retried.
+Narrow retries to the failures worth re-running with the coarse type filter
+[`retryOn(...)`](#retryon) and/or the fine-grained
+[`isRetryable(Exception)`](#isretryable) override — when both are present,
+**both must pass** (see [`retryOn`](#retryon)). Retry composes with
+`continueOnJobExecuteFail`: once retries are exhausted the chain behaves exactly
+as it would for a non-retry job.
+
+Retry is built on the finalizer, so it also covers **uncatchable** failures
+(e.g. governor `LimitException`) that no `try/catch` can see: the finalizer runs
+in a fresh transaction, classifies the failure from
+`FinalizerContext.getException()`, and re-enqueues if eligible. Note that an
+uncatchable failure rolls back the whole transaction automatically — your
+`rollbackOnJobExecuteFail` / `continueOnJobExecuteFail` flags do not run in that
+case because there is no catch.
 
 When the job exhausts its retries, the per-attempt history (attempt number,
 exception, computed delay) is aggregated into `AsyncResult__c.RetryHistory__c`
@@ -321,8 +338,16 @@ Async.queueable(new MyQueueableJob())
 
 #### retryOn
 
-Restricts retry to the listed exception types. Call multiple times to add more.
-When omitted, retry applies to any exception.
+Restricts retry to the listed exception types (matched by full name or short
+name, so `CalloutException` matches `System.CalloutException`). Call multiple
+times to add more. When omitted, retry applies to any exception type.
+
+`retryOn(...)` and [`isRetryable(Exception)`](#isretryable) are **two
+independent gates that are AND-ed**: the type filter is coarse, the override is
+fine-grained, and a retry happens only when **both** pass. This means the
+override can only **narrow** the type filter, never broaden it — if `retryOn`
+excludes a type, no override can make it retryable. For pure-OR logic, omit
+`retryOn` and do all matching inside `isRetryable`.
 
 **Signature**
 
@@ -697,4 +722,80 @@ void skipJob(String customJobId);
 
 ```apex
 Async.skipJob(notificationsResult.customJobId);
+```
+
+### Override hooks
+
+These are `public virtual` methods you override on your own `QueueableJob`
+subclass — they are not fluent builder calls.
+
+#### isRetryable
+
+Override to decide, per exception, whether a failed job should retry. The
+default returns `true` (every exception is retryable, subject to
+[`retryOn`](#retryon) and the [`retry`](#retry) cap). The framework evaluates it
+where the live exception exists — at the catch site for handled exceptions, or
+from the finalizer's `FinalizerContext.getException()` for uncatchable ones — so
+you get the full exception object (`getMessage()`, `getCause()`, `instanceof`),
+not just a type name. This is the place to distinguish transient failures that
+share a type, e.g. retry an `"UNABLE_TO_LOCK_ROW"` `DmlException` but not a
+validation-rule one.
+
+Combined with [`retryOn`](#retryon), both must pass (AND). Keep the override
+**side-effect free** (no DML/SOQL) — it runs inside the failure path, and if it
+throws, the framework treats the job as not retryable and records the override
+failure in `RetryHistory__c`.
+
+**Signature**
+
+```apex
+public virtual Boolean isRetryable(Exception ex);
+```
+
+**Example**
+
+```apex
+public class SyncContactsJob extends QueueableJob {
+  public override void work() {
+    /* ... */
+  }
+
+  public override Boolean isRetryable(Exception ex) {
+    // retryOn(DmlException.class) gates the type; veto the permanent ones here
+    return !(ex instanceof DmlException &&
+    ex.getMessage().containsIgnoreCase('FIELD_CUSTOM_VALIDATION'));
+  }
+}
+```
+
+#### resetForRetry
+
+Override to reset transient state before a retry runs. The framework re-enqueues
+a **clone** of the failed job; a shallow clone copies object members by
+reference, so anything that accumulated state during the failed run (most
+commonly a Unit of Work holding registered records) is carried into the retry
+and can cause duplicate or stale DML. `resetForRetry()` runs on the fresh retry
+clone, after the framework has reset its own bookkeeping — recreate or clear
+your transient members here. Default is a no-op.
+
+**Signature**
+
+```apex
+public virtual void resetForRetry();
+```
+
+**Example**
+
+```apex
+public class SyncContactsJob extends QueueableJob {
+  private MyUnitOfWork uow = new MyUnitOfWork();
+
+  public override void work() {
+    /* registers into uow, then commits */
+  }
+
+  public override void resetForRetry() {
+    this.uow = new MyUnitOfWork(); // fresh, empty — drop the failed run's registrations
+  }
+}
 ```

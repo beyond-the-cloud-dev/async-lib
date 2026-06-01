@@ -59,10 +59,9 @@ public inherited sharing class QueueableChain {
             System.debug(currentJob.uniqueName);
             currentJob.work();
         } catch (Exception ex) {
-            // Capture as Strings so the failure survives serialization into the finalizer.
-            currentJob.hasFailed = true;
-            currentJob.failedExceptionType = ex.getTypeName();
-            currentJob.failedExceptionMessage = ex.getMessage();
+            // The live exception only exists here; classify now and capture metadata as a
+            // FailureInfo so the decision + audit fields survive serialization into the finalizer.
+            currentJob.recordFailure(ex);
             if (currentJob.rollbackOnJobExecuteFail) {
                 Database.rollback(sp);
                 Database.releaseSavepoint(sp);
@@ -97,10 +96,13 @@ public inherited sharing class QueueableChain {
         if (ctx?.getResult() != ParentJobResult.UNHANDLED_EXCEPTION || job.hasFailed) {
             return;
         }
-        job.hasFailed = true;
-        if (String.isBlank(job.failedExceptionType) && ctx.getException() != null) {
-            job.failedExceptionType = ctx.getException().getTypeName();
-            job.failedExceptionMessage = ctx.getException().getMessage();
+        // Uncatchable failures (e.g. LimitException) never hit the catch in executeCurrentJob;
+        // the finalizer is the only place their exception is reachable.
+        Exception ex = ctx.getException();
+        if (ex != null) {
+            job.recordFailure(ex);
+        } else {
+            job.recordUnknownFailure();
         }
     }
 
@@ -127,10 +129,11 @@ public inherited sharing class QueueableChain {
         retryJob.isProcessed = false;
         retryJob.resultCreated = false;
         retryJob.hasFailed = false;
-        retryJob.failedExceptionType = null;
-        retryJob.failedExceptionMessage = null;
+        retryJob.failure = null;
+        retryJob.retryDecision = false;
         retryJob.finalizerCtx = null;
         retryJob.retryHistory = previousJob.retryHistory;
+        retryJob.resetForRetry();
 
         jobs.add(0, retryJob);
         enqueueNextJobIfAny();
@@ -195,8 +198,8 @@ public inherited sharing class QueueableChain {
         } else if (job.hasFailed) {
             result.Status__c = QueueableManager.STATUS_FAILED;
             result.Result__c = job.finalizerCtx?.getResult()?.name();
-            result.ExceptionType__c = job.failedExceptionType;
-            result.ExceptionMessage__c = job.failedExceptionMessage;
+            result.ExceptionType__c = job.failure?.type;
+            result.ExceptionMessage__c = job.failure?.message;
         } else {
             result.Status__c = QueueableManager.STATUS_COMPLETED;
             result.Result__c = job.finalizerCtx?.getResult()?.name();

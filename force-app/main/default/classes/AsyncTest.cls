@@ -1831,63 +1831,56 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldRetryOnAnyExceptionByDefault() {
         QueueableJobTest1 job = new QueueableJobTest1();
-        job.hasFailed = true;
-        job.failedExceptionType = 'System.DmlException';
         job.maxRetries = 2;
-        job.retryAttempt = 0;
+        job.recordFailure(new CustomException('boom'));
 
         Assert.isTrue(job.canRetry());
+        Assert.areEqual('boom', job.failure.message, 'Failure metadata is captured.');
     }
 
     @IsTest
-    private static void shouldRetryLimitExceptionByDefault() {
+    private static void shouldMatchAnyTypeWhenNoFilter() {
         QueueableJobTest1 job = new QueueableJobTest1();
-        job.hasFailed = true;
-        job.failedExceptionType = 'System.LimitException';
-        job.maxRetries = 3;
 
-        Assert.isTrue(job.canRetry(), 'With no retryOn filter, every exception is retried.');
+        Assert.isTrue(
+            job.matchesRetryOnTypes('System.LimitException'),
+            'With no retryOn filter, every type matches.'
+        );
     }
 
     @IsTest
-    private static void shouldRetryLimitExceptionWhenWhitelisted() {
+    private static void shouldMatchWhitelistedType() {
         QueueableJobTest1 job = new QueueableJobTest1();
-        job.hasFailed = true;
-        job.failedExceptionType = 'System.LimitException';
-        job.maxRetries = 3;
         job.retryOnExceptionTypes = new Set<String>{ 'System.LimitException' };
 
-        Assert.isTrue(job.canRetry());
+        Assert.isTrue(job.matchesRetryOnTypes('System.LimitException'));
     }
 
     @IsTest
-    private static void shouldNotRetryExceptionOutsideWhitelist() {
+    private static void shouldNotMatchTypeOutsideWhitelist() {
         QueueableJobTest1 job = new QueueableJobTest1();
-        job.hasFailed = true;
-        job.failedExceptionType = 'System.CalloutException';
         job.maxRetries = 3;
         job.retryOnExceptionTypes = new Set<String>{ 'System.DmlException' };
 
-        Assert.isFalse(job.canRetry());
+        Assert.isFalse(job.matchesRetryOnTypes('System.CalloutException'));
+
+        job.recordFailure(new CustomException('outside whitelist'));
+        Assert.isFalse(job.canRetry(), 'Type outside the allowlist must not retry.');
     }
 
     @IsTest
-    private static void shouldRetryExceptionMatchingShortName() {
+    private static void shouldMatchTypeByShortName() {
         QueueableJobTest1 job = new QueueableJobTest1();
-        job.hasFailed = true;
-        job.failedExceptionType = 'System.DmlException';
-        job.maxRetries = 3;
         job.retryOnExceptionTypes = new Set<String>{ 'DmlException' };
 
-        Assert.isTrue(job.canRetry());
+        Assert.isTrue(job.matchesRetryOnTypes('System.DmlException'));
     }
 
     @IsTest
     private static void shouldNotRetryWhenAttemptsExhausted() {
         QueueableJobTest1 job = new QueueableJobTest1();
-        job.hasFailed = true;
-        job.failedExceptionType = 'System.DmlException';
         job.maxRetries = 2;
+        job.recordFailure(new CustomException('boom'));
         job.retryAttempt = 2;
 
         Assert.isFalse(job.canRetry());
@@ -1896,10 +1889,153 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldNotRetryWhenNotFailed() {
         QueueableJobTest1 job = new QueueableJobTest1();
-        job.hasFailed = false;
         job.maxRetries = 2;
 
         Assert.isFalse(job.canRetry());
+    }
+
+    @IsTest
+    private static void shouldVetoRetryViaIsRetryableOverride() {
+        NonRetryableJob job = new NonRetryableJob();
+        job.maxRetries = 3;
+        job.recordFailure(new CustomException('boom'));
+
+        Assert.isFalse(job.retryDecision, 'Override vetoed the retry.');
+        Assert.isFalse(job.canRetry());
+    }
+
+    @IsTest
+    private static void shouldRequireBothRetryOnAndIsRetryable() {
+        MessageVetoJob typeMatchedButVetoed = new MessageVetoJob();
+        typeMatchedButVetoed.maxRetries = 2;
+        typeMatchedButVetoed.retryOnExceptionTypes = new Set<String>{ 'CustomException' };
+        typeMatchedButVetoed.recordFailure(new CustomException('permanent failure'));
+        Assert.isFalse(
+            typeMatchedButVetoed.canRetry(),
+            'Type matched but isRetryable vetoed by message — AND blocks.'
+        );
+
+        MessageVetoJob bothPass = new MessageVetoJob();
+        bothPass.maxRetries = 2;
+        bothPass.retryOnExceptionTypes = new Set<String>{ 'CustomException' };
+        bothPass.recordFailure(new CustomException('transient blip'));
+        Assert.isTrue(bothPass.canRetry(), 'Both gates pass.');
+
+        MessageVetoJob typeExcluded = new MessageVetoJob();
+        typeExcluded.maxRetries = 2;
+        typeExcluded.retryOnExceptionTypes = new Set<String>{ 'System.DmlException' };
+        typeExcluded.recordFailure(new CustomException('transient blip'));
+        Assert.isFalse(
+            typeExcluded.canRetry(),
+            'retryOn excluded the type; AND can only narrow, never broaden.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotRetryWhenIsRetryableOverrideThrows() {
+        ThrowingClassifierJob job = new ThrowingClassifierJob();
+        job.maxRetries = 2;
+        job.recordFailure(new CustomException('original'));
+
+        Assert.isFalse(job.retryDecision, 'A throwing classifier must not retry.');
+        Assert.isFalse(job.canRetry());
+        Assert.isTrue(
+            String.isNotBlank(job.retryHistory),
+            'The override failure is recorded in retry history.'
+        );
+    }
+
+    @IsTest
+    private static void shouldClassifyUncatchableExceptionFromFinalizer() {
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        job.maxRetries = 1;
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setException(new CustomException('uncatchable'))
+        );
+        Test.stopTest();
+
+        Assert.isTrue(job.hasFailed, 'Reconcile marks the job failed from the finalizer.');
+        Assert.areEqual(
+            'uncatchable',
+            job.failure.message,
+            'Exception captured from the finalizer.'
+        );
+        Assert.areEqual(2, chain.jobs.size(), 'A finalizer-detected failure enqueues a retry.');
+    }
+
+    @IsTest
+    private static void shouldRetryUnknownFailureWhenNoTypeFilter() {
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        job.maxRetries = 1;
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        Assert.areEqual(
+            2,
+            chain.jobs.size(),
+            'No type filter: an unidentifiable failure is retried by default policy.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotRetryUnknownFailureWhenTypeFilterSet() {
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        job.maxRetries = 1;
+        job.retryOnExceptionTypes = new Set<String>{ 'System.DmlException' };
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        Assert.isTrue(job.hasFailed);
+        Assert.areEqual(
+            1,
+            chain.jobs.size(),
+            'Type filter set but failure unidentifiable: cannot confirm membership, so no retry.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRunResetForRetryOnRetryClone() {
+        ResettableRetryJob job = new ResettableRetryJob();
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        job.maxRetries = 2;
+        job.continueOnJobExecuteFail = true;
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+        Test.stopTest();
+
+        Assert.areEqual(2, chain.jobs.size(), 'A retry clone should have been inserted.');
+        Assert.isTrue(
+            ((ResettableRetryJob) chain.jobs[0]).wasReset,
+            'resetForRetry() must run on the retry clone.'
+        );
     }
 
     @IsTest
@@ -2665,6 +2801,40 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private class StopChainFinalizer extends QueueableJob.Finalizer {
         public override void work() {
             Async.stopChain();
+        }
+    }
+
+    private class NonRetryableJob extends QueueableJob {
+        public override void work() {
+        }
+        public override Boolean isRetryable(Exception ex) {
+            return false;
+        }
+    }
+
+    private class MessageVetoJob extends QueueableJob {
+        public override void work() {
+        }
+        public override Boolean isRetryable(Exception ex) {
+            return !ex.getMessage().containsIgnoreCase('permanent');
+        }
+    }
+
+    private class ThrowingClassifierJob extends QueueableJob {
+        public override void work() {
+        }
+        public override Boolean isRetryable(Exception ex) {
+            throw new CustomException('classifier blew up');
+        }
+    }
+
+    private class ResettableRetryJob extends QueueableJob {
+        public Boolean wasReset = false;
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+        public override void resetForRetry() {
+            this.wasReset = true;
         }
     }
 

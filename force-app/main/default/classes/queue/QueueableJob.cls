@@ -30,8 +30,8 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public Backoff backoff;
     public Set<String> retryOnExceptionTypes;
     public Boolean hasFailed = false;
-    public String failedExceptionType;
-    public String failedExceptionMessage;
+    public FailureInfo failure;
+    public Boolean retryDecision = false;
     public String retryHistory;
 
     public String parentCustomJobId;
@@ -46,6 +46,27 @@ public abstract class QueueableJob implements Queueable, Comparable {
     private QueueableChain chain;
 
     public abstract void work();
+
+    public virtual Boolean isRetryable(Exception ex) {
+        return true;
+    }
+
+    public virtual void resetForRetry() {
+    }
+
+    public virtual QueueableJob cloneForDeepCopy() {
+        String fullName = this.className;
+        Type resolvedType = Type.forName(fullName);
+
+        if (resolvedType == null && fullName.contains('.')) {
+            resolvedType = Type.forName(
+                fullName.substringBefore('.'),
+                fullName.substringAfter('.')
+            );
+        }
+
+        return (QueueableJob) JSON.deserialize(JSON.serialize(this), resolvedType);
+    }
 
     public void execute(QueueableContext ctx) {
         chain.execute(ctx);
@@ -92,11 +113,23 @@ public abstract class QueueableJob implements Queueable, Comparable {
     }
 
     public Boolean canRetry() {
-        return hasFailed && retryAttempt < maxRetries && isRetryableException();
+        return hasFailed && retryAttempt < maxRetries && retryDecision;
     }
 
-    private Boolean isRetryableException() {
-        if (String.isBlank(failedExceptionType)) {
+    public void recordFailure(Exception ex) {
+        this.hasFailed = true;
+        this.failure = new FailureInfo(ex.getTypeName(), ex.getMessage());
+        this.retryDecision = matchesRetryOnTypes(ex.getTypeName()) && safeIsRetryable(ex);
+    }
+
+    public void recordUnknownFailure() {
+        this.hasFailed = true;
+        // No exception object to classify: retry only when no type restriction was set.
+        this.retryDecision = retryOnExceptionTypes == null || retryOnExceptionTypes.isEmpty();
+    }
+
+    public Boolean matchesRetryOnTypes(String typeName) {
+        if (String.isBlank(typeName)) {
             return false;
         }
         if (retryOnExceptionTypes == null || retryOnExceptionTypes.isEmpty()) {
@@ -104,8 +137,8 @@ public abstract class QueueableJob implements Queueable, Comparable {
         }
         for (String allowedType : retryOnExceptionTypes) {
             if (
-                failedExceptionType.equalsIgnoreCase(allowedType) ||
-                failedExceptionType.endsWithIgnoreCase('.' + allowedType)
+                typeName.equalsIgnoreCase(allowedType) ||
+                typeName.endsWithIgnoreCase('.' + allowedType)
             ) {
                 return true;
             }
@@ -113,15 +146,35 @@ public abstract class QueueableJob implements Queueable, Comparable {
         return false;
     }
 
+    public Boolean safeIsRetryable(Exception ex) {
+        try {
+            return isRetryable(ex);
+        } catch (Exception overrideEx) {
+            appendRetryHistoryLine(
+                'isRetryable() override threw ' +
+                    overrideEx.getTypeName() +
+                    ': ' +
+                    overrideEx.getMessage() +
+                    ' — not retried'
+            );
+            return false;
+        }
+    }
+
     public void recordRetryHistory(Integer attemptNumber, Integer delayMinutes) {
-        String line =
+        String cause = failure != null
+            ? failure.type + ' - ' + failure.message
+            : 'exception unavailable';
+        appendRetryHistoryLine(
             'Attempt ' +
-            attemptNumber +
-            ': ' +
-            failedExceptionType +
-            ' - ' +
-            failedExceptionMessage +
-            (delayMinutes != null ? ' (retry in ' + delayMinutes + 'm)' : ' (no further retry)');
+                attemptNumber +
+                ': ' +
+                cause +
+                (delayMinutes != null ? ' (retry in ' + delayMinutes + 'm)' : ' (no further retry)')
+        );
+    }
+
+    private void appendRetryHistoryLine(String line) {
         retryHistory = String.isBlank(retryHistory) ? line : retryHistory + '\n' + line;
     }
 
@@ -143,20 +196,6 @@ public abstract class QueueableJob implements Queueable, Comparable {
         return this.clone();
     }
 
-    public virtual QueueableJob cloneForDeepCopy() {
-        String fullName = this.className;
-        Type resolvedType = Type.forName(fullName);
-
-        if (resolvedType == null && fullName.contains('.')) {
-            resolvedType = Type.forName(
-                fullName.substringBefore('.'),
-                fullName.substringAfter('.')
-            );
-        }
-
-        return (QueueableJob) JSON.deserialize(JSON.serialize(this), resolvedType);
-    }
-
     private String getFullClassName(Object job) {
         String result;
         try {
@@ -167,6 +206,16 @@ public abstract class QueueableJob implements Queueable, Comparable {
             result = message.substringBefore(' to Datetime');
         }
         return result;
+    }
+
+    public class FailureInfo {
+        public String type;
+        public String message;
+
+        public FailureInfo(String type, String message) {
+            this.type = type;
+            this.message = message;
+        }
     }
 
     public abstract class AllowsCallouts extends QueueableJob implements Database.AllowsCallouts {

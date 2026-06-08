@@ -2768,6 +2768,185 @@ private class AsyncTest implements Database.Batchable<SObject> {
         insert new Account(Name = 'Batch Complete', Description = 'Job: ' + bc.getJobId());
     }
 
+    @IsTest
+    private static void shouldOrderFinalizerBeforeRegularJob() {
+        QueueableJobTest1 finalizerJob = new QueueableJobTest1();
+        finalizerJob.parentCustomJobId = 'parent';
+        QueueableJobTest1 regularJob = new QueueableJobTest1();
+
+        Assert.areEqual(-1, finalizerJob.compareTo(regularJob), 'Finalizer sorts first.');
+        Assert.areEqual(
+            1,
+            regularJob.compareTo(finalizerJob),
+            'Regular job sorts after finalizer.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotMatchBlankExceptionType() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+
+        Assert.isFalse(job.matchesRetryOnTypes(null), 'A null type name never matches.');
+        Assert.isFalse(job.matchesRetryOnTypes(''), 'A blank type name never matches.');
+    }
+
+    @IsTest
+    private static void shouldExposeQueueableJobContextAccessors() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.queueableCtx = new AsyncMock.MockQueueableContext();
+
+        Async.QueueableJobContext ctx = new Async.QueueableJobContext();
+        ctx.currentJob = job;
+
+        Assert.areEqual(job.queueableCtx, ctx.queueableCtx, 'Exposes the job queueable context.');
+        Assert.isNull(ctx.finalizerCtx, 'Finalizer context is null when none was attached.');
+    }
+
+    @IsTest
+    private static void shouldBuildFinishedDependency() {
+        Async.Dependency dependency = Async.afterPrevious().finished();
+
+        Assert.areEqual(
+            Async.Outcome.COMPLETED,
+            dependency.requiredOutcome,
+            'finished() requires the COMPLETED outcome.'
+        );
+    }
+
+    @IsTest
+    private static void shouldSetBackoffViaBuilder() {
+        Test.startTest();
+        Async.Result result = Async.queueable(new QueueableJobTest1())
+            .retry(2)
+            .backoff(Backoff.fixed(5))
+            .enqueue();
+        Test.stopTest();
+
+        Assert.isNotNull(result.job.backoff, 'backoff() registers a policy on the job.');
+        Assert.areEqual(5, result.job.backoff.delayMinutes(1));
+    }
+
+    @IsTest
+    private static void shouldRejectNullChain() {
+        try {
+            QueueableManager.get().setChain(null);
+            Assert.fail('Should reject a null chain.');
+        } catch (Exception ex) {
+            Assert.isNotNull(ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldRejectNullFinalizerJob() {
+        try {
+            QueueableManager.get().attachFinalizer(null);
+            Assert.fail('Should reject a null finalizer job.');
+        } catch (Exception ex) {
+            Assert.isNotNull(ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldRejectNullChainedJob() {
+        try {
+            QueueableManager.get().chain(null);
+            Assert.fail('Should reject a null chained job.');
+        } catch (Exception ex) {
+            Assert.isNotNull(ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldReturnEarlyWhenChainHasNoJobs() {
+        QueueableChain chain = new QueueableChain();
+        QueueableManager.get().setChain(chain);
+
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+
+        Assert.areEqual(0, chain.jobs.size(), 'An empty chain has nothing to execute.');
+    }
+
+    @IsTest
+    private static void shouldApplyCmdtRetryWithBlankExceptionList() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                MaxRetries__c = 2,
+                RetryableExceptions__c = '   '
+            )
+        };
+        chain.addJob(job);
+
+        Assert.areEqual(2, job.maxRetries);
+        Assert.isNull(
+            job.retryOnExceptionTypes,
+            'A blank CMDT exception list leaves no type filter.'
+        );
+    }
+
+    @IsTest
+    private static void shouldLabelSkipReasonWithRawIdWhenTargetNotInChain() {
+        SuccessfulQueueableTest jobA = new SuccessfulQueueableTest();
+        SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
+        jobB.dependencies = new List<Async.Dependency>{
+            dependencyOn('ghost-custom-job-id', Async.Outcome.SUCCESS)
+        };
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(jobA);
+        chain.addJob(jobB);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+        Test.stopTest();
+
+        Assert.isTrue(jobB.isProcessed, 'A job depending on an unknown id is skipped.');
+        Assert.isTrue(
+            jobB.skipReason.contains('ghost-custom-job-id'),
+            'An unresolved target falls back to its raw custom job id.'
+        );
+    }
+
+    @IsTest
+    private static void shouldThrowWhenDeepCloneClassCannotBeResolved() {
+        DeepCloneFailJob job = new DeepCloneFailJob();
+        job.deepClone = true;
+
+        try {
+            job.cloneJob();
+            Assert.fail('A failed deep clone must surface a helpful error.');
+        } catch (Exception ex) {
+            Assert.isTrue(ex.getMessage().contains('deepClone'));
+        }
+    }
+
+    @IsTest
+    private static void shouldDeepCloneJobWithDottedClassName() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.deepClone = true;
+
+        try {
+            Assert.isNotNull(job.cloneJob());
+        } catch (Exception ex) {
+            Assert.isTrue(ex.getMessage().contains('deepClone'));
+        }
+    }
+
+    private class DeepCloneFailJob extends QueueableJob {
+        public override void work() {
+        }
+        public override QueueableJob cloneForDeepCopy() {
+            throw new JSONException('forced deep clone failure');
+        }
+    }
+
     private class SuccessfulQueueableTest extends QueueableJob {
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);

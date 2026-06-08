@@ -24,6 +24,7 @@ TARGET_FILES=(
     "force-app/main/default/classes/Async.cls"
     "force-app/main/default/classes/queue/QueueableJob.cls"
     "force-app/main/default/classes/queue/QueueableBuilder.cls"
+    "force-app/main/default/classes/queue/Backoff.cls"
     "force-app/main/default/classes/batch/BatchableBuilder.cls"
     "force-app/main/default/classes/schedule/SchedulableBuilder.cls"
     "force-app/main/default/classes/schedule/CronBuilder.cls"

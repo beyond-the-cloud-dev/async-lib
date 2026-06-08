@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>DependsOnResult__c</fullName>
+    <description>The result of the dependency that decided this job's fate (for a skip, the dependency that blocked it). Navigate here to see what this job was waiting on.</description>
+    <label>Depends On Result</label>
+    <referenceTo>AsyncResult__c</referenceTo>
+    <relationshipLabel>Dependent Results</relationshipLabel>
+    <relationshipName>DependentResults</relationshipName>
+    <required>false</required>
+    <type>Lookup</type>
+</CustomField>

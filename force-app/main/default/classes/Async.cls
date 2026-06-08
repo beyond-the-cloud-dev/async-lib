@@ -15,6 +15,18 @@ public inherited sharing class Async {
         return new SchedulableBuilder(scheduleJob);
     }
 
+    public static Dependency after(String customJobId) {
+        return new Dependency().onCustomJobId(customJobId);
+    }
+
+    public static Dependency after(Result dependency) {
+        return new Dependency().onCustomJobId(dependency?.customJobId);
+    }
+
+    public static Dependency afterPrevious() {
+        return new Dependency().onPrevious();
+    }
+
     public static QueueableJobContext getQueueableJobContext() {
         return QueueableManager.get().getQueueableJobContext();
     }
@@ -25,6 +37,14 @@ public inherited sharing class Async {
 
     public static QueueableChainState getCurrentQueueableChainState() {
         return new QueueableChainState().setCurrentQueueableChainState();
+    }
+
+    public static void stopChain() {
+        QueueableManager.get().stopChain();
+    }
+
+    public static void skipJob(String customJobId) {
+        QueueableManager.get().skipJob(customJobId);
     }
 
     public class QueueableJobContext {
@@ -124,6 +144,43 @@ public inherited sharing class Async {
         QUEUEABLE,
         BATCHABLE,
         SCHEDULABLE
+    }
+
+    public enum Outcome {
+        SUCCESS,
+        FAILURE,
+        COMPLETED
+    }
+
+    public class Dependency {
+        public Boolean previous = false;
+        public String resolvedTargetCustomJobId;
+        public Outcome requiredOutcome;
+
+        public Dependency onCustomJobId(String customJobId) {
+            this.resolvedTargetCustomJobId = customJobId;
+            return this;
+        }
+
+        public Dependency onPrevious() {
+            this.previous = true;
+            return this;
+        }
+
+        public Dependency succeeded() {
+            this.requiredOutcome = Outcome.SUCCESS;
+            return this;
+        }
+
+        public Dependency failed() {
+            this.requiredOutcome = Outcome.FAILURE;
+            return this;
+        }
+
+        public Dependency finished() {
+            this.requiredOutcome = Outcome.COMPLETED;
+            return this;
+        }
     }
 
     public class IllegalArgumentException extends Exception {

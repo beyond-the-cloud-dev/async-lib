@@ -19,6 +19,21 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public Boolean deepClone = false;
     public QueueableContext queueableCtx;
 
+    public List<Async.Dependency> dependencies;
+    public String chainId;
+    public String skipStatus;
+    public String skipReason;
+    public Boolean resultCreated = false;
+
+    public Integer maxRetries = 0;
+    public Integer retryAttempt = 0;
+    public Backoff backoff;
+    public Set<String> retryOnExceptionTypes;
+    public Boolean hasFailed = false;
+    public FailureInfo failure;
+    public Boolean retryDecision = false;
+    public String retryHistory;
+
     public String parentCustomJobId;
     public FinalizerContext finalizerCtx;
     public String mockId;
@@ -31,6 +46,27 @@ public abstract class QueueableJob implements Queueable, Comparable {
     private QueueableChain chain;
 
     public abstract void work();
+
+    public virtual Boolean isRetryable(Exception ex) {
+        return true;
+    }
+
+    public virtual void resetForRetry() {
+    }
+
+    public virtual QueueableJob cloneForDeepCopy() {
+        String fullName = this.className;
+        Type resolvedType = Type.forName(fullName);
+
+        if (resolvedType == null && fullName.contains('.')) {
+            resolvedType = Type.forName(
+                fullName.substringBefore('.'),
+                fullName.substringAfter('.')
+            );
+        }
+
+        return (QueueableJob) JSON.deserialize(JSON.serialize(this), resolvedType);
+    }
 
     public void execute(QueueableContext ctx) {
         chain.execute(ctx);
@@ -76,12 +112,70 @@ public abstract class QueueableJob implements Queueable, Comparable {
         this.uniqueName = this.uniqueName + '::' + String.valueOf(chainCounter);
     }
 
-    public void createAsyncResult() {
-        insert new AsyncResult__c(
-            SalesforceJobId__c = salesforceJobId,
-            CustomJobId__c = customJobId,
-            Result__c = finalizerCtx.getResult().toString()
+    public Boolean canRetry() {
+        return hasFailed && retryAttempt < maxRetries && retryDecision;
+    }
+
+    public void recordFailure(Exception ex) {
+        this.hasFailed = true;
+        this.failure = new FailureInfo(ex.getTypeName(), ex.getMessage());
+        this.retryDecision = matchesRetryOnTypes(ex.getTypeName()) && safeIsRetryable(ex);
+    }
+
+    public void recordUnknownFailure() {
+        this.hasFailed = true;
+        // No exception object to classify: retry only when no type restriction was set.
+        this.retryDecision = retryOnExceptionTypes == null || retryOnExceptionTypes.isEmpty();
+    }
+
+    public Boolean matchesRetryOnTypes(String typeName) {
+        if (String.isBlank(typeName)) {
+            return false;
+        }
+        if (retryOnExceptionTypes == null || retryOnExceptionTypes.isEmpty()) {
+            return true;
+        }
+        for (String allowedType : retryOnExceptionTypes) {
+            if (
+                typeName.equalsIgnoreCase(allowedType) ||
+                typeName.endsWithIgnoreCase('.' + allowedType)
+            ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Boolean safeIsRetryable(Exception ex) {
+        try {
+            return isRetryable(ex);
+        } catch (Exception overrideEx) {
+            appendRetryHistoryLine(
+                'isRetryable() override threw ' +
+                    overrideEx.getTypeName() +
+                    ': ' +
+                    overrideEx.getMessage() +
+                    ' — not retried'
+            );
+            return false;
+        }
+    }
+
+    public void recordRetryHistory(Integer attemptNumber, Integer delayMinutes) {
+        String cause = failure != null
+            ? failure.type + ' - ' + failure.message
+            : 'exception unavailable';
+        appendRetryHistoryLine(
+            'Attempt ' +
+                attemptNumber +
+                ': ' +
+                cause +
+                (delayMinutes != null ? ' (retry in ' + delayMinutes + 'm)' : ' (no further retry)')
         );
+    }
+
+    private void appendRetryHistoryLine(String line) {
+        retryHistory = String.isBlank(retryHistory) ? line : retryHistory + '\n' + line;
     }
 
     public QueueableJob cloneJob() {
@@ -90,28 +184,16 @@ public abstract class QueueableJob implements Queueable, Comparable {
                 return cloneForDeepCopy();
             } catch (JSONException e) {
                 throw new IllegalArgumentException(
-                    'deepClone() failed for the job "' + className + '". ' +
-                    'When using a namespaced package, override cloneForDeepCopy() in your QueueableJob subclass: ' +
-                    'public override QueueableJob cloneForDeepCopy() { ' +
-                    'return (QueueableJob) JSON.deserialize(JSON.serialize(this), YourClassName.class); }'
+                    'deepClone() failed for the job "' +
+                        className +
+                        '". ' +
+                        'When using a namespaced package, override cloneForDeepCopy() in your QueueableJob subclass: ' +
+                        'public override QueueableJob cloneForDeepCopy() { ' +
+                        'return (QueueableJob) JSON.deserialize(JSON.serialize(this), YourClassName.class); }'
                 );
             }
         }
         return this.clone();
-    }
-
-    public virtual QueueableJob cloneForDeepCopy() {
-        String fullName = this.className;
-        Type resolvedType = Type.forName(fullName);
-
-        if (resolvedType == null && fullName.contains('.')) {
-            resolvedType = Type.forName(
-                fullName.substringBefore('.'),
-                fullName.substringAfter('.')
-            );
-        }
-
-        return (QueueableJob) JSON.deserialize(JSON.serialize(this), resolvedType);
     }
 
     private String getFullClassName(Object job) {
@@ -124,6 +206,16 @@ public abstract class QueueableJob implements Queueable, Comparable {
             result = message.substringBefore(' to Datetime');
         }
         return result;
+    }
+
+    public class FailureInfo {
+        public String type;
+        public String message;
+
+        public FailureInfo(String type, String message) {
+            this.type = type;
+            this.message = message;
+        }
     }
 
     public abstract class AllowsCallouts extends QueueableJob implements Database.AllowsCallouts {

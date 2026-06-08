@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ActualOutcome__c</fullName>
+    <description>The outcome the decisive dependency actually had (NOT_RUN if the dependency never ran).</description>
+    <label>Actual Outcome</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>SUCCESS</fullName>
+                <default>false</default>
+                <label>Success</label>
+            </value>
+            <value>
+                <fullName>FAILURE</fullName>
+                <default>false</default>
+                <label>Failure</label>
+            </value>
+            <value>
+                <fullName>NOT_RUN</fullName>
+                <default>false</default>
+                <label>Not Run</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

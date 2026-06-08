@@ -1,8 +1,8 @@
 {
   "packageDirectories": [
     {
-      "versionName": "Async Lib 2.5.0",
-      "versionNumber": "2.5.0.NEXT",
+      "versionName": "Async Lib 2.6.0",
+      "versionNumber": "2.6.0.NEXT",
       "path": "force-app",
       "default": true,
       "package": "Async Lib",
@@ -12,11 +12,12 @@
   "name": "async-lib",
   "namespace": "btcdev",
   "sfdcLoginUrl": "https://login.salesforce.com",
-  "sourceApiVersion": "65.0",
+  "sourceApiVersion": "66.0",
   "packageAliases": {
     "Async Lib": "0HoP600000002JZKAY",
     "Async Lib@2.4.0-4": "04tP6000002cgEnIAI",
     "Async Lib@2.5.0-1": "04tP60000038pYHIAY",
-    "Async Lib@2.5.0": "04tP60000038pYHIAY"
+    "Async Lib@2.5.0": "04tP60000038pYHIAY",
+    "Async Lib@2.6.0-1": "04tP6000003Hg17IAC"
   }
 }

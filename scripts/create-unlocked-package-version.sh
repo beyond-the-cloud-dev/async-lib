@@ -24,23 +24,37 @@ TARGET_FILES=(
     "force-app/main/default/classes/Async.cls"
     "force-app/main/default/classes/queue/QueueableJob.cls"
     "force-app/main/default/classes/queue/QueueableBuilder.cls"
+    "force-app/main/default/classes/queue/Backoff.cls"
     "force-app/main/default/classes/batch/BatchableBuilder.cls"
     "force-app/main/default/classes/schedule/SchedulableBuilder.cls"
     "force-app/main/default/classes/schedule/CronBuilder.cls"
     "force-app/main/default/classes/mocks/AsyncMock.cls"
 )
 
+# sed -i.bak is portable across GNU (Linux/CI) and BSD (macOS) sed; the bare
+# `sed -i ''` form only works on BSD and breaks on GNU.
+sedi() {
+    local expr="$1" file="$2"
+    sed -i.bak "$expr" "$file"
+    rm -f "$file.bak"
+}
+
 echo "Adding global modifiers to API surface classes..."
 for file in "${TARGET_FILES[@]}"; do
-    sed -i '' 's/public /global /g' "$file"
+    sedi 's/public /global /g' "$file"
 done
 
 echo "Reverting internal-type references back to public..."
-sed -i '' 's/global QueueableManager\.EnqueueType/public QueueableManager.EnqueueType/g' \
+sedi 's/global QueueableManager\.EnqueueType/public QueueableManager.EnqueueType/g' \
     "force-app/main/default/classes/Async.cls"
-sed -i '' 's/global QueueableChainState setEnqueueType/public QueueableChainState setEnqueueType/g' \
+sedi 's/global QueueableChainState setEnqueueType/public QueueableChainState setEnqueueType/g' \
     "force-app/main/default/classes/Async.cls"
-sed -i '' 's/global void enqueue(QueueableChain chain)/public void enqueue(QueueableChain chain)/g' \
+sedi 's/global void enqueue(QueueableChain chain)/public void enqueue(QueueableChain chain)/g' \
+    "force-app/main/default/classes/queue/QueueableJob.cls"
+
+# The blanket rename rewrites the "public override ..." guidance string inside
+# QueueableJob.cloneJob(); restore it so consumers get correct override syntax.
+sedi 's/global override QueueableJob cloneForDeepCopy/public override QueueableJob cloneForDeepCopy/g' \
     "force-app/main/default/classes/queue/QueueableJob.cls"
 
 echo "Creating unlocked package version..."

@@ -1,11 +1,31 @@
 public inherited sharing class QueueableBuilder {
     private QueueableJob job;
+    private String lastChainedCustomJobId;
 
     public QueueableBuilder(QueueableJob job) {
         this.job = job.clone();
     }
 
     public QueueableBuilder() {
+    }
+
+    public QueueableBuilder dependsOn(Async.Dependency dependency) {
+        if (dependency == null || dependency.requiredOutcome == null) {
+            throw new IllegalArgumentException(QueueableManager.ERROR_MESSAGE_INVALID_DEPENDENCY);
+        }
+        if (dependency.previous) {
+            if (lastChainedCustomJobId == null) {
+                throw new IllegalArgumentException(
+                    QueueableManager.ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB
+                );
+            }
+            dependency.resolvedTargetCustomJobId = lastChainedCustomJobId;
+        }
+        if (job.dependencies == null) {
+            job.dependencies = new List<Async.Dependency>();
+        }
+        job.dependencies.add(dependency);
+        return this;
     }
 
     public QueueableBuilder asyncOptions(AsyncOptions asyncOptions) {
@@ -55,6 +75,40 @@ public inherited sharing class QueueableBuilder {
         return this;
     }
 
+    public QueueableBuilder retry(Integer maxRetries) {
+        if (maxRetries == null || maxRetries < 0) {
+            throw new IllegalArgumentException(QueueableManager.ERROR_MESSAGE_INVALID_MAX_RETRIES);
+        }
+        if (maxRetries > QueueableManager.MAX_RETRY_CAP) {
+            throw new IllegalArgumentException(
+                QueueableManager.ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP
+            );
+        }
+        job.maxRetries = maxRetries;
+        return this;
+    }
+
+    public QueueableBuilder backoff(Backoff backoff) {
+        job.backoff = backoff;
+        return this;
+    }
+
+    public QueueableBuilder retryOn(Type exceptionType) {
+        return retryOn(new List<Type>{ exceptionType });
+    }
+
+    public QueueableBuilder retryOn(List<Type> exceptionTypes) {
+        if (job.retryOnExceptionTypes == null) {
+            job.retryOnExceptionTypes = new Set<String>();
+        }
+        for (Type exceptionType : exceptionTypes) {
+            if (exceptionType != null) {
+                job.retryOnExceptionTypes.add(exceptionType.getName());
+            }
+        }
+        return this;
+    }
+
     public QueueableBuilder mockId(String mockId) {
         job.mockId = mockId;
         return this;
@@ -62,7 +116,7 @@ public inherited sharing class QueueableBuilder {
 
     public QueueableBuilder chain(QueueableJob job) {
         if (this.job != null) {
-            chain();
+            lastChainedCustomJobId = chain().customJobId;
         }
         this.job = job;
         return this;

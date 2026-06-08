@@ -10,8 +10,7 @@ public inherited sharing class BatchableManager {
 
         Id jobId = Database.executeBatch(builder.job, builder.scopeSize ?? DEFAULT_BATCH_SIZE);
 
-        return new Async.Result(jobId)
-            .setAsyncType(Async.AsyncType.BATCHABLE);
+        return new Async.Result(jobId).setAsyncType(Async.AsyncType.BATCHABLE);
     }
 
     public static BatchableManager get() {

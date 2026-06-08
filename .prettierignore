@@ -13,3 +13,17 @@ package-lock.json
 
 # Deployment platform config
 vercel.json
+
+# Non-library files: prettier:verify gates the shipped package source (force-app)
+# only. Repo settings, root docs, the docs website, and dev/release scripts are
+# not part of the lib and must not fail the lib's formatting gate.
+sfdx-project.json
+.mcp.json
+config/
+website/
+internal-scripts/
+package.json
+README.md
+CONTRIBUTING.md
+SECURITY.md
+CODE_OF_CONDUCT.md

@@ -2,7 +2,7 @@
  * PMD False Positives:
  * - EmptyStatementBlock: In Apex it is required to have constructor overload with empty arguments, when there is other constructor, to create the object with empty constructor
  * - ExcessiveParameterList: This was intended to require all the values upfront
-**/
+ **/
 @SuppressWarnings('PMD.EmptyStatementBlock,PMD.ExcessiveParameterList')
 public class CronBuilder {
     private static final String ALL_VALUES = '*';
@@ -21,7 +21,8 @@ public class CronBuilder {
     public String dayOfWeek;
     public String optionalYear;
 
-    public CronBuilder() {}
+    public CronBuilder() {
+    }
 
     public CronBuilder(String cronExpression) {
         if (String.isBlank(cronExpression)) {
@@ -30,7 +31,9 @@ public class CronBuilder {
 
         List<String> parts = cronExpression.split(CRON_EXPRESSION_DELIMITER);
         if (parts.size() != 6 && parts.size() != 7) {
-            throw new IllegalArgumentException('Cron expression must have 6 or 7 parts, but was: ' + cronExpression);
+            throw new IllegalArgumentException(
+                'Cron expression must have 6 or 7 parts, but was: ' + cronExpression
+            );
         }
 
         this.second = parts[0];
@@ -90,7 +93,7 @@ public class CronBuilder {
             this.minute = String.valueOf(min);
             crons.add(new CronBuilder(this.getCronExpression()));
         }
-        
+
         return crons;
     }
 
@@ -139,7 +142,12 @@ public class CronBuilder {
         return this;
     }
 
-    public CronBuilder everyXMonths(Integer everyXMonths, Integer dayOfMonth, Integer hour, Integer minute) {
+    public CronBuilder everyXMonths(
+        Integer everyXMonths,
+        Integer dayOfMonth,
+        Integer hour,
+        Integer minute
+    ) {
         if (everyXMonths <= 0) {
             throw new IllegalArgumentException('Every X months must be greater than zero.');
         }
@@ -155,7 +163,8 @@ public class CronBuilder {
     }
 
     public String getCronExpression() {
-        return String.join(new List<String>{
+        return String.join(
+            new List<String>{
                 second ?? DEFAULT_SECOND_AND_MINUTE_VALUE,
                 minute ?? DEFAULT_SECOND_AND_MINUTE_VALUE,
                 hour ?? DEFAULT_VALUE,
@@ -163,6 +172,8 @@ public class CronBuilder {
                 month ?? DEFAULT_VALUE,
                 dayOfWeek ?? DEFAULT_DAY_OF_WEEK_VALUE,
                 optionalYear ?? DEFAULT_VALUE
-            }, CRON_EXPRESSION_DELIMITER);
+            },
+            CRON_EXPRESSION_DELIMITER
+        );
     }
 }

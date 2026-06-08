@@ -2,7 +2,7 @@
  * PMD False Positives:
  * - CognitiveComplexity: This was intended to have all the logic in one class
  * - OperationWithLimitsInLoop: This schedules up to 60 jobs in case "every minute" was used in CronBuilder.buildForEveryXMinutes(). It is intended.
-**/
+ **/
 @SuppressWarnings('PMD.CognitiveComplexity,PMD.OperationWithLimitsInLoop')
 public inherited sharing class SchedulableManager {
     @TestVisible
@@ -25,10 +25,16 @@ public inherited sharing class SchedulableManager {
         if (String.isBlank(builder.name)) {
             throw new IllegalArgumentException(ERROR_MESSAGE_JOB_NAME);
         }
-        if ((builder.crons == null || builder.crons.isEmpty()) && builder.batchableBuilder?.minutesFromNow == null) {
+        if (
+            (builder.crons == null || builder.crons.isEmpty()) &&
+            builder.batchableBuilder?.minutesFromNow == null
+        ) {
             throw new IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_NOT_SET);
         }
-        if ((builder.crons != null && !builder.crons.isEmpty()) && builder.batchableBuilder?.minutesFromNow != null) {
+        if (
+            (builder.crons != null && !builder.crons.isEmpty()) &&
+            builder.batchableBuilder?.minutesFromNow != null
+        ) {
             throw new IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_SET);
         }
 
@@ -41,26 +47,27 @@ public inherited sharing class SchedulableManager {
         if (builder.batchableBuilder?.minutesFromNow != null) {
             results.add(
                 new Async.Result(
-                    System.scheduleBatch(
-                        builder.batchableBuilder.job, 
-                        builder.name, 
-                        builder.batchableBuilder.minutesFromNow, 
-                        builder.batchableBuilder.scopeSize ?? BatchableManager.DEFAULT_BATCH_SIZE
+                        System.scheduleBatch(
+                            builder.batchableBuilder.job,
+                            builder.name,
+                            builder.batchableBuilder.minutesFromNow,
+                            builder.batchableBuilder.scopeSize ??
+                                BatchableManager.DEFAULT_BATCH_SIZE
+                        )
                     )
-                )
-                .setAsyncType(Async.AsyncType.SCHEDULABLE)
+                    .setAsyncType(Async.AsyncType.SCHEDULABLE)
             );
         } else {
             for (CronBuilder cron : builder.crons) {
                 results.add(
                     new Async.Result(
-                        System.schedule(
-                            builder.name + (builder.crons.size() == 1 ? '' : '/' + cron.minute),
-                            cron.getCronExpression(),
-                            builder.scheduleJob
+                            System.schedule(
+                                builder.name + (builder.crons.size() == 1 ? '' : '/' + cron.minute),
+                                cron.getCronExpression(),
+                                builder.scheduleJob
+                            )
                         )
-                    )
-                    .setAsyncType(Async.AsyncType.SCHEDULABLE)
+                        .setAsyncType(Async.AsyncType.SCHEDULABLE)
                 );
             }
         }
@@ -69,7 +76,8 @@ public inherited sharing class SchedulableManager {
     }
 
     private Boolean shouldSkipWhenAlreadyScheduled(SchedulableBuilder builder) {
-        return builder.skipWhenAlreadyScheduled && ![SELECT Id FROM CronJobDetail WHERE Name = :builder.name WITH SYSTEM_MODE].isEmpty();
+        return builder.skipWhenAlreadyScheduled &&
+            ![SELECT Id FROM CronJobDetail WHERE Name = :builder.name WITH SYSTEM_MODE].isEmpty();
     }
 
     public static SchedulableManager get() {

@@ -12,7 +12,7 @@ hero:
       link: /getting-started
     - theme: alt
       text: View Examples
-      link: /getting-started
+      link: /introduction/standard-apex-vs-async-lib
 
 features:
   - title: Smart Queueable Jobs

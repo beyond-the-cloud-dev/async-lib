@@ -2,16 +2,43 @@
 
 Apex classes `BatchableBuilder.cls` and `BatchableManager.cls`.
 
+New to async jobs? See
+[Standard Apex vs Async Lib](/introduction/standard-apex-vs-async-lib#batchable)
+for how this maps to a plain `Database.executeBatch`.
+
+**Common BatchJob class example:**
+
+Your batch class is a normal `Database.Batchable`. Async Lib does not change it,
+so `Database.Stateful`, `Database.QueryLocator`, and the `start` / `execute` /
+`finish` methods all work as usual.
+
+```apex
+public class AccountCleanupBatch implements Database.Batchable<SObject>, Database.Stateful {
+  public Integer deletedCount = 0;
+
+  public Database.QueryLocator start(Database.BatchableContext bc) {
+    return Database.getQueryLocator('SELECT Id FROM Account WHERE Is_Active__c = false');
+  }
+
+  public void execute(Database.BatchableContext bc, List<Account> scope) {
+    delete scope;
+    deletedCount += scope.size();
+  }
+
+  public void finish(Database.BatchableContext bc) {
+    System.debug('Deleted ' + deletedCount + ' accounts');
+  }
+}
+```
+
 **Common Batchable example:**
 
 ```apex
-Database.Batchable<Object> job = new MyBatchJob();
-
-Async.AsyncResult result = Async.batchable(job)
+Async.Result result = Async.batchable(new AccountCleanupBatch())
 	.scopeSize(100)
 	.execute();
 
-System.debug('Batch job enqueued: ' + result);
+System.debug('Batch job enqueued: ' + result.salesforceJobId);
 ```
 
 ## Methods

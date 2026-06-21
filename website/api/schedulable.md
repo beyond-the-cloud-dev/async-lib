@@ -2,11 +2,28 @@
 
 Apex classes `SchedulableBuilder.cls`, `SchedulableManager.cls`, and `CronBuilder.cls`.
 
+New to async jobs? See
+[Standard Apex vs Async Lib](/introduction/standard-apex-vs-async-lib#schedulable)
+for how this maps to a plain `System.schedule`.
+
+**Common SchedulableJob class example:**
+
+Your class is a normal `Schedulable`. Async Lib only replaces the
+`System.schedule(...)` call, building the cron expression and skipping the job
+when one with the same name is already scheduled.
+
+```apex
+public class AccountReportJob implements Schedulable {
+  public void execute(SchedulableContext context) {
+    // ... work ...
+  }
+}
+```
+
 **Common Schedulable example:**
 
 ```apex
-Schedulable job = new MySchedulableJob();
-List<Async.Result> results = Async.schedulable(job)
+List<Async.Result> results = Async.schedulable(new AccountReportJob())
 	.name('Daily Processing Job')
 	.cronExpression('0 0 2 * * ? *')
 	.skipWhenAlreadyScheduled()

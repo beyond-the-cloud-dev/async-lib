@@ -257,16 +257,18 @@ why. Query by **ChainId\_\_c** to see a whole chain run as a timeline.
 
 Now that you understand the basics:
 
-1. **Explore the API** - Learn about all available methods and options:
+1. **[Standard Apex vs Async Lib](/introduction/standard-apex-vs-async-lib)** -
+   See each plain-Apex async pattern next to its Async Lib equivalent.
+2. **Explore the API** - Learn about all available methods and options:
    1. **[Queueable API](/api/queueable.md)** - Detailed information on using
       Queueable jobs
    2. **[Batchable API](/api/batchable.md)** - Detailed information on using
       Batchable jobs
    3. **[Schedulable API](/api/schedulable.md)** - Detailed information on using
       Schedulable jobs
-2. **Read the Blog Post** - Check out the detailed explanation:
+3. **Read the Blog Post** - Check out the detailed explanation:
    [Apex Queueable Processing Framework](https://blog.beyondthecloud.dev/blog/apex-queueable-processing-framework)
-3. **[Initial Queueable Chain Schedulable Explanation](/explanations/initial-scheduled-queuable-batch-job.md)** -
+4. **[Initial Queueable Chain Schedulable Explanation](/explanations/initial-scheduled-queuable-batch-job.md)** -
    Learn why this job is important for framework to function properly.
 
 ## Quick Tips

@@ -3,40 +3,61 @@
 Apex classes `QueueableBuilder.cls`, `QueueableManager.cls`, and
 `QueueableJob.cls`.
 
-For testing patterns and best practices, see
-[Testing Async Jobs](/explanations/testing-async-jobs).
+New to async jobs? See
+[Standard Apex vs Async Lib](/introduction/standard-apex-vs-async-lib#queueable)
+for how this maps to a plain `Queueable`. For testing patterns and best
+practices, see [Testing Async Jobs](/explanations/testing-async-jobs).
+
+**Common QueueableJob class example:**
+
+Extend `QueueableJob` and put your logic in `work()` instead of implementing
+`Queueable.execute()`.
+
+```apex
+public class AccountProcessorJob extends QueueableJob {
+  private List<Id> accountIds;
+
+  public AccountProcessorJob(List<Id> accountIds) {
+    this.accountIds = accountIds;
+  }
+
+  public override void work() {
+    List<Account> accounts = [SELECT Id, Name FROM Account WHERE Id IN :accountIds];
+    for (Account acc : accounts) {
+      acc.Description = 'Processed';
+    }
+    update accounts;
+  }
+}
+```
 
 **Common Queueable example:**
 
 ```apex
-QueueableJob job = new MyQueueableJob();
-Async.Result result = Async.queueable(job)
+Async.Result result = Async.queueable(new AccountProcessorJob(accountIds))
 	.priority(5)
 	.delay(2)
 	.continueOnJobExecuteFail()
 	.enqueue();
 ```
 
-Returns `result.customJobId` containing MyQueueableJob's unique Custom Job Id.
-
-**Common QueueableJob class example:**
-
-```apex
-public class AccountProcessorJob extends QueueableJob {
-  public override void work() {
-    // Get job context
-    Async.QueueableJobContext ctx = Async.getQueueableJobContext();
-  }
-}
-```
+Returns `result.customJobId` containing AccountProcessorJob's unique Custom Job
+Id.
 
 **Common Finalizer class example:**
 
+A finalizer runs after the job completes, whether it succeeded or threw. Extend
+`QueueableJob.Finalizer` and read the outcome from the `FinalizerContext`.
+
 ```apex
-private class ProcessorFinalizer extends QueueableJob.Finalizer {
+public class ProcessorFinalizer extends QueueableJob.Finalizer {
   public override void work() {
-    // Get finalizer context
     FinalizerContext finalizerCtx = Async.getQueueableJobContext().finalizerCtx;
+    if (finalizerCtx.getResult() == ParentJobResult.SUCCESS) {
+      System.debug('Job succeeded');
+    } else {
+      System.debug('Job failed: ' + finalizerCtx.getException().getMessage());
+    }
   }
 }
 ```

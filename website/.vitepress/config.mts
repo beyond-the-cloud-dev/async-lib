@@ -27,6 +27,9 @@ export default defineConfig({
   },
   themeConfig: {
     logo: '/logo.png',
+    search: {
+      provider: 'local'
+    },
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },
@@ -39,6 +42,10 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: 'Getting Started', link: '/getting-started' },
+          {
+            text: 'Standard Apex vs Async Lib',
+            link: '/introduction/standard-apex-vs-async-lib'
+          },
           { text: 'Installation', link: '/introduction/installation' }
         ]
       },
@@ -69,7 +76,6 @@ export default defineConfig({
         ]
       }
     ],
-    footer: false,
     socialLinks: [
       {
         icon: 'github',

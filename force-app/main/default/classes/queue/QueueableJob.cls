@@ -2,9 +2,12 @@
 public abstract class QueueableJob implements Queueable, Comparable {
     public Id salesforceJobId;
     public String customJobId;
-    public String className {
+    public transient String className {
         get {
-            return getFullClassName(this);
+            if (className == null) {
+                className = getFullClassName(this);
+            }
+            return className;
         }
         private set;
     }

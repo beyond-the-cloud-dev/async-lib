@@ -4,6 +4,7 @@ import { defineConfig } from 'vitepress';
 export default defineConfig({
   title: 'Async Lib',
   description: 'Async Lib Documentation',
+  cleanUrls: true,
   head: [
     ['link', { rel: 'icon', href: '/favicon.ico' }],
     [

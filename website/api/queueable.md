@@ -62,6 +62,15 @@ public class ProcessorFinalizer extends QueueableJob.Finalizer {
 }
 ```
 
+::: info Expected exception in debug logs
+
+Seeing `Invalid conversion from runtime type ... to Datetime` in your logs?
+That exception is thrown and caught on purpose by the framework and is
+harmless. See
+[Expected Exceptions in Debug Logs](/explanations/expected-exceptions-in-debug-logs).
+
+:::
+
 ## Methods
 
 The following are methods for using Async with Queueable jobs:
@@ -312,9 +321,12 @@ exception, computed delay) is aggregated into `AsyncResult__c.RetryHistory__c`
 (when result creation is enabled via
 `QueueableJobSetting__mdt.CreateResult__c`).
 
-::: tip Idempotency A retried job re-runs `work()`, so make retried jobs
-idempotent. For jobs carrying mutable member state, combine with
-[`deepClone()`](#deepclone). :::
+::: tip Idempotency
+
+A retried job re-runs `work()`, so make retried jobs idempotent. For jobs
+carrying mutable member state, combine with [`deepClone()`](#deepclone).
+
+:::
 
 **Signature**
 
@@ -449,9 +461,12 @@ Clones provided QueueableJob by value for all the member variables. By default
 only primitive member variables (String, Boolean, ...) are cloned by value.
 Deeper explanation is [here](/explanations/job-cloning).
 
-::: warning Package Usage When using Async Lib as a package (`btcdev`
-namespace), deep clone requires overriding `cloneForDeepCopy()` in your
-subclass. See [Deep Clone in Packages](/explanations/deep-clone-in-packages).
+::: warning Package Usage
+
+When using Async Lib as a package (`btcdev` namespace), deep clone requires
+overriding `cloneForDeepCopy()` in your subclass. See
+[Deep Clone in Packages](/explanations/deep-clone-in-packages).
+
 :::
 
 **Signature**
@@ -691,14 +706,17 @@ another job's outcome. For **imperative** control, where you decide at runtime
 (based on the specific exception) whether to stop or skip, call these from a
 running job or, better, from a **finalizer**.
 
-::: tip Reacting to unhandlable failures When `work()` throws, your code in
-`work()` never finishes, and an uncatchable governor-limit failure kills the
-transaction entirely. A `QueueableJob.Finalizer` runs either way, with
-`FinalizerContext.getResult()` reporting `UNHANDLED_EXCEPTION`, so it is the
-right place to stop or reshape the chain after a failure. The framework
-reconciles the failure from the `FinalizerContext`, so `dependsOn(...)` and your
-finalizer logic both see the correct outcome even when our own `try/catch` could
-not run. :::
+::: tip Reacting to unhandlable failures
+
+When `work()` throws, your code in `work()` never finishes, and an uncatchable
+governor-limit failure kills the transaction entirely. A
+`QueueableJob.Finalizer` runs either way, with `FinalizerContext.getResult()`
+reporting `UNHANDLED_EXCEPTION`, so it is the right place to stop or reshape
+the chain after a failure. The framework reconciles the failure from the
+`FinalizerContext`, so `dependsOn(...)` and your finalizer logic both see the
+correct outcome even when our own `try/catch` could not run.
+
+:::
 
 ```apex
 public class GuardFinalizer extends QueueableJob.Finalizer {

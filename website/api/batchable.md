@@ -41,6 +41,14 @@ Async.Result result = Async.batchable(new AccountCleanupBatch())
 System.debug('Batch job enqueued: ' + result.salesforceJobId);
 ```
 
+::: tip Ready-made cleanup batch
+
+Async Lib ships `AsyncResultCleanupBatch` for deleting old `AsyncResult__c`
+records, with separate retention for failed results and the rest. See
+[AsyncResult Cleanup](/explanations/asyncresult-cleanup).
+
+:::
+
 ## Methods
 
 The following are methods for using Async with Batchable jobs:

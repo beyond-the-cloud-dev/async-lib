@@ -2939,6 +2939,188 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
+    @IsTest
+    private static void shouldCacheClassNamePerInstanceWithoutCrossContamination() {
+        SuccessfulQueueableTest jobA = new SuccessfulQueueableTest();
+        FailureQueueableTest jobB = new FailureQueueableTest();
+
+        String jobAClassName = jobA.className;
+        String jobBClassName = jobB.className;
+
+        Assert.areEqual(
+            getClassNameWithNamespaceDotPrefix('AsyncTest.SuccessfulQueueableTest'),
+            jobAClassName
+        );
+        Assert.areEqual(
+            getClassNameWithNamespaceDotPrefix('AsyncTest.FailureQueueableTest'),
+            jobBClassName
+        );
+        Assert.areEqual(jobAClassName, jobA.className, 'Repeated access returns the same name.');
+        Assert.areEqual(
+            jobAClassName,
+            jobA.cloneJob().className,
+            'A shallow clone reports its own class name.'
+        );
+
+        SuccessfulQueueableTest roundTripped = (SuccessfulQueueableTest) JSON.deserialize(
+            JSON.serialize(jobA),
+            SuccessfulQueueableTest.class
+        );
+        Assert.areEqual(
+            jobAClassName,
+            roundTripped.className,
+            'A JSON round trip recomputes the name from the runtime type.'
+        );
+    }
+
+    @IsTest
+    private static void shouldDeleteOnlyOldFailedResultsWhenOnlyFailedRetentionIsSet() {
+        List<AsyncResult__c> oldFailedResults = new List<AsyncResult__c>();
+        for (Integer i = 0; i < 200; i++) {
+            oldFailedResults.add(new AsyncResult__c(Status__c = QueueableManager.STATUS_FAILED));
+        }
+        insert oldFailedResults;
+        for (AsyncResult__c result : oldFailedResults) {
+            Test.setCreatedDate(result.Id, System.now().addDays(-31));
+        }
+        AsyncResult__c recentFailed = insertAsyncResultWithAge(QueueableManager.STATUS_FAILED, 5);
+        AsyncResult__c veryOldCompleted = insertAsyncResultWithAge(
+            QueueableManager.STATUS_COMPLETED,
+            400
+        );
+
+        Test.startTest();
+        Async.batchable(new AsyncResultCleanupBatch().failedOlderThanDays(30)).execute();
+        Test.stopTest();
+
+        Set<Id> remainingIds = new Map<Id, AsyncResult__c>([SELECT Id FROM AsyncResult__c])
+            .keySet();
+        Assert.areEqual(2, remainingIds.size(), 'Only the two out-of-track results survive.');
+        Assert.isTrue(remainingIds.contains(recentFailed.Id), 'Recent failed results survive.');
+        Assert.isTrue(
+            remainingIds.contains(veryOldCompleted.Id),
+            'Non-failed results are untouched when their track has no retention.'
+        );
+    }
+
+    @IsTest
+    private static void shouldDeleteOnlyOldNonFailedResultsWhenOnlyOthersRetentionIsSet() {
+        AsyncResult__c oldCompleted = insertAsyncResultWithAge(
+            QueueableManager.STATUS_COMPLETED,
+            31
+        );
+        AsyncResult__c oldSkipped = insertAsyncResultWithAge(
+            QueueableManager.STATUS_SKIPPED_DEPENDENCY,
+            31
+        );
+        AsyncResult__c veryOldFailed = insertAsyncResultWithAge(
+            QueueableManager.STATUS_FAILED,
+            400
+        );
+        AsyncResult__c recentCompleted = insertAsyncResultWithAge(
+            QueueableManager.STATUS_COMPLETED,
+            5
+        );
+
+        Test.startTest();
+        Async.batchable(new AsyncResultCleanupBatch().othersOlderThanDays(30)).execute();
+        Test.stopTest();
+
+        Set<Id> remainingIds = new Map<Id, AsyncResult__c>([SELECT Id FROM AsyncResult__c])
+            .keySet();
+        Assert.areEqual(2, remainingIds.size(), 'Old completed and skipped results are deleted.');
+        Assert.isTrue(
+            remainingIds.contains(veryOldFailed.Id),
+            'Failed results are untouched when their track has no retention.'
+        );
+        Assert.isTrue(
+            remainingIds.contains(recentCompleted.Id),
+            'Recent non-failed results survive.'
+        );
+    }
+
+    @IsTest
+    private static void shouldApplySeparateRetentionCutoffsPerTrack() {
+        AsyncResult__c failedPastCutoff = insertAsyncResultWithAge(
+            QueueableManager.STATUS_FAILED,
+            100
+        );
+        AsyncResult__c failedWithinCutoff = insertAsyncResultWithAge(
+            QueueableManager.STATUS_FAILED,
+            60
+        );
+        AsyncResult__c completedPastCutoff = insertAsyncResultWithAge(
+            QueueableManager.STATUS_COMPLETED,
+            60
+        );
+        AsyncResult__c completedWithinCutoff = insertAsyncResultWithAge(
+            QueueableManager.STATUS_COMPLETED,
+            10
+        );
+
+        Test.startTest();
+        Async.batchable(
+                new AsyncResultCleanupBatch().failedOlderThanDays(90).othersOlderThanDays(30)
+            )
+            .execute();
+        Test.stopTest();
+
+        Set<Id> remainingIds = new Map<Id, AsyncResult__c>([SELECT Id FROM AsyncResult__c])
+            .keySet();
+        Assert.areEqual(2, remainingIds.size(), 'Each track applies its own cutoff.');
+        Assert.isTrue(
+            remainingIds.contains(failedWithinCutoff.Id),
+            'A failed result younger than the failed retention survives.'
+        );
+        Assert.isTrue(
+            remainingIds.contains(completedWithinCutoff.Id),
+            'A non-failed result younger than the others retention survives.'
+        );
+    }
+
+    @IsTest
+    private static void shouldThrowWhenNoRetentionTrackIsConfigured() {
+        try {
+            new AsyncResultCleanupBatch().start(null);
+            Assert.fail('Running the cleanup with no retention configured must throw.');
+        } catch (IllegalArgumentException ex) {
+            Assert.areEqual(
+                AsyncResultCleanupBatch.ERROR_MESSAGE_NO_RETENTION_CONFIGURED,
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRejectNonPositiveRetentionDays() {
+        try {
+            new AsyncResultCleanupBatch().failedOlderThanDays(0);
+            Assert.fail('Zero retention days must be rejected.');
+        } catch (IllegalArgumentException ex) {
+            Assert.areEqual(
+                AsyncResultCleanupBatch.ERROR_MESSAGE_INVALID_RETENTION_DAYS,
+                ex.getMessage()
+            );
+        }
+
+        try {
+            new AsyncResultCleanupBatch().othersOlderThanDays(null);
+            Assert.fail('Null retention days must be rejected.');
+        } catch (IllegalArgumentException ex) {
+            Assert.areEqual(
+                AsyncResultCleanupBatch.ERROR_MESSAGE_INVALID_RETENTION_DAYS,
+                ex.getMessage()
+            );
+        }
+    }
+
+    private static AsyncResult__c insertAsyncResultWithAge(String status, Integer ageDays) {
+        AsyncResult__c result = new AsyncResult__c(Status__c = status);
+        insert result;
+        Test.setCreatedDate(result.Id, System.now().addDays(-ageDays));
+        return result;
+    }
+
     private class DeepCloneFailJob extends QueueableJob {
         public override void work() {
         }

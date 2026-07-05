@@ -72,7 +72,15 @@ export default defineConfig({
             text: 'Deep Clone in Packages',
             link: '/explanations/deep-clone-in-packages'
           },
-          { text: 'Testing Async Jobs', link: '/explanations/testing-async-jobs' }
+          { text: 'Testing Async Jobs', link: '/explanations/testing-async-jobs' },
+          {
+            text: 'AsyncResult Cleanup',
+            link: '/explanations/asyncresult-cleanup'
+          },
+          {
+            text: 'Expected Exceptions in Debug Logs',
+            link: '/explanations/expected-exceptions-in-debug-logs'
+          }
         ]
       }
     ],

@@ -253,6 +253,10 @@ why. Query by **ChainId\_\_c** to see a whole chain run as a timeline.
 - **RetryAttempts\_\_c**: How many retries the job went through
 - **RetryHistory\_\_c**: Per-attempt retry log
 
+These records are never deleted automatically. See
+[AsyncResult Cleanup](/explanations/asyncresult-cleanup) for the scheduled
+cleanup batch with separate retention for failed results and the rest.
+
 ## What's Next?
 
 Now that you understand the basics:

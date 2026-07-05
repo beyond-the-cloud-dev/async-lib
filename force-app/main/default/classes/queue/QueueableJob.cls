@@ -2,8 +2,6 @@
 public abstract class QueueableJob implements Queueable, Comparable {
     public Id salesforceJobId;
     public String customJobId;
-    // transient: the cached name must never survive serialization, so a
-    // deserialized instance always recomputes it from its own runtime type.
     public transient String className {
         get {
             if (className == null) {

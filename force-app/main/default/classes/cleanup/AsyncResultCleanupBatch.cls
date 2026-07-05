@@ -59,7 +59,7 @@ public inherited sharing class AsyncResultCleanupBatch implements Database.Batch
     }
 
     public void execute(Database.BatchableContext ctx, List<AsyncResult__c> scope) {
-        delete scope;
+        delete as system scope;
     }
 
     public void finish(Database.BatchableContext ctx) {

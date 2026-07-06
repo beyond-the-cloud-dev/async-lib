@@ -11,8 +11,8 @@ jobs:
   salesforce-ci:
     uses: beyond-the-cloud-dev/cicd-template/.github/workflows/salesforce-ci.yml@main
     with:
-      node-version: "20"
-      sf-cli-version: "latest"
+      node-version: "22"
+      sf-cli-version: "2.141.6"
       scratch-org-duration: 1
       test-level: "RunLocalTests"
       upload-to-codecov: true

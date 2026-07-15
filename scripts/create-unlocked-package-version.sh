@@ -24,6 +24,10 @@ TARGET_FILES=(
     "force-app/main/default/classes/Async.cls"
     "force-app/main/default/classes/queue/QueueableJob.cls"
     "force-app/main/default/classes/queue/QueueableBuilder.cls"
+    "force-app/main/default/classes/queue/ChunkSource.cls"
+    "force-app/main/default/classes/queue/ChunkJob.cls"
+    "force-app/main/default/classes/queue/IdChunkJob.cls"
+    "force-app/main/default/classes/queue/ChunkBuilder.cls"
     "force-app/main/default/classes/queue/Backoff.cls"
     "force-app/main/default/classes/batch/BatchableBuilder.cls"
     "force-app/main/default/classes/cleanup/AsyncResultCleanupBatch.cls"
@@ -52,6 +56,15 @@ sedi 's/global QueueableChainState setEnqueueType/public QueueableChainState set
     "force-app/main/default/classes/Async.cls"
 sedi 's/global void enqueue(QueueableChain chain)/public void enqueue(QueueableChain chain)/g' \
     "force-app/main/default/classes/queue/QueueableJob.cls"
+
+# prepareRun and nextPageOrNull are chunk-run wiring (ChunkBuilder sets up the run, QueueableChain
+# drives paging); they are not part of the consumer API.
+sedi 's/global void prepareRun(/public void prepareRun(/g' \
+    "force-app/main/default/classes/queue/ChunkJob.cls"
+sedi 's/global ChunkJob nextPageOrNull(/public ChunkJob nextPageOrNull(/g' \
+    "force-app/main/default/classes/queue/ChunkJob.cls"
+sedi 's/global Boolean shouldKeepPages(/public Boolean shouldKeepPages(/g' \
+    "force-app/main/default/classes/queue/ChunkJob.cls"
 
 # The blanket rename rewrites the "public override ..." guidance string inside
 # QueueableJob.cloneJob(); restore it so consumers get correct override syntax.

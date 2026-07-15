@@ -89,7 +89,35 @@ public inherited sharing class QueueableChain {
         recordOutcome(previousJob);
 
         setFinalizerContextToAllFinalizersForPreviousJob(previousJob, ctx);
+        maybeAdvanceChunkRun(previousJob);
         enqueueNextJobIfAny();
+    }
+
+    private void maybeAdvanceChunkRun(QueueableJob previousJob) {
+        if (!(previousJob instanceof ChunkJob)) {
+            return;
+        }
+        ChunkJob settledPage = (ChunkJob) previousJob;
+        ChunkJob nextPage = settledPage.nextPageOrNull();
+        if (nextPage != null) {
+            addJob(nextPage);
+        }
+        if (!settledPage.shouldKeepPages()) {
+            removeRecordedChunkPages();
+        }
+    }
+
+    // A chunk run appends pages one at a time; dropping recorded pages keeps the serialized
+    // chain state flat instead of piling up every page of the run.
+    private void removeRecordedChunkPages() {
+        for (Integer i = jobs.size() - 1; i >= 0; i--) {
+            QueueableJob job = jobs[i];
+            if (job instanceof ChunkJob && job.isProcessed && job.resultCreated) {
+                outcomeByCustomJobId.remove(job.customJobId);
+                resultIdByCustomJobId.remove(job.customJobId);
+                jobs.remove(i);
+            }
+        }
     }
 
     private void reconcileOutcomeFromFinalizer(QueueableJob job, FinalizerContext ctx) {

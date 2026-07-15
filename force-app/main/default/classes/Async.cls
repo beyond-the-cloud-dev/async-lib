@@ -7,6 +7,10 @@ public inherited sharing class Async {
         return new QueueableBuilder();
     }
 
+    public static ChunkBuilder chunk(ChunkJob job, ChunkSource source) {
+        return new ChunkBuilder(job, source);
+    }
+
     public static BatchableBuilder batchable(Object job) {
         return new BatchableBuilder(job);
     }

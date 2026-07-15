@@ -55,6 +55,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: 'Queueable', link: '/api/queueable' },
+          { text: 'Chunk', link: '/api/chunk' },
           { text: 'Batchable', link: '/api/batchable' },
           { text: 'Schedulable', link: '/api/schedulable' },
           { text: 'AsyncMock', link: '/api/async-mock' }

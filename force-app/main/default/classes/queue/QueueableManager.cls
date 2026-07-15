@@ -135,6 +135,26 @@ public inherited sharing class QueueableManager {
             (Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() || System.isQueueable());
     }
 
+    public static void assertValidMaxRetries(Integer maxRetries) {
+        if (maxRetries == null || maxRetries < 0) {
+            throw new IllegalArgumentException(ERROR_MESSAGE_INVALID_MAX_RETRIES);
+        }
+        if (maxRetries > MAX_RETRY_CAP) {
+            throw new IllegalArgumentException(ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP);
+        }
+    }
+
+    public static void addRetryOnTypes(QueueableJob job, List<Type> exceptionTypes) {
+        if (job.retryOnExceptionTypes == null) {
+            job.retryOnExceptionTypes = new Set<String>();
+        }
+        for (Type exceptionType : exceptionTypes) {
+            if (exceptionType != null) {
+                job.retryOnExceptionTypes.add(exceptionType.getName());
+            }
+        }
+    }
+
     public static QueueableManager get() {
         if (instance == null) {
             instance = new QueueableManager();

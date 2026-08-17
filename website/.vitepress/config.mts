@@ -1,12 +1,55 @@
 import { defineConfig } from 'vitepress';
+import llmstxt from 'vitepress-plugin-llms';
 
 // https://vitepress.dev/reference/site-config
+
+const siteUrl = 'https://async.beyondthecloud.dev';
+const siteTitle = 'Async Lib';
+const siteDescription =
+  'Open-source Apex library for managing asynchronous processes in Salesforce. Fluent API for Queueable, Batchable and Schedulable jobs, with job chaining, cloning and mocking of async jobs in unit tests. Free, MIT licensed, part of Apex Fluently by Beyond The Cloud.';
+
 export default defineConfig({
-  title: 'Async Lib',
-  description: 'Async Lib Documentation',
+  lang: 'en-US',
+  title: siteTitle,
+  description: siteDescription,
   cleanUrls: true,
   head: [
     ['link', { rel: 'icon', href: '/favicon.ico' }],
+    ['meta', { name: 'author', content: 'Beyond The Cloud' }],
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:site_name', content: siteTitle }],
+    ['meta', { property: 'og:image', content: `${siteUrl}/logo.png` }],
+    ['meta', { name: 'twitter:card', content: 'summary' }],
+    [
+      'script',
+      { type: 'application/ld+json' },
+      JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        name: siteTitle,
+        description: siteDescription,
+        url: siteUrl,
+        applicationCategory: 'DeveloperApplication',
+        operatingSystem: 'Salesforce',
+        license: 'https://opensource.org/licenses/MIT',
+        codeRepository: 'https://github.com/beyond-the-cloud-dev/async-lib',
+        isPartOf: {
+          '@type': 'SoftwareApplication',
+          name: 'Apex Fluently',
+          url: 'https://apexfluently.beyondthecloud.dev'
+        },
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+        author: {
+          '@type': 'Organization',
+          name: 'Beyond The Cloud',
+          url: 'https://beyondthecloud.dev',
+          sameAs: [
+            'https://github.com/beyond-the-cloud-dev',
+            'https://www.linkedin.com/company/beyondtheclouddev'
+          ]
+        }
+      })
+    ],
     [
       'script',
       {
@@ -24,7 +67,44 @@ export default defineConfig({
     ]
   ],
   sitemap: {
-    hostname: 'https://async.beyondthecloud.dev'
+    hostname: siteUrl
+  },
+  vite: {
+    plugins: [llmstxt({ domain: siteUrl })]
+  },
+  transformPageData(pageData) {
+    const canonicalUrl = `${siteUrl}/${pageData.relativePath}`
+      .replace(/index\.md$/, '')
+      .replace(/\.md$/, '')
+      .replace(/\/$/, '');
+    pageData.frontmatter.head ??= [];
+    pageData.frontmatter.head.push(
+      ['link', { rel: 'canonical', href: canonicalUrl || siteUrl }],
+      ['meta', { property: 'og:url', content: canonicalUrl || siteUrl }]
+    );
+    const pageTitle = pageData.frontmatter.title || pageData.title;
+    pageData.frontmatter.head.push(
+      [
+        'meta',
+        {
+          property: 'og:title',
+          content:
+            pageTitle && pageTitle !== siteTitle
+              ? `${pageTitle} | ${siteTitle}`
+              : siteTitle
+        }
+      ],
+      [
+        'meta',
+        {
+          property: 'og:description',
+          content:
+            pageData.frontmatter.description ||
+            pageData.description ||
+            siteDescription
+        }
+      ]
+    );
   },
   themeConfig: {
     logo: '/logo.png',

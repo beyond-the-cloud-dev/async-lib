@@ -15,6 +15,14 @@ AsyncMock provides mock implementations of these context interfaces, enabling yo
 - Direct unit testing of job `work()` methods without `Test.startTest()/stopTest()`
 - Queue-based mock consumption for testing multiple invocations
 
+The rule is **pushed by the platform, mock it. Passed by you, swap it.** A
+`ChunkSource` falls in the second group, so a chunk run has no mock and needs none:
+hand it `ChunkSource.of(records)` or your own subclass. See
+[Pattern 5](#pattern-5-testing-a-chunk-job-without-a-cursor) and
+[Pattern 6](#pattern-6-a-custom-chunksource). The context objects inside a chunk
+page are still pushed, so those keep using `mockId(...)`
+([Pattern 7](#pattern-7-mocking-context-inside-a-chunk-page)).
+
 View the full [AsyncMock API](/api/async-mock) documentation for method details.
 
 ## The Testing Challenge
@@ -236,6 +244,223 @@ static void shouldFallbackToDefault() {
     Assert.areEqual(ParentJobResult.SUCCESS, ctx2.getResult()); // Falls back to default
 }
 ```
+
+### Pattern 5: Testing a Chunk Job Without a Cursor
+
+`ChunkSource.of(...)` is the in-memory source and doubles as the test fake, so a
+chunk job can be exercised without inserting data and opening a live cursor. Swap
+it for `ChunkSource.query(...)` in production code only.
+
+```apex
+@IsTest
+static void shouldProcessEveryPage() {
+    List<Account> accounts = new List<Account>();
+    for (Integer i = 0; i < 6; i++) {
+        accounts.add(new Account(Name = 'Test ' + i));
+    }
+    insert accounts;
+
+    Test.startTest();
+    Async.chunk(new AccountRecalcJob(), ChunkSource.of(accounts))
+        .chunkSize(2)
+        .enqueue();
+    Test.stopTest();
+
+    Assert.areEqual(6, [SELECT COUNT() FROM Account WHERE Description = 'Recalculated']);
+}
+```
+
+To assert a single page in isolation, call `work(chunk)` directly with the records
+you care about. No enqueue, no chain, no async boundary:
+
+```apex
+@IsTest
+static void shouldRecalcOnePage() {
+    new AccountRecalcJob().work(accounts);
+
+    Assert.areEqual(2, [SELECT COUNT() FROM Account WHERE Description = 'Recalculated']);
+}
+```
+
+**Why there is no ChunkSource mock**
+
+A chunk page is an ordinary job in the chain, so every pattern above already
+applies to a run. `AsyncMock` handles what the platform **pushes** into a job: the
+contexts you cannot construct, and the parent outcome a finalizer reacts to.
+
+A `ChunkSource` is **passed**, by you, at the call site. Swapping it is the test
+seam, so a mock registry would only add a second way to do the same thing, and a
+worse one: it changes what production code does behind its back.
+
+The rule of thumb: **pushed by the platform, mock it. Passed by you, swap it.**
+
+Design your service so the swap is possible:
+
+```apex
+// Hard to test: the source is welded in
+public static void recalcAll() {
+    Async.chunk(new AccountRecalcJob(), ChunkSource.query('SELECT Id FROM Account')).enqueue();
+}
+
+// Easy to test: the caller decides
+public static void recalcAll(ChunkSource source) {
+    Async.chunk(new AccountRecalcJob(), source).enqueue();
+}
+```
+
+**Testing a cursor run**
+
+Nothing is blocked. `Database.getCursor(...)` runs inside a test against data the
+test inserted, and the cursor survives every hop of the run exactly as it does in
+production:
+
+```apex
+@IsTest
+static void shouldPageACursor() {
+    insert accounts; // 6 of them
+
+    Test.startTest();
+    Async.chunk(new AccountRecalcJob(), ChunkSource.query('SELECT Id FROM Account'))
+        .chunkSize(2)
+        .enqueue();
+    Test.stopTest();
+
+    Assert.areEqual(6, [SELECT COUNT() FROM Account WHERE Description = 'Recalculated']);
+}
+```
+
+Use the real query whenever the query is the thing you want to cover. A test built
+on `ChunkSource.of(...)` never executes your SOQL, so a bad field or a wrong WHERE
+clause survives it.
+
+What no test can reach: cursor expiry after 2 days, the daily cursor allocation,
+and the 2,000 record `fetch()` ceiling. Faking those would test the fake.
+
+### Pattern 6: A Custom ChunkSource
+
+`ChunkSource` is an abstract class, so a test can supply one that fabricates
+records instead of inserting them. This is how you page 100,000 records without a
+single DML statement:
+
+```apex
+private class SyntheticChunkSource extends ChunkSource {
+    private Integer total;
+
+    public SyntheticChunkSource(Integer total) {
+        this.total = total;
+    }
+
+    public override Integer getNumRecords() {
+        return total;
+    }
+
+    public override List<SObject> fetch(Integer position, Integer count) {
+        List<Account> page = new List<Account>();
+        for (Integer i = position; i < Math.min(position + count, total); i++) {
+            page.add(new Account(Name = 'Synthetic ' + i));
+        }
+        return page;
+    }
+}
+```
+
+The same trick covers a broken source. Throw from `fetch(...)` and the page fails
+and retries like any other page failure:
+
+```apex
+private class ExplodingChunkSource extends ChunkSource {
+    public override Integer getNumRecords() {
+        return 4;
+    }
+
+    public override List<SObject> fetch(Integer position, Integer count) {
+        throw new CalloutException('source unavailable');
+    }
+}
+```
+
+```apex
+Async.chunk(new AccountRecalcJob(), new ExplodingChunkSource())
+    .chunkSize(2)
+    .retry(1)
+    .enqueue();
+// AsyncResult__c: Status__c = FAILED, RetryAttempts__c = 1
+```
+
+### Pattern 7: Mocking Inside a Chunk Page
+
+A chunk page is an ordinary job in the chain, so `mockId(...)` works on a chunk run
+exactly as it does on a queueable:
+
+```apex
+@IsTest
+static void shouldReadMockedContext() {
+    AsyncMock.whenQueueable('chunk-page')
+        .thenReturn(new AsyncMock.MockQueueableContext().setJobId(mockJobId));
+
+    Test.startTest();
+    Async.chunk(new AccountRecalcJob(), ChunkSource.of(accounts))
+        .chunkSize(2)
+        .mockId('chunk-page')
+        .enqueue();
+    Test.stopTest();
+}
+```
+
+The finalizer story carries over too. Attach a finalizer inside `work(chunk)` and
+you can tell it its page blew up, without engineering a page that actually fails:
+
+```apex
+public class AccountRecalcJob extends ChunkJob {
+    public override void work(List<SObject> chunk) {
+        Async.queueable(new ErrorHandlerFinalizer()).mockId('page-error-handler').attachFinalizer();
+        // ... work on chunk ...
+    }
+}
+```
+
+```apex
+@IsTest
+static void shouldHandleAPageFailure() {
+    AsyncMock.whenFinalizer('page-error-handler').thenThrow(new DmlException('Page blew up'));
+
+    Test.startTest();
+    Async.chunk(new AccountRecalcJob(), ChunkSource.of(accounts)).chunkSize(2).enqueue();
+    Test.stopTest();
+
+    Assert.areEqual(1, [SELECT COUNT() FROM Account WHERE Name = 'Error Log']);
+}
+```
+
+As with any job, the `mockId` for finalizer mocking goes on the finalizer, not on
+the chunk job.
+
+To make the run itself take its failure path (retry,
+`stopRemainingChunksOnFailure`, the summary result, a skipped dependent job), use
+`thenThrow`. Every page consumes one entry from the mock queue, so the queue
+decides which page fails:
+
+```apex
+@IsTest
+static void shouldHaltAfterTheSecondPage() {
+    AsyncMock.whenQueueable('recalc-run')
+        .thenReturn(new AsyncMock.MockQueueableContext())  // page 1 succeeds
+        .thenThrow(new CalloutException('boom'));          // page 2 fails
+
+    Test.startTest();
+    Async.chunk(new AccountRecalcJob(), ChunkSource.of(accounts))
+        .chunkSize(2)
+        .mockId('recalc-run')
+        .stopRemainingChunksOnFailure()
+        .enqueue();
+    Test.stopTest();
+
+    Assert.areEqual(2, [SELECT COUNT() FROM Account WHERE Description = 'Recalculated']);
+}
+```
+
+Throwing from `work(chunk)` or from a `ChunkSource` subclass (Pattern 6) is still
+the right tool when the failure depends on the data itself.
 
 ## Best Practices
 

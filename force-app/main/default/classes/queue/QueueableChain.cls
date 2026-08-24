@@ -9,7 +9,9 @@ public inherited sharing class QueueableChain {
     @TestVisible
     private Id initialQueuableChainSchedulableId;
     private Boolean isChainedContext = false;
+    private Boolean isStopped = false;
     private Integer chainCounter = 0;
+    private Integer jobSequence = 0;
     private QueueableJob currentJob;
     private Map<String, Async.Outcome> outcomeByCustomJobId = new Map<String, Async.Outcome>();
     private Map<String, Id> resultIdByCustomJobId = new Map<String, Id>();
@@ -50,13 +52,14 @@ public inherited sharing class QueueableChain {
         currentJob.salesforceJobId = ctx.getJobId();
         currentJob.setChainCounterToName(++chainCounter);
 
-        injectQueueableMockIfNeeded(currentJob);
-
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
             // Debug statements to determine the Job Id and Name
             System.debug(currentJob.customJobId);
             System.debug(currentJob.uniqueName);
+            // A mocked failure has to be raised in here, so it settles through the same path a
+            // real one does: rollback, retry classification and result recording.
+            injectQueueableMockIfNeeded(currentJob);
             currentJob.work();
         } catch (Exception ex) {
             // The live exception only exists here; classify now and capture metadata as a
@@ -101,9 +104,28 @@ public inherited sharing class QueueableChain {
         ChunkJob nextPage = settledPage.nextPageOrNull();
         if (nextPage != null) {
             addJob(nextPage);
+            skipNextPageIfRunEnded(settledPage, nextPage);
         }
-        if (!settledPage.shouldKeepPages()) {
+        if (!settledPage.getRun().keepPages) {
             removeRecordedChunkPages();
+        }
+    }
+
+    private void skipNextPageIfRunEnded(ChunkJob settledPage, ChunkJob nextPage) {
+        if (isStopped) {
+            markSkipped(
+                nextPage,
+                QueueableManager.STATUS_SKIPPED_CHAIN_STOPPED,
+                chainStopReason(nextPage)
+            );
+            return;
+        }
+        if (settledPage.getRun().isHaltedBy(settledPage.hasFailed)) {
+            markSkipped(
+                nextPage,
+                QueueableManager.STATUS_SKIPPED_CHUNK_STOPPED,
+                nextPage.getRun().remainingWorkSummary()
+            );
         }
     }
 
@@ -112,12 +134,19 @@ public inherited sharing class QueueableChain {
     private void removeRecordedChunkPages() {
         for (Integer i = jobs.size() - 1; i >= 0; i--) {
             QueueableJob job = jobs[i];
-            if (job instanceof ChunkJob && job.isProcessed && job.resultCreated) {
+            if (!(job instanceof ChunkJob) || !job.isProcessed || !job.resultCreated) {
+                continue;
+            }
+            if (!ownsRunLevelOutcome((ChunkJob) job)) {
                 outcomeByCustomJobId.remove(job.customJobId);
                 resultIdByCustomJobId.remove(job.customJobId);
-                jobs.remove(i);
             }
+            jobs.remove(i);
         }
+    }
+
+    private Boolean ownsRunLevelOutcome(ChunkJob page) {
+        return page.customJobId == page.getRun().runId;
     }
 
     private void reconcileOutcomeFromFinalizer(QueueableJob job, FinalizerContext ctx) {
@@ -138,6 +167,18 @@ public inherited sharing class QueueableChain {
         outcomeByCustomJobId.put(
             job.customJobId,
             job.hasFailed ? Async.Outcome.FAILURE : Async.Outcome.SUCCESS
+        );
+        if (job instanceof ChunkJob) {
+            recordChunkRunOutcome((ChunkJob) job);
+        }
+    }
+
+    private void recordChunkRunOutcome(ChunkJob settledPage) {
+        ChunkRun run = settledPage.getRun();
+        Boolean anyPageFailed = run.hasFailedPage || settledPage.hasFailed;
+        outcomeByCustomJobId.put(
+            run.runId,
+            anyPageFailed ? Async.Outcome.FAILURE : Async.Outcome.SUCCESS
         );
     }
 
@@ -291,15 +332,27 @@ public inherited sharing class QueueableChain {
     }
 
     public void stop() {
+        isStopped = true;
         for (QueueableJob job : jobs) {
             if (!job.isProcessed) {
                 markSkipped(
                     job,
                     QueueableManager.STATUS_SKIPPED_CHAIN_STOPPED,
-                    'Chain stopped via Async.stopChain().'
+                    chainStopReason(job)
                 );
             }
         }
+    }
+
+    private String chainStopReason(QueueableJob job) {
+        String reason = 'Chain stopped via Async.stopChain().';
+        return isChunkPageThatNeverStarted(job)
+            ? reason + ' ' + ((ChunkJob) job).getRun().remainingWorkSummary()
+            : reason;
+    }
+
+    private Boolean isChunkPageThatNeverStarted(QueueableJob job) {
+        return job instanceof ChunkJob && job.customJobId != currentJob?.customJobId;
     }
 
     public void skipJobByCustomJobId(String customJobId) {
@@ -400,9 +453,18 @@ public inherited sharing class QueueableChain {
             chainId = UUID.randomUUID().toString();
         }
         job.chainId = chainId;
+        keepSlotOfChunkRunOrTakeNextOne(job);
         applyRetryDefaultsIfNeeded(job);
         jobs.add(job);
         jobs.sort();
+    }
+
+    private void keepSlotOfChunkRunOrTakeNextOne(QueueableJob job) {
+        job.chainSequence = job.chainSequence ?? ++jobSequence;
+        if (job instanceof ChunkJob) {
+            ChunkRun run = ((ChunkJob) job).getRun();
+            run.runId = run.runId ?? job.customJobId;
+        }
     }
 
     @TestVisible
@@ -602,8 +664,16 @@ public inherited sharing class QueueableChain {
     }
 
     private void injectQueueableMockIfNeeded(QueueableJob job) {
-        if (Test.isRunningTest() && AsyncMock.hasQueueableMock(job.mockId)) {
-            job.queueableCtx = AsyncMock.getQueueableContext(job.mockId);
+        if (!Test.isRunningTest() || !AsyncMock.hasQueueableMock(job.mockId)) {
+            return;
+        }
+        QueueableContext ctx = AsyncMock.getQueueableContext(job.mockId);
+        job.queueableCtx = ctx;
+        Exception mockedFailure = ctx instanceof AsyncMock.MockQueueableContext
+            ? ((AsyncMock.MockQueueableContext) ctx).getException()
+            : null;
+        if (mockedFailure != null) {
+            throw mockedFailure;
         }
     }
 

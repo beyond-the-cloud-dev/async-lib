@@ -523,6 +523,37 @@ Async.Result result = Async.queueable(new MyQueueableJob())
 Returns `result.customJobId` containing MyOtherQueueableJob's unique Custom Job
 Id. To obtain MyQueueableJob's Id, use `chain()` method separately.
 
+#### chunk next run
+
+Adds a chunked run to the chain after the previous job. The run pages through its
+source and every page finishes before the next chain member starts. See
+[Chunk API](/api/chunk).
+
+Only needed when the run follows a job you already chained. A run that starts the
+chain uses `Async.chunk(...)` directly, with no `queueable()` in front of it.
+
+**Signature**
+
+```apex
+ChunkBuilder chunk(ChunkJob job, ChunkSource source);
+```
+
+**Example**
+
+```apex
+// Standalone run: no queueable() needed
+Async.chunk(new AccountRecalcJob(), ChunkSource.of(records))
+	.chunkSize(200)
+	.enqueue();
+
+// After an earlier job in the same chain
+Async.queueable(new MyQueueableJob())
+	.chunk(new AccountRecalcJob(), ChunkSource.of(records))
+	.chunkSize(200)
+	.chain(new MyOtherQueueableJob())
+	.enqueue();
+```
+
 #### asSchedulable
 
 Converts the queueable builder to a schedulable builder for cron-based

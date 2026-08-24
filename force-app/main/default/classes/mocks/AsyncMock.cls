@@ -96,6 +96,10 @@ public class AsyncMock {
             return thenReturn(new MockQueueableContext().setJobId(jobId));
         }
 
+        public QueueableMockSetup thenThrow(Exception ex) {
+            return thenReturn(new MockQueueableContext().setException(ex));
+        }
+
         public QueueableContext getNext() {
             if (contexts.isEmpty()) {
                 return null;
@@ -144,14 +148,24 @@ public class AsyncMock {
 
     public class MockQueueableContext implements System.QueueableContext {
         private Id jobId;
+        private Exception ex;
 
         public MockQueueableContext setJobId(Id jobId) {
             this.jobId = jobId;
             return this;
         }
 
+        public MockQueueableContext setException(Exception ex) {
+            this.ex = ex;
+            return this;
+        }
+
         public Id getJobId() {
             return jobId;
+        }
+
+        public Exception getException() {
+            return ex;
         }
     }
 }

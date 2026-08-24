@@ -24,6 +24,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
 
     public List<Async.Dependency> dependencies;
     public String chainId;
+    public Integer chainSequence;
     public String skipStatus;
     public String skipReason;
     public Boolean resultCreated = false;
@@ -90,9 +91,15 @@ public abstract class QueueableJob implements Queueable, Comparable {
             return 1;
         }
         if (priority == compareToJob.priority) {
-            return 0;
+            return compareChainSequence(compareToJob);
         }
         return priority - compareToJob.priority;
+    }
+
+    // List.sort() does not define the order of equal elements, so equal priority needs an
+    // explicit tiebreak to keep jobs running in the order they were chained.
+    private Integer compareChainSequence(QueueableJob compareToJob) {
+        return (chainSequence ?? 0) - (compareToJob.chainSequence ?? 0);
     }
 
     public void enqueue(QueueableChain chain) {

@@ -6,6 +6,11 @@ public inherited sharing class QueueableBuilder {
         this.job = job.clone();
     }
 
+    public QueueableBuilder(QueueableJob job, String lastChainedCustomJobId) {
+        this.job = job.clone();
+        this.lastChainedCustomJobId = lastChainedCustomJobId;
+    }
+
     public QueueableBuilder() {
     }
 
@@ -106,6 +111,14 @@ public inherited sharing class QueueableBuilder {
         }
         this.job = job;
         return this;
+    }
+
+    public ChunkBuilder chunk(ChunkJob chunkJob, ChunkSource source) {
+        if (this.job != null) {
+            lastChainedCustomJobId = chain().customJobId;
+            this.job = null;
+        }
+        return new ChunkBuilder(chunkJob, source, lastChainedCustomJobId);
     }
 
     public SchedulableBuilder asSchedulable() {

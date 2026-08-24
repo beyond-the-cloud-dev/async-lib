@@ -4,6 +4,7 @@ public inherited sharing class QueueableManager {
     public static final String STATUS_FAILED = 'FAILED';
     public static final String STATUS_SKIPPED_DEPENDENCY = 'SKIPPED_DEPENDENCY';
     public static final String STATUS_SKIPPED_CHAIN_STOPPED = 'SKIPPED_CHAIN_STOPPED';
+    public static final String STATUS_SKIPPED_CHUNK_STOPPED = 'SKIPPED_CHUNK_STOPPED';
     public static final String STATUS_SKIPPED_EXPLICIT = 'SKIPPED_EXPLICIT';
     public static final String STATUS_SKIPPED_DISABLED = 'SKIPPED_DISABLED';
     public static final Integer MAX_RETRY_CAP = 10;

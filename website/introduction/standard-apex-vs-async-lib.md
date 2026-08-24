@@ -22,6 +22,7 @@ logic stays where it always was, so things like `Database.Stateful`,
 | Enqueue next job inside `execute()`            | `.chain(new NextJob())`                                   |
 | 1 child queueable per transaction (hard limit) | Automatic overflow to a scheduled batch, no limit         |
 | `System.attachFinalizer` + `implements Finalizer` | `extends QueueableJob.Finalizer` + `attachFinalizer()` |
+| Hand-rolled paging over a list or cursor       | `Async.chunk(job, source).chunkSize(200).enqueue()`       |
 | `Database.executeBatch(job, scope)`            | `Async.batchable(job).scopeSize(scope).execute()`         |
 | `implements Schedulable` + `System.schedule`   | `Async.schedulable(job).cronExpression(...).schedule()`   |
 | Hand-written cron string                       | `CronBuilder` fluent helpers                              |
@@ -122,6 +123,71 @@ Async.queueable(new FirstJob())
 Async Lib also adds [`dependsOn(...)`](/api/queueable#dependson) so a chained job
 can run only when an earlier one succeeded, failed, or finished. There is no
 standard-Apex equivalent.
+
+### Processing a large data set
+
+In standard Apex you carry the position yourself: slice the list, enqueue the next
+job with the new offset, and remember where you were.
+
+**Standard Apex**
+
+```apex
+public class RecalcJob implements Queueable {
+  private List<Id> ids;
+  private Integer position;
+
+  public void execute(QueueableContext context) {
+    List<Id> page = new List<Id>();
+    for (Integer i = position; i < Math.min(position + 200, ids.size()); i++) {
+      page.add(ids[i]);
+    }
+    // ... work on page ...
+    if (position + 200 < ids.size()) {
+      System.enqueueJob(new RecalcJob(ids, position + 200)); // one chance, no tracking
+    }
+  }
+}
+```
+
+**Async Lib**
+
+```apex
+public class RecalcJob extends ChunkJob {
+  public override void work(List<SObject> chunk) {
+    // ... work on chunk ...
+  }
+}
+
+Async.chunk(new RecalcJob(), ChunkSource.of(accounts)).chunkSize(200).enqueue();
+```
+
+The framework carries the position, retries a page that throws, records an
+`AsyncResult__c` per page, and can page a `Database.Cursor` instead of a list when
+the set is too big to hold in memory. See the [Chunk API](/api/chunk).
+
+Your job keeps its own members across the whole run, so a running total or a map
+built on one page is still there on the next one. This is what
+`Database.Stateful` gives a batch, except you do not have to ask for it.
+
+```apex
+public class RevenueRollupJob extends ChunkJob {
+  private Map<Id, Decimal> revenueByOwner = new Map<Id, Decimal>();
+  private Integer processed = 0;
+
+  public override void work(List<SObject> chunk) {
+    for (Opportunity opp : (List<Opportunity>) chunk) {
+      Decimal current = revenueByOwner.get(opp.OwnerId);
+      revenueByOwner.put(opp.OwnerId, (current == null ? 0 : current) + opp.Amount);
+    }
+    processed += chunk.size();
+  }
+}
+```
+
+Each page starts from the state the previous page left behind, so
+`revenueByOwner` keeps growing and `processed` keeps counting for the length of
+the run. Keep the members serializable and keep them small: they travel with the
+job on every hop.
 
 ### Finalizers
 

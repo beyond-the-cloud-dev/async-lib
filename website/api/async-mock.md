@@ -18,6 +18,21 @@ static void shouldMockQueueableContext() {
 }
 ```
 
+**Common job failure mocking example:**
+
+```apex
+@IsTest
+static void shouldMockJobFailure() {
+	AsyncMock.whenQueueable('flaky-job')
+		.thenThrow(new CalloutException('service unavailable'));
+
+	Test.startTest();
+	Async.queueable(new SyncAccountsJob()).mockId('flaky-job').retry(1).enqueue();
+	Test.stopTest();
+	// The job never runs. It fails, retries and records exactly as if it had thrown.
+}
+```
+
 **Common Finalizer mocking example:**
 
 ```apex
@@ -62,6 +77,7 @@ The following are methods for using AsyncMock in tests:
 
 - [`thenReturn(QueueableContext ctx)`](#thenreturn-queueablecontext)
 - [`thenReturn(Id jobId)`](#thenreturn-id)
+- [`thenThrow(Exception ex)`](#thenthrow-1)
 
 [**Utility**](#utility)
 
@@ -254,6 +270,54 @@ AsyncMock.whenQueueable('my-job')
 	.thenReturn('707xx0000000001AAA');
 ```
 
+#### thenThrow
+
+Makes the job fail instead of running. The exception is raised where the job body
+would have run, so everything downstream behaves as if the job had thrown it
+itself: rollback, retry classification and backoff, the `FAILED` `AsyncResult__c`,
+and any chain or chunk failure policy. Use it to test a failure path without
+writing a job class that exists only to blow up.
+
+**Signature**
+
+```apex
+QueueableMockSetup thenThrow(Exception ex);
+```
+
+**Example**
+
+```apex
+AsyncMock.whenQueueable('flaky-job')
+	.thenThrow(new CalloutException('service unavailable'));
+
+Test.startTest();
+Async.queueable(new SyncAccountsJob())
+	.mockId('flaky-job')
+	.retry(1)
+	.enqueue();
+Test.stopTest();
+```
+
+::: tip Picking which run fails
+The mock is a queue, so mixing `thenReturn` and `thenThrow` chooses which
+execution fails. On a [chunk run](/api/chunk) that means choosing which page fails,
+since every page consumes one entry:
+
+```apex
+AsyncMock.whenQueueable('recalc-run')
+	.thenReturn(new AsyncMock.MockQueueableContext())   // page 1 succeeds
+	.thenThrow(new CalloutException('boom'))            // page 2 fails
+	.thenReturn(new AsyncMock.MockQueueableContext());  // page 3 succeeds
+
+Async.chunk(new AccountRecalcJob(), ChunkSource.of(records))
+	.chunkSize(2)
+	.mockId('recalc-run')
+	.stopRemainingChunksOnFailure()
+	.enqueue();
+```
+
+:::
+
 ### Utility
 
 #### reset
@@ -417,12 +481,14 @@ public class MockQueueableContext implements System.QueueableContext
 | Method | Description |
 |--------|-------------|
 | `setJobId(Id jobId)` | Sets the job ID |
+| `setException(Exception ex)` | Makes the job fail with this exception instead of running |
 
 **Interface Methods**
 
 | Method | Description |
 |--------|-------------|
 | `getJobId()` | Returns the configured job ID |
+| `getException()` | Returns the failure the job will be given, if any |
 
 **Example**
 

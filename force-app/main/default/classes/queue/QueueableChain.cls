@@ -12,6 +12,7 @@ public inherited sharing class QueueableChain {
     private Boolean isStopped = false;
     private Integer chainCounter = 0;
     private Integer jobSequence = 0;
+    private Set<String> customJobIdsBeforeAttempt;
     private QueueableJob currentJob;
     private Map<String, Async.Outcome> outcomeByCustomJobId = new Map<String, Async.Outcome>();
     private Map<String, Id> resultIdByCustomJobId = new Map<String, Id>();
@@ -51,6 +52,7 @@ public inherited sharing class QueueableChain {
         currentJob.queueableCtx = ctx;
         currentJob.salesforceJobId = ctx.getJobId();
         currentJob.setChainCounterToName(++chainCounter);
+        customJobIdsBeforeAttempt = currentCustomJobIds();
 
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
@@ -204,8 +206,30 @@ public inherited sharing class QueueableChain {
         retryJob.retryHistory = previousJob.retryHistory;
         retryJob.resetForRetry();
 
+        discardJobsAddedByFailedAttempt();
         jobs.add(0, retryJob);
         enqueueNextJobIfAny();
+    }
+
+    private void discardJobsAddedByFailedAttempt() {
+        if (customJobIdsBeforeAttempt == null) {
+            return;
+        }
+        for (Integer i = jobs.size() - 1; i >= 0; i--) {
+            if (!customJobIdsBeforeAttempt.contains(jobs[i].customJobId)) {
+                outcomeByCustomJobId.remove(jobs[i].customJobId);
+                resultIdByCustomJobId.remove(jobs[i].customJobId);
+                jobs.remove(i);
+            }
+        }
+    }
+
+    private Set<String> currentCustomJobIds() {
+        Set<String> customJobIds = new Set<String>();
+        for (QueueableJob job : jobs) {
+            customJobIds.add(job.customJobId);
+        }
+        return customJobIds;
     }
 
     private Boolean resultEnabledFor(QueueableJob job) {

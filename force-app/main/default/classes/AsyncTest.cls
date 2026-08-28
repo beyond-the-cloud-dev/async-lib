@@ -2742,6 +2742,74 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.isTrue(String.isNotBlank(result.RetryHistory__c), 'Retry history is recorded.');
     }
 
+    @IsTest
+    private static void shouldRunConsumerFinalizerOnceWhenRetriesAreExhausted() {
+        Test.startTest();
+        Async.queueable(new FinalizerAttachingRetryJob())
+            .continueOnJobExecuteFail()
+            .retry(2)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            accountCount('RETRY-PARENT'),
+            'Original run plus 2 retries each execute work().'
+        );
+        Assert.areEqual(
+            1,
+            accountCount('RETRY-FINALIZER'),
+            'Re-attaching on every attempt must not queue one finalizer per attempt.'
+        );
+    }
+
+    @IsTest
+    private static void shouldChainFollowUpJobOnceWhenRetriesAreExhausted() {
+        Test.startTest();
+        Async.queueable(new JobChainingRetryJob()).continueOnJobExecuteFail().retry(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            accountCount('CHAIN-PARENT'),
+            'Original run plus 2 retries each execute work().'
+        );
+        Assert.areEqual(
+            1,
+            accountCount('CHAIN-FOLLOWUP'),
+            'Re-chaining on every attempt must not queue one follow-up per attempt.'
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepEveryAttemptInRetryHistoryAfterDiscardingChainChanges() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        Async.queueable(new FinalizerAttachingRetryJob())
+            .continueOnJobExecuteFail()
+            .retry(2)
+            .enqueue();
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT Status__c, RetryAttempts__c, RetryHistory__c, ExceptionMessage__c
+            FROM AsyncResult__c
+            WHERE ClassName__c LIKE '%FinalizerAttachingRetryJob'
+        ];
+        Assert.areEqual(QueueableManager.STATUS_FAILED, result.Status__c);
+        Assert.areEqual(2, result.RetryAttempts__c, 'Every attempt is still counted.');
+        Assert.areEqual(CUSTOM_ERROR_MESSAGE, result.ExceptionMessage__c);
+        for (String attempt : new List<String>{ 'Attempt 1', 'Attempt 2', 'Attempt 3' }) {
+            Assert.isTrue(
+                result.RetryHistory__c.contains(attempt),
+                'Discarding a failed attempt must not lose ' + attempt + ' from the history.'
+            );
+        }
+    }
+
     private static String getClassNameWithNamespaceDotPrefix(String className) {
         return getNamespaceDotPrefix() + className;
     }
@@ -3163,6 +3231,28 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private class StopChainFinalizer extends QueueableJob.Finalizer {
         public override void work() {
             Async.stopChain();
+        }
+    }
+
+    private class FinalizerAttachingRetryJob extends QueueableJob {
+        public override void work() {
+            insert new Account(Name = 'RETRY-PARENT');
+            Async.queueable(new MarkerFinalizer()).attachFinalizer();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class MarkerFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            insert new Account(Name = 'RETRY-FINALIZER');
+        }
+    }
+
+    private class JobChainingRetryJob extends QueueableJob {
+        public override void work() {
+            insert new Account(Name = 'CHAIN-PARENT');
+            Async.queueable(markerJob('CHAIN-FOLLOWUP', false)).chain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
     }
 

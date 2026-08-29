@@ -1,8 +1,8 @@
 {
   "packageDirectories": [
     {
-      "versionName": "Async Lib 2.7.0",
-      "versionNumber": "2.7.0.NEXT",
+      "versionName": "Async Lib 2.8.0",
+      "versionNumber": "2.8.0.NEXT",
       "path": "force-app",
       "default": true,
       "package": "Async Lib",
@@ -18,6 +18,7 @@
     "Async Lib@2.4.0": "04tP6000002cgEnIAI",
     "Async Lib@2.5.0": "04tP60000038pYHIAY",
     "Async Lib@2.6.0": "04tP6000003Hg17IAC",
-    "Async Lib@2.7.0": "04tP6000003Sp7WIAS"
+    "Async Lib@2.7.0": "04tP6000003Sp7WIAS",
+    "Async Lib@2.8.0": "04tP6000003fb0HIAQ"
   }
 }

@@ -2,18 +2,18 @@
 outline: deep
 ---
 
-# Installation <Badge type="tip" text="v2.7.0" />
+# Installation <Badge type="tip" text="v2.8.0" />
 
 ## Install as Unlocked Package
 
 Install the latest version of Async Lib as an unlocked package:
 
-<a href="https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000003Sp7WIAS">
+<a href="https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000003fb0HIAQ">
   <img alt="Install Unlocked Package" src="https://img.shields.io/badge/Install-Unlocked%20Package-blue?style=for-the-badge&logo=salesforce">
 </a>
 
 ```
-https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000003Sp7WIAS
+https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000003fb0HIAQ
 ```
 
 ::: tip

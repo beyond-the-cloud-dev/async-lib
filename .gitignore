@@ -62,3 +62,7 @@ website/.vitepress/dist/
 # Local agent tooling — not for the repo
 .claude/
 scripts/agent/
+
+# Consumer-app scratch state, not source
+package-tests/consumer-app/.sf/
+package-tests/consumer-app/.sfdx/

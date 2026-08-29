@@ -2,6 +2,11 @@ public inherited sharing abstract class ChunkSource {
     public static final String ERROR_MESSAGE_NULL_CURSOR = 'Database.Cursor cannot be null';
     public static final String ERROR_MESSAGE_BLANK_QUERY = 'SOQL query cannot be blank';
 
+    // Passed explicitly rather than left to the platform: the implicit default is
+    // system mode up to API 66.0 and user mode from 67.0, so relying on it would
+    // silently change which rows a run sees the day the API version is bumped.
+    private static final AccessLevel DEFAULT_ACCESS_LEVEL = AccessLevel.SYSTEM_MODE;
+
     public abstract Integer getNumRecords();
     public abstract List<SObject> fetch(Integer position, Integer count);
 
@@ -31,15 +36,25 @@ public inherited sharing abstract class ChunkSource {
     }
 
     public static ChunkSource query(String soql) {
+        return query(soql, DEFAULT_ACCESS_LEVEL);
+    }
+
+    public static ChunkSource query(String soql, AccessLevel accessLevel) {
         assertQueryIsSet(soql);
-        return new CursorChunkSource(Database.getCursor(soql));
+        return new CursorChunkSource(Database.getCursor(soql, accessLevel));
     }
 
     public static ChunkSource query(String soql, Map<String, Object> binds) {
+        return query(soql, binds, DEFAULT_ACCESS_LEVEL);
+    }
+
+    public static ChunkSource query(
+        String soql,
+        Map<String, Object> binds,
+        AccessLevel accessLevel
+    ) {
         assertQueryIsSet(soql);
-        return new CursorChunkSource(
-            Database.getCursorWithBinds(soql, binds, AccessLevel.SYSTEM_MODE)
-        );
+        return new CursorChunkSource(Database.getCursorWithBinds(soql, binds, accessLevel));
     }
 
     private static void assertQueryIsSet(String soql) {

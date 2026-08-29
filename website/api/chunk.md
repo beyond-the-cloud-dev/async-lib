@@ -1,7 +1,6 @@
 # Chunk API
 
-Apex classes `ChunkBuilder.cls`, `ChunkJob.cls`, `IdChunkJob.cls`, and
-`ChunkSource.cls`.
+Apex classes `ChunkBuilder.cls`, `ChunkJob.cls`, and `ChunkSource.cls`.
 
 Process a large data set in tuned pages across chained Queueables, with the same
 per-job tracking and retry/backoff as a normal `QueueableJob`. Reach for this when
@@ -73,18 +72,33 @@ Keep those members serializable and small: they travel with the job on every hop
 A page that fails and retries starts from the state that attempt began with, so
 keep the accumulation idempotent if you retry.
 
-**Common IdChunkJob class example:**
+**Working by id:**
 
-When you only need the record ids, extend `IdChunkJob` and override
-`work(Set<Id> ids)`. The framework plucks the ids from each fetched page.
+When the work only needs ids, feed the run `ChunkSource.ofIds(...)` and read them
+straight off the page. Ids are 18 characters each, so they travel far more cheaply
+across hops than whole records, and re-querying inside `work(...)` means a long run
+acts on current data rather than a snapshot taken before the first page.
 
 ```apex
-public class AccountCloseJob extends IdChunkJob {
-  public override void work(Set<Id> ids) {
-    // requery or process by id
+public class CreateWelcomeTasksJob extends ChunkJob {
+  public override void work(List<SObject> chunk) {
+    List<Task> tasks = new List<Task>();
+    for (Id accountId : new Map<Id, SObject>(chunk).keySet()) {
+      tasks.add(new Task(WhatId = accountId, Subject = 'Welcome call'));
+    }
+    insert tasks;
   }
 }
 ```
+
+```apex
+Async.chunk(new CreateWelcomeTasksJob(), ChunkSource.ofIds(accountIds))
+	.chunkSize(200)
+	.enqueue();
+```
+
+`ofIds` yields id-only shells, so there are no other fields to read. If your job
+needs fields, query them inside `work(...)` or use a source that selects them.
 
 **Large set via SOQL cursor example:**
 
@@ -113,6 +127,16 @@ Async.queueable(new PrepareJob())
 ```
 
 `PrepareJob` runs, then every page of the run, then `NotifyJob`.
+
+Runs chain to each other the same way, for multi-stage pipelines:
+
+```apex
+Async.chunk(new StageOneJob(), firstSource)
+	.chunkSize(200)
+	.chunk(new StageTwoJob(), secondSource)
+	.chunkSize(100)
+	.enqueue();
+```
 
 `dependsOn(...)` against a chunk run reads the outcome of the run as a whole:
 
@@ -185,18 +209,51 @@ tests.
 ## Security
 
 `ChunkSource.query(String soql)` runs the SOQL you pass, so you own its safety.
-Use the bind overload rather than concatenating user input, and add
-`WITH USER_MODE` to the query if the run must respect the current user's field and
-record access (a cursor opened by `ChunkSource` runs in system mode, like
-`Database.getCursor`). The framework hands each page to your `work(...)` as
-queried; it does not strip fields.
+Use a bind overload rather than concatenating user input. The framework hands each
+page to your `work(...)` as queried; it does not strip fields.
 
 ```apex
 ChunkSource.query(
-  'SELECT Id FROM Account WHERE Industry = :industry WITH USER_MODE',
+  'SELECT Id FROM Account WHERE Industry = :industry',
   new Map<String, Object>{ 'industry' => userInput }
 );
 ```
+
+### Access level
+
+**A cursor opened by `ChunkSource` runs in `AccessLevel.SYSTEM_MODE` by default.**
+Field-level security, object permissions and sharing rules are not applied. Chunk
+runs are usually administrative work over data the running user may not personally
+see, so this matches both `Database.getCursor` on the current API version and what
+most runs actually want. It is still a deliberate choice you should be aware of.
+
+Pass an `AccessLevel` to change it:
+
+```apex
+ChunkSource.query('SELECT Id FROM Account WHERE ...', AccessLevel.USER_MODE);
+
+ChunkSource.query(
+  'SELECT Id FROM Account WHERE Industry = :industry',
+  new Map<String, Object>{ 'industry' => userInput },
+  AccessLevel.USER_MODE
+);
+```
+
+`WITH USER_MODE` inside the query string works too and wins over the parameter.
+
+::: warning Why this is passed explicitly
+
+The framework always passes an `AccessLevel` rather than relying on the platform
+default, because that default is not stable. Per the Apex Developer Guide, "in API
+version 67.0 and later, Apex runs in user context by default", where API 66.0 and
+earlier default to system mode.
+
+Had `ChunkSource` relied on the implicit default, bumping the API version would
+have silently switched every existing run to user mode, and runs would quietly
+return fewer rows with no error. Passing it explicitly keeps behaviour identical
+across that bump.
+
+:::
 
 ## Testing a run
 
@@ -294,7 +351,9 @@ factory, or extend `ChunkSource` for a fully custom source.
 | `ChunkSource.ofIds(Set<Id>)`                       | id-only source                         |
 | `ChunkSource.cursor(Database.Cursor)`              | wraps an existing SOQL cursor          |
 | `ChunkSource.query(String soql)`                   | opens a cursor over the query          |
+| `ChunkSource.query(String soql, AccessLevel accessLevel)` | same, with an explicit access level |
 | `ChunkSource.query(String soql, Map<String, Object> binds)` | same, with bind variables     |
+| `ChunkSource.query(String soql, Map<String, Object> binds, AccessLevel accessLevel)` | binds plus access level |
 
 The two abstract methods mirror `Database.Cursor`, so wrapping a cursor is a
 straight delegate and a custom source only has to answer the same two questions.
@@ -474,6 +533,43 @@ Async.chunk(new AccountRecalcJob(), ChunkSource.of(records))
 	.chain(new NotifyJob())
 	.enqueue();
 ```
+
+#### chunk next run
+
+Chains a second run after the current one and returns its `ChunkBuilder`, so
+multi-stage pipelines stay fluent. Every page of the first run completes before
+the first page of the second one starts.
+
+**Signature**
+
+```apex
+ChunkBuilder chunk(ChunkJob nextChunkJob, ChunkSource nextSource);
+```
+
+**Example**
+
+```apex
+Async.chunk(new StageOneJob(), ChunkSource.query('SELECT Id FROM Account WHERE ...'))
+	.chunkSize(200)
+	.chunk(new StageTwoJob(), ChunkSource.query('SELECT Id FROM Contact WHERE ...'))
+	.chunkSize(100)
+	.enqueue();
+```
+
+`dependsOn(Async.afterPrevious())` on the second run resolves against the first
+run's **run-level** outcome, so `succeeded()` means every page of stage one passed.
+
+```apex
+Async.chunk(new StageOneJob(), source)
+	.chunkSize(200)
+	.chunk(new StageTwoJob(), otherSource)
+	.dependsOn(Async.afterPrevious().succeeded())
+	.enqueue();
+```
+
+Each source is evaluated when its builder is created, not when its run starts. If
+stage two must query rows that stage one produces, build it inside stage one's
+`work(...)` instead, or use a plain `chain(...)` job that enqueues it.
 
 #### enqueue
 

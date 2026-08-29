@@ -4221,6 +4221,60 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    private static void shouldRunASecondChunkRunAfterTheFirstOneFinishes() {
+        List<Account> accounts = createAccounts(4);
+
+        Test.startTest();
+        Async.chunk(new LabelingChunkJob('FIRST'), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .chunk(new LabelingChunkJob('SECOND'), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            4,
+            [SELECT COUNT() FROM Account WHERE Site = 'SECOND'],
+            'The second run overwrites the first, so it ran after every page of run one.'
+        );
+    }
+
+    @IsTest
+    private static void shouldGateASecondChunkRunOnTheFirstRunOutcome() {
+        List<Account> accounts = accountsWithOneFailingRecord();
+
+        Test.startTest();
+        Async.chunk(new FailMarkedChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .chunk(new LabelingChunkJob('SECOND'), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .dependsOn(Async.afterPrevious().succeeded())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM Account WHERE Site = 'SECOND'],
+            'dependsOn(previous) resolves against the first run outcome, which failed.'
+        );
+    }
+
+    @IsTest
+    private static void shouldOpenACursorInTheRequestedAccessLevel() {
+        createAccounts(2);
+
+        ChunkSource userMode = ChunkSource.query('SELECT Id FROM Account', AccessLevel.USER_MODE);
+        ChunkSource systemMode = ChunkSource.query(
+            'SELECT Id FROM Account WHERE Name LIKE :prefix',
+            new Map<String, Object>{ 'prefix' => 'Chunk%' },
+            AccessLevel.SYSTEM_MODE
+        );
+
+        Assert.areEqual(2, userMode.getNumRecords(), 'The admin running the test sees both.');
+        Assert.areEqual(2, systemMode.getNumRecords(), 'Binds and access level combine.');
+    }
+
+    @IsTest
     private static void shouldChainNothingWhenSourceIsEmpty() {
         Async.Result result = Async.chunk(
                 new MarkingChunkJob(),
@@ -4295,16 +4349,18 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    private static void shouldPluckIdsForIdChunkJob() {
+    private static void shouldYieldIdOnlyShellsWhenSourceIsBuiltFromIds() {
         List<Account> accounts = createAccounts(5);
-        CapturingIdChunkJob job = new CapturingIdChunkJob();
+        ChunkSource source = ChunkSource.ofIds(new Map<Id, Account>(accounts).keySet());
 
-        job.work(accounts);
+        List<SObject> page = source.fetch(0, 5);
 
-        Assert.areEqual(5, job.capturedIds.size(), 'Every record id should be plucked.');
-        for (Account account : accounts) {
-            Assert.isTrue(job.capturedIds.contains(account.Id));
-        }
+        Assert.areEqual(5, page.size());
+        Assert.areEqual(
+            new Map<Id, Account>(accounts).keySet(),
+            new Map<Id, SObject>(page).keySet(),
+            'A job reads ids straight off the page with new Map<Id, SObject>(chunk).keySet().'
+        );
     }
 
     @IsTest
@@ -4766,13 +4822,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 Name = tag,
                 Site = String.valueOf([SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED])
             );
-        }
-    }
-
-    private class CapturingIdChunkJob extends IdChunkJob {
-        public Set<Id> capturedIds;
-        public override void work(Set<Id> ids) {
-            this.capturedIds = ids;
         }
     }
 }

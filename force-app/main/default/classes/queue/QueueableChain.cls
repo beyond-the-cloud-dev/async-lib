@@ -324,7 +324,7 @@ public inherited sharing class QueueableChain {
                     Id = resultIdByCustomJobId.get(job.customJobId),
                     DependsOnResult__c = dependencyResultId,
                     RequiredOutcome__c = decisive.requiredOutcome.name(),
-                    ActualOutcome__c = actual != null ? actual.name() : 'NOT_RUN'
+                    ActualOutcome__c = actual?.name() ?? 'NOT_RUN'
                 )
             );
         }
@@ -338,7 +338,7 @@ public inherited sharing class QueueableChain {
             return null;
         }
         Async.Dependency blocking = firstUnsatisfiedDependency(job);
-        return blocking != null ? blocking : job.dependencies[0];
+        return blocking ?? job.dependencies[0];
     }
 
     public void enqueueNextJobIfAny() {
@@ -456,7 +456,7 @@ public inherited sharing class QueueableChain {
             '\' required ' +
             blocking.requiredOutcome.name() +
             ' but was ' +
-            (actual != null ? actual.name() : 'NOT_RUN');
+            (actual?.name() ?? 'NOT_RUN');
     }
 
     private String labelForCustomJobId(String customJobId) {

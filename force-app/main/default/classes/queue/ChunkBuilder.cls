@@ -129,6 +129,11 @@ public inherited sharing class ChunkBuilder {
         return new QueueableBuilder(nextJob, runResult?.customJobId);
     }
 
+    public ChunkBuilder chunk(ChunkJob nextChunkJob, ChunkSource nextSource) {
+        Async.Result runResult = chainRun();
+        return new ChunkBuilder(nextChunkJob, nextSource, runResult?.customJobId);
+    }
+
     public Async.Result chain() {
         Async.Result runResult = chainRun();
         return runResult ?? emptyRunResult();

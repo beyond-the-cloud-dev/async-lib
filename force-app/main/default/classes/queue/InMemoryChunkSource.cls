@@ -2,7 +2,7 @@ public inherited sharing class InMemoryChunkSource extends ChunkSource {
     private List<SObject> records;
 
     public InMemoryChunkSource(List<SObject> records) {
-        this.records = records == null ? new List<SObject>() : records;
+        this.records = records ?? new List<SObject>();
     }
 
     public override Integer getNumRecords() {

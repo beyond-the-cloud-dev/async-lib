@@ -18,7 +18,6 @@ API_SURFACE_FILES=(
     "force-app/main/default/classes/queue/QueueableBuilder.cls"
     "force-app/main/default/classes/queue/ChunkSource.cls"
     "force-app/main/default/classes/queue/ChunkJob.cls"
-    "force-app/main/default/classes/queue/IdChunkJob.cls"
     "force-app/main/default/classes/queue/ChunkBuilder.cls"
     "force-app/main/default/classes/queue/Backoff.cls"
     "force-app/main/default/classes/batch/BatchableBuilder.cls"

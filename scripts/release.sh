@@ -4,6 +4,16 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# The CLI's update banner goes to stderr; the `--json 2>&1` calls below would feed
+# it to jq, which then fails to parse. Suppress it (same guard as package-tests/run.sh).
+export SF_SKIP_NEW_VERSION_CHECK=true
+
+# sf package version create resolves the dev hub from config, which is not set in
+# every environment. Allow the same override the other scripts take.
+DEVHUB="${ASYNC_LIB_DEVHUB:-}"
+devhub_arg=()
+[ -n "$DEVHUB" ] && devhub_arg=(--target-dev-hub "$DEVHUB")
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -135,6 +145,7 @@ PKG_OUTPUT=$(sf package version create \
     --installation-key-bypass \
     --wait 20 \
     --code-coverage \
+    "${devhub_arg[@]}" \
     --json 2>&1)
 
 PKG_STATUS=$(echo "$PKG_OUTPUT" | jq -r '.status')

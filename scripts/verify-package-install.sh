@@ -59,8 +59,8 @@ echo -e "${BLUE}=== Installing $PACKAGE_VERSION_ID ===${NC}"
 sf package install \
     --package "$PACKAGE_VERSION_ID" \
     --target-org "$ORG_ALIAS" \
-    --installation-key-bypass \
     --wait 20 \
+    --publish-wait 10 \
     --no-prompt >/dev/null
 echo -e "${GREEN}Installed${NC}"
 
@@ -79,27 +79,39 @@ if [ -z "$TEST_CLASSES" ]; then
     exit 1
 fi
 
-class_args=()
-while IFS= read -r c; do class_args+=(--class-names "$c"); done <<<"$TEST_CLASSES"
-
 echo -e "${BLUE}=== Running consumer tests against the installed package ===${NC}"
-echo "$TEST_CLASSES" | sed 's/^/  /'
 
-RESULT=$(sf apex run test \
-    --target-org "$ORG_ALIAS" \
-    "${class_args[@]}" \
-    --synchronous \
-    --wait 30 \
-    --result-format human 2>&1) || true
+# A synchronous run accepts one class at a time, so each class gets its own run.
+PASSED=0
+FAILED=0
+while IFS= read -r class_name; do
+    [ -n "$class_name" ] || continue
+    RESULT=$(sf apex run test \
+        --target-org "$ORG_ALIAS" \
+        --class-names "$class_name" \
+        --synchronous \
+        --wait 30 \
+        --json 2>&1) || true
 
-echo "$RESULT" | sed -n '/TEST NAME/,/Test Total/p'
+    OUTCOME=$(echo "$RESULT" | jq -r '.result.summary.outcome // "Unknown"' 2>/dev/null)
+    RAN=$(echo "$RESULT" | jq -r '.result.summary.testsRan // 0' 2>/dev/null)
 
-if echo "$RESULT" | grep -qE "^Outcome[[:space:]]+Passed|Pass Rate[[:space:]]+100%"; then
-    echo -e "${GREEN}Package verified: consumer tests pass against the installed package.${NC}"
+    if [ "$OUTCOME" = "Passed" ] && [ "$RAN" != "0" ]; then
+        echo -e "  ${GREEN}PASS${NC} $class_name ($RAN tests)"
+        PASSED=$((PASSED + RAN))
+    else
+        echo -e "  ${RED}FAIL${NC} $class_name (outcome: $OUTCOME, ran: $RAN)"
+        echo "$RESULT" | jq -r '.result.tests[]? | select(.Outcome == "Fail")
+            | "      \(.MethodName): \(.Message)"' 2>/dev/null || echo "$RESULT" | tail -20
+        FAILED=$((FAILED + 1))
+    fi
+done <<<"$TEST_CLASSES"
+
+if [ "$FAILED" -eq 0 ] && [ "$PASSED" -gt 0 ]; then
+    echo -e "${GREEN}Package verified: $PASSED consumer tests pass against the installed package.${NC}"
     exit 0
 fi
 
-echo -e "${RED}Package verification FAILED.${NC}" >&2
+echo -e "${RED}Package verification FAILED ($FAILED class(es), $PASSED tests passed).${NC}" >&2
 echo -e "${RED}Do not promote or ship this version.${NC}" >&2
-echo "$RESULT" | tail -40 >&2
 exit 1

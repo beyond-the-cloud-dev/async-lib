@@ -18,6 +18,9 @@ features:
   - title: Smart Queueable Jobs
     details: Automatically handles "Too many queueable jobs" errors through intelligent chaining and batch overflow. Features priority-based execution, sophisticated error handling, and powerful finalizers for cleanup logic.
     link: /api/queueable
+  - title: Chunked Processing
+    details: Hand a chunk run a list, a set of ids, or a SOQL cursor and it pages through them across chained Queueables. Per-page tracking, retry and backoff, and the run takes one slot in the chain so later jobs wait for it.
+    link: /api/chunk
   - title: Unified Batch Processing  
     details: Execute batch jobs immediately or schedule them for later with configurable scope sizes. Convert any batch job to schedulable with a single method call. Built-in error handling and result tracking.
     link: /api/batchable

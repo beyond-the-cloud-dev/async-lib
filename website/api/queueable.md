@@ -119,6 +119,7 @@ The following are methods for using Async with Queueable jobs:
 
 - [`isRetryable(Exception ex)`](#isretryable)
 - [`resetForRetry()`](#resetforretry)
+- [`onFinalFailure(Async.FailureContext failureCtx)`](#onfinalfailure)
 
 ### INIT
 
@@ -523,6 +524,37 @@ Async.Result result = Async.queueable(new MyQueueableJob())
 Returns `result.customJobId` containing MyOtherQueueableJob's unique Custom Job
 Id. To obtain MyQueueableJob's Id, use `chain()` method separately.
 
+#### chunk next run
+
+Adds a chunked run to the chain after the previous job. The run pages through its
+source and every page finishes before the next chain member starts. See
+[Chunk API](/api/chunk).
+
+Only needed when the run follows a job you already chained. A run that starts the
+chain uses `Async.chunk(...)` directly, with no `queueable()` in front of it.
+
+**Signature**
+
+```apex
+ChunkBuilder chunk(ChunkJob job, ChunkSource source);
+```
+
+**Example**
+
+```apex
+// Standalone run: no queueable() needed
+Async.chunk(new AccountRecalcJob(), ChunkSource.of(records))
+	.chunkSize(200)
+	.enqueue();
+
+// After an earlier job in the same chain
+Async.queueable(new MyQueueableJob())
+	.chunk(new AccountRecalcJob(), ChunkSource.of(records))
+	.chunkSize(200)
+	.chain(new MyOtherQueueableJob())
+	.enqueue();
+```
+
 #### asSchedulable
 
 Converts the queueable builder to a schedulable builder for cron-based
@@ -838,3 +870,155 @@ public class SyncContactsJob extends QueueableJob {
   }
 }
 ```
+
+#### onFinalFailure
+
+Override to react when a job has failed and will **not** run again. Custom
+logging, alerting, a compensating record, anything you would otherwise have to
+bolt on with a separate finalizer job. Default is a no-op.
+
+It fires **once per job, not once per attempt**. A job with `retry(2)` that
+fails three times calls it a single time, after the last attempt, so a logger
+here does not multiply. Retry detail for the attempts you did not see is on the
+context as `retryHistory`.
+
+It does not fire for jobs that were skipped (`SKIPPED_DEPENDENCY`,
+`SKIPPED_CHAIN_STOPPED`, `SKIPPED_CHUNK_STOPPED`). Those never ran, so they
+never failed. Query `AsyncResult__c` if you need to see them.
+
+`ChunkJob` extends `QueueableJob`, so a chunk run calls it once per failed page.
+
+The override runs inside the framework's finalizer, before the next job is
+enqueued. DML is fine and is the point. If it throws, the framework records the
+failure in `RetryHistory__c` and carries on rather than killing the chain, the
+same way a throwing [`isRetryable`](#isretryable) is handled. Do not call
+`System.enqueueJob` directly in here; use `Async.queueable(...)` so the job
+joins the chain instead of spending the finalizer's single enqueue slot.
+
+**Signature**
+
+```apex
+public virtual void onFinalFailure(Async.FailureContext failureCtx);
+```
+
+**`Async.FailureContext`**
+
+| Property       | Type                      | Description                                                              |
+| -------------- | ------------------------- | ------------------------------------------------------------------------ |
+| `retryOutcome` | `Async.RetryOutcome`      | How the retry question was settled. See below.                           |
+| `failure`      | `QueueableJob.FailureInfo` | `type`, `message` and `stackTrace` of the exception that ended the job.   |
+| `customJobId`  | `String`                  | Correlates to `AsyncResult__c.CustomJobId__c`.                           |
+| `className`    | `String`                  | The job class, namespace-qualified in a packaged install.                |
+| `retryAttempt` | `Integer`                 | Attempts already made, `0` when the first run was the only one.          |
+| `maxRetries`   | `Integer`                 | The configured cap, `0` when no retry policy applied.                    |
+| `retryHistory` | `String`                  | One line per attempt with its exception type and message.                |
+
+**`Async.RetryOutcome`**
+
+| Value                 | Meaning                                                                   |
+| --------------------- | ------------------------------------------------------------------------- |
+| `NOT_CONFIGURED`      | No `retry(n)` and no CMDT default, so the first failure was final.        |
+| `NOT_RETRYABLE`       | [`retryOn`](#retryon) excluded the type, or [`isRetryable`](#isretryable) returned `false`. |
+| `EXHAUSTED`           | Retried up to the cap and still failed.                                   |
+
+There is deliberately no success value. A `FailureContext` only exists on a job
+that failed for good, so a retry that eventually worked never produces one.
+
+**Example**
+
+```apex
+public class SyncContactsJob extends QueueableJob {
+  public override void work() {
+    /* ... */
+  }
+
+  public override void onFinalFailure(Async.FailureContext failureCtx) {
+    insert new IntegrationError__c(
+      Job__c = failureCtx.className,
+      CorrelationId__c = failureCtx.customJobId,
+      RetryOutcome__c = failureCtx.retryOutcome.name(),
+      ExceptionType__c = failureCtx.failure?.type,
+      Message__c = failureCtx.failure?.message,
+      StackTrace__c = failureCtx.failure?.stackTrace,
+      Attempts__c = failureCtx.retryAttempt
+    );
+  }
+}
+```
+
+**Using `retryOutcome` to tell "it broke" from "it stayed broken"**
+
+Without it, every final failure looks the same and you cannot tell a transient
+outage from a bug. Each value answers a different operational question:
+
+| Value            | What actually happened                                                                             | Usual reaction                                                           |
+| ---------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `NOT_CONFIGURED` | Ran once, failed, and no retry policy was ever set. Nobody decided this was unretryable.            | Record it. If it keeps happening, the job probably wants `retry(n)`.      |
+| `NOT_RETRYABLE`  | Your own rules refused it: `retryOn` excluded the type, or `isRetryable` returned `false`.          | Retrying was never going to help. Bad data or a bug, so route it to a human. |
+| `EXHAUSTED`      | It was retried up to the cap and failed every time. The dependency stayed down for the whole window. | Escalate. Nothing self-healed, and `retryHistory` shows each attempt.     |
+
+```apex
+public class SyncContactsJob extends QueueableJob {
+  public override void work() {
+    /* calls an external system */
+  }
+
+  public override Boolean isRetryable(Exception ex) {
+    return !(ex instanceof CalloutException &&
+    ex.getMessage().containsIgnoreCase('401'));
+  }
+
+  public override void onFinalFailure(Async.FailureContext failureCtx) {
+    switch on failureCtx.retryOutcome {
+      when EXHAUSTED {
+        // Retried and still down, so this is an outage rather than a one-off.
+        insert new Case(
+          Subject = 'Contact sync down after ' + failureCtx.retryAttempt + ' attempts',
+          Description = failureCtx.retryHistory,
+          Priority = 'High',
+          Origin = 'Async Lib'
+        );
+      }
+      when NOT_RETRYABLE {
+        // isRetryable() vetoed it: expired credentials will never fix themselves.
+        insert new Case(
+          Subject = 'Contact sync rejected: ' + failureCtx.failure?.type,
+          Description = failureCtx.failure?.message,
+          Priority = 'High',
+          Origin = 'Async Lib'
+        );
+      }
+      when else {
+        insert new IntegrationLog__c(
+          Job__c = failureCtx.className,
+          CorrelationId__c = failureCtx.customJobId,
+          Message__c = failureCtx.failure?.message
+        );
+      }
+    }
+  }
+}
+```
+
+**`retryHistory` is the part you cannot reconstruct**
+
+Only the final attempt is visible anywhere else. `retryHistory` carries one line
+per attempt with that attempt's exception type and message, so a job that failed
+three different ways still tells you the whole story:
+
+```
+Attempt 1: System.CalloutException - Read timed out (retry in 1m)
+Attempt 2: System.CalloutException - Read timed out (retry in 2m)
+Attempt 3: System.CalloutException - 503 Service Unavailable (no further retry)
+```
+
+Attach it to whatever you create; the individual attempts are not recorded
+anywhere else, because only the last one produces an `AsyncResult__c` row.
+
+**Note on the `AsyncResult__c` record**
+
+The result row is written after the hook returns, so you cannot look it up by Id
+from inside the override. Store `customJobId` on your own record and join on
+`AsyncResult__c.CustomJobId__c` later. Result tracking is off unless
+`CreateResult__c` is enabled on `QueueableJobSetting__mdt`, so do not depend on
+a row existing at all.

@@ -33,7 +33,7 @@ their own retention, independent from everything else.
 | Track    | Matches `Status__c`                                                                        | Builder method                     |
 | -------- | ------------------------------------------------------------------------------------------ | ---------------------------------- |
 | Failed   | `FAILED`                                                                                    | `failedOlderThanDays(Integer days)` |
-| The rest | `COMPLETED`, `SKIPPED_DEPENDENCY`, `SKIPPED_CHAIN_STOPPED`, `SKIPPED_EXPLICIT`, `SKIPPED_DISABLED` | `othersOlderThanDays(Integer days)` |
+| The rest | `COMPLETED`, `SKIPPED_DEPENDENCY`, `SKIPPED_CHAIN_STOPPED`, `SKIPPED_CHUNK_STOPPED`, `SKIPPED_EXPLICIT`, `SKIPPED_DISABLED` | `othersOlderThanDays(Integer days)` |
 
 Set one track, the other, or both. A track without a configured retention is
 **never touched**:

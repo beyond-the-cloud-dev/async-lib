@@ -21,7 +21,8 @@ sfdx-project.json
 .mcp.json
 config/
 website/
-internal-scripts/
+package-tests/anonymous/
+release-notes/
 package.json
 README.md
 CONTRIBUTING.md

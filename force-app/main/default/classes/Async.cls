@@ -7,6 +7,10 @@ public inherited sharing class Async {
         return new QueueableBuilder();
     }
 
+    public static ChunkBuilder chunk(ChunkJob job, ChunkSource source) {
+        return new ChunkBuilder(job, source);
+    }
+
     public static BatchableBuilder batchable(Object job) {
         return new BatchableBuilder(job);
     }
@@ -150,6 +154,41 @@ public inherited sharing class Async {
         SUCCESS,
         FAILURE,
         COMPLETED
+    }
+
+    public enum RetryOutcome {
+        NOT_CONFIGURED,
+        NOT_RETRYABLE,
+        EXHAUSTED
+    }
+
+    public class FailureContext {
+        public RetryOutcome retryOutcome;
+        public QueueableJob.FailureInfo failure;
+        public String customJobId;
+        public String className;
+        public Integer retryAttempt;
+        public Integer maxRetries;
+        public String retryHistory;
+
+        public FailureContext(QueueableJob job) {
+            this.retryOutcome = retryOutcomeFor(job);
+            this.failure = job.failure;
+            this.customJobId = job.customJobId;
+            this.className = job.className;
+            this.retryAttempt = job.retryAttempt;
+            this.maxRetries = job.maxRetries;
+            this.retryHistory = job.retryHistory;
+        }
+
+        private Async.RetryOutcome retryOutcomeFor(QueueableJob job) {
+            if (job.maxRetries == 0) {
+                return Async.RetryOutcome.NOT_CONFIGURED;
+            }
+            return job.retryDecision == true
+                ? Async.RetryOutcome.EXHAUSTED
+                : Async.RetryOutcome.NOT_RETRYABLE;
+        }
     }
 
     public class Dependency {

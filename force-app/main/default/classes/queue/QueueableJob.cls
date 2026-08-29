@@ -24,6 +24,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
 
     public List<Async.Dependency> dependencies;
     public String chainId;
+    public Integer chainSequence;
     public String skipStatus;
     public String skipReason;
     public Boolean resultCreated = false;
@@ -55,6 +56,22 @@ public abstract class QueueableJob implements Queueable, Comparable {
     }
 
     public virtual void resetForRetry() {
+    }
+
+    public virtual void onFinalFailure(Async.FailureContext failureCtx) {
+    }
+
+    public void safeOnFinalFailure(Async.FailureContext failureCtx) {
+        try {
+            onFinalFailure(failureCtx);
+        } catch (Exception hookEx) {
+            appendRetryHistoryLine(
+                'onFinalFailure() override threw ' +
+                    hookEx.getTypeName() +
+                    ': ' +
+                    hookEx.getMessage()
+            );
+        }
     }
 
     public virtual QueueableJob cloneForDeepCopy() {
@@ -90,9 +107,15 @@ public abstract class QueueableJob implements Queueable, Comparable {
             return 1;
         }
         if (priority == compareToJob.priority) {
-            return 0;
+            return compareChainSequence(compareToJob);
         }
         return priority - compareToJob.priority;
+    }
+
+    // List.sort() does not define the order of equal elements, so equal priority needs an
+    // explicit tiebreak to keep jobs running in the order they were chained.
+    private Integer compareChainSequence(QueueableJob compareToJob) {
+        return (chainSequence ?? 0) - (compareToJob.chainSequence ?? 0);
     }
 
     public void enqueue(QueueableChain chain) {
@@ -122,6 +145,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public void recordFailure(Exception ex) {
         this.hasFailed = true;
         this.failure = new FailureInfo(ex.getTypeName(), ex.getMessage());
+        this.failure.stackTrace = ex.getStackTraceString();
         this.retryDecision = matchesRetryOnTypes(ex.getTypeName()) && safeIsRetryable(ex);
     }
 
@@ -214,6 +238,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public class FailureInfo {
         public String type;
         public String message;
+        public String stackTrace;
 
         public FailureInfo(String type, String message) {
             this.type = type;

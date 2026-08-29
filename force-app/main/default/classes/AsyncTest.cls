@@ -13,6 +13,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static final String TEST_SIGNATURE_NAME = 'SignatureName';
     private static final String TEST_SCHEDULABLE_JOB_NAME = 'SchedulableTestJob';
     private static final String PRIMITIVE_VALUE_INITIAL = 'INITIAL_VALUE';
+    private static final String CHUNK_PROCESSED = 'CHUNK_PROCESSED';
 
     @IsTest
     private static void shouldEnqueue60QueueablesSuccessfully() {
@@ -2741,6 +2742,178 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.isTrue(String.isNotBlank(result.RetryHistory__c), 'Retry history is recorded.');
     }
 
+    @IsTest
+    private static void shouldRunConsumerFinalizerOnceWhenRetriesAreExhausted() {
+        Test.startTest();
+        Async.queueable(new FinalizerAttachingRetryJob())
+            .continueOnJobExecuteFail()
+            .retry(2)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            accountCount('RETRY-PARENT'),
+            'Original run plus 2 retries each execute work().'
+        );
+        Assert.areEqual(
+            1,
+            accountCount('RETRY-FINALIZER'),
+            'Re-attaching on every attempt must not queue one finalizer per attempt.'
+        );
+    }
+
+    @IsTest
+    private static void shouldChainFollowUpJobOnceWhenRetriesAreExhausted() {
+        Test.startTest();
+        Async.queueable(new JobChainingRetryJob()).continueOnJobExecuteFail().retry(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            accountCount('CHAIN-PARENT'),
+            'Original run plus 2 retries each execute work().'
+        );
+        Assert.areEqual(
+            1,
+            accountCount('CHAIN-FOLLOWUP'),
+            'Re-chaining on every attempt must not queue one follow-up per attempt.'
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepEveryAttemptInRetryHistoryAfterDiscardingChainChanges() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        Async.queueable(new FinalizerAttachingRetryJob())
+            .continueOnJobExecuteFail()
+            .retry(2)
+            .enqueue();
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT Status__c, RetryAttempts__c, RetryHistory__c, ExceptionMessage__c
+            FROM AsyncResult__c
+            WHERE ClassName__c LIKE '%FinalizerAttachingRetryJob'
+        ];
+        Assert.areEqual(QueueableManager.STATUS_FAILED, result.Status__c);
+        Assert.areEqual(2, result.RetryAttempts__c, 'Every attempt is still counted.');
+        Assert.areEqual(CUSTOM_ERROR_MESSAGE, result.ExceptionMessage__c);
+        for (String attempt : new List<String>{ 'Attempt 1', 'Attempt 2', 'Attempt 3' }) {
+            Assert.isTrue(
+                result.RetryHistory__c.contains(attempt),
+                'Discarding a failed attempt must not lose ' + attempt + ' from the history.'
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldReportNoRetryConfiguredWhenJobHasNoRetryPolicy() {
+        Test.startTest();
+        Async.queueable(new FailureHookJob()).continueOnJobExecuteFail().enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            'NOT_CONFIGURED|HAS-TRACE|0/0',
+            hookRecord().Description,
+            'A job with no retry policy did not stop because of a retry decision.'
+        );
+    }
+
+    @IsTest
+    private static void shouldReportRetriesExhaustedAndFireOnlyOnce() {
+        Test.startTest();
+        Async.queueable(new FailureHookJob()).continueOnJobExecuteFail().retry(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, accountCount('HOOK'), 'The hook fires once, after the last attempt.');
+        Assert.areEqual('EXHAUSTED|HAS-TRACE|2/2', hookRecord().Description);
+    }
+
+    @IsTest
+    private static void shouldReportNotRetryableWhenExceptionTypeIsExcluded() {
+        Test.startTest();
+        Async.queueable(new FailureHookJob())
+            .continueOnJobExecuteFail()
+            .retry(2)
+            .retryOn(System.DmlException.class)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            'NOT_RETRYABLE|HAS-TRACE|0/2',
+            hookRecord().Description,
+            'The retryOn filter rejected the type, so no attempt was ever retried.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotCallOnFinalFailureWhenJobSucceeds() {
+        Test.startTest();
+        Async.queueable(new SucceedingHookJob()).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(0, accountCount('HOOK'), 'A job that succeeded never failed finally.');
+    }
+
+    @IsTest
+    private static void shouldNotCallOnFinalFailureWhenJobIsSkipped() {
+        Test.startTest();
+        Async.Result gate = Async.queueable(markerJob('GATE', true))
+            .continueOnJobExecuteFail()
+            .chain();
+        Async.queueable(new FailureHookJob()).dependsOn(Async.after(gate).succeeded()).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(0, accountCount('HOOK'), 'A skipped job never ran, so it never failed.');
+    }
+
+    @IsTest
+    private static void shouldKeepChainRunningWhenOnFinalFailureThrows() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        Async.queueable(new ExplodingHookJob()).continueOnJobExecuteFail().chain();
+        Async.queueable(markerJob('AFTER-HOOK', false)).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, accountCount('AFTER-HOOK'), 'A throwing hook must not stop the chain.');
+
+        AsyncResult__c result = [
+            SELECT RetryHistory__c
+            FROM AsyncResult__c
+            WHERE ClassName__c LIKE '%ExplodingHookJob'
+        ];
+        Assert.isTrue(
+            result.RetryHistory__c.contains('onFinalFailure() override threw'),
+            'A throwing hook is recorded instead of being swallowed silently.'
+        );
+    }
+
+    @IsTest
+    private static void shouldCallOnFinalFailureForEveryFailedChunkPage() {
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < 4; i++) {
+            accounts.add(new Account(Name = 'Chunk Hook ' + i));
+        }
+        insert accounts;
+
+        Test.startTest();
+        Async.chunk(new FailingChunkHookJob(), ChunkSource.of(accounts)).chunkSize(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(2, accountCount('HOOK'), 'Each failed page is its own final failure.');
+    }
+
+    private static Account hookRecord() {
+        return [SELECT Description FROM Account WHERE Name = 'HOOK' LIMIT 1];
+    }
+
     private static String getClassNameWithNamespaceDotPrefix(String className) {
         return getNamespaceDotPrefix() + className;
     }
@@ -3165,6 +3338,75 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
+    private class FinalizerAttachingRetryJob extends QueueableJob {
+        public override void work() {
+            insert new Account(Name = 'RETRY-PARENT');
+            Async.queueable(new MarkerFinalizer()).attachFinalizer();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class MarkerFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            insert new Account(Name = 'RETRY-FINALIZER');
+        }
+    }
+
+    private abstract class HookRecordingJob extends QueueableJob {
+        public override void onFinalFailure(Async.FailureContext failureCtx) {
+            insert new Account(
+                Name = 'HOOK',
+                Description = failureCtx.retryOutcome.name() +
+                    '|' +
+                    (String.isBlank(failureCtx.failure?.stackTrace) ? 'NO-TRACE' : 'HAS-TRACE') +
+                    '|' +
+                    failureCtx.retryAttempt +
+                    '/' +
+                    failureCtx.maxRetries
+            );
+        }
+    }
+
+    private class FailureHookJob extends HookRecordingJob {
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class SucceedingHookJob extends HookRecordingJob {
+        public override void work() {
+            insert new Account(Name = 'SUCCEEDED');
+        }
+    }
+
+    private class ExplodingHookJob extends QueueableJob {
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public override void onFinalFailure(Async.FailureContext failureCtx) {
+            throw new CustomException('hook exploded');
+        }
+    }
+
+    private class FailingChunkHookJob extends ChunkJob {
+        public override void work(List<SObject> chunk) {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public override void onFinalFailure(Async.FailureContext failureCtx) {
+            insert new Account(Name = 'HOOK', Description = failureCtx.retryOutcome.name());
+        }
+    }
+
+    private class JobChainingRetryJob extends QueueableJob {
+        public override void work() {
+            insert new Account(Name = 'CHAIN-PARENT');
+            Async.queueable(markerJob('CHAIN-FOLLOWUP', false)).chain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
     private class NonRetryableJob extends QueueableJob {
         public override void work() {
         }
@@ -3318,6 +3560,1268 @@ private class AsyncTest implements Database.Batchable<SObject> {
         public override void work() {
             Id jobId = this.queueableCtx?.getJobId();
             insert new Account(Name = accountName, Description = 'Job: ' + jobId);
+        }
+    }
+
+    @IsTest
+    private static void shouldProcessFirstChunkThroughEnqueue() {
+        List<Account> accounts = createAccounts(5);
+
+        Test.startTest();
+        Async.Result result = Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(5)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areNotEqual(null, result.salesforceJobId);
+        Assert.areEqual(
+            5,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'The single chunk should process every record in the source.'
+        );
+    }
+
+    @IsTest
+    private static void shouldProcessAllInMemoryChunksAcrossPages() {
+        List<Account> accounts = createAccounts(6);
+
+        Test.startTest();
+        Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts)).chunkSize(3).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            6,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'Self-chaining must process every page of the run.'
+        );
+    }
+
+    @IsTest
+    private static void shouldProcessAllCursorChunksAcrossPages() {
+        createAccounts(6);
+
+        Test.startTest();
+        Async.chunk(new MarkingChunkJob(), ChunkSource.query('SELECT Id FROM Account'))
+            .chunkSize(3)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            6,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'A cursor must survive re-enqueue and fetch every page.'
+        );
+    }
+
+    @IsTest
+    private static void shouldCarryJobMemberStateAcrossChunks() {
+        List<Account> accounts = createAccounts(6);
+
+        Test.startTest();
+        Async.chunk(new LabelingChunkJob('RUN_LABEL'), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            6,
+            [SELECT COUNT() FROM Account WHERE Site = 'RUN_LABEL'],
+            'Job member state must survive cloning and serialization across every page.'
+        );
+    }
+
+    @IsTest
+    private static void shouldContinueToNextChunkAfterAFailedChunk() {
+        List<Account> accounts = accountsWithOneFailingRecord();
+
+        Test.startTest();
+        Async.chunk(new FailMarkedChunkJob(), ChunkSource.of(accounts)).chunkSize(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            4,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'A failed chunk must not stop the remaining chunks by default.'
+        );
+    }
+
+    @IsTest
+    private static void shouldStopAfterFailedChunkWhenConfigured() {
+        List<Account> accounts = new List<Account>{
+            new Account(Name = 'FAIL first'),
+            new Account(Name = 'ok second'),
+            new Account(Name = 'ok third'),
+            new Account(Name = 'ok fourth')
+        };
+        insert accounts;
+
+        Test.startTest();
+        Async.chunk(new FailMarkedChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .stopRemainingChunksOnFailure()
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'stopRemainingChunksOnFailure must halt the run after a failed chunk.'
+        );
+    }
+
+    @IsTest
+    private static void shouldApplyAllChunkBuilderOptions() {
+        List<Account> accounts = createAccounts(2);
+
+        Test.startTest();
+        Async.Result result = Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .priority(3)
+            .delay(1)
+            .delayBetweenChunks(1)
+            .retry(2)
+            .backoff(Backoff.fixed(1))
+            .retryOn(CustomException.class)
+            .mockId('chunk-mock')
+            .keepChunkPages()
+            .stopRemainingChunksOnFailure()
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areNotEqual(
+            null,
+            result.salesforceJobId,
+            'Every builder option should still enqueue.'
+        );
+    }
+
+    @IsTest
+    private static void shouldProcessFirstChunkInBulk() {
+        List<Account> accounts = createAccounts(200);
+
+        Test.startTest();
+        Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts)).chunkSize(200).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            200,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'A 200-record chunk should process in one bulk-safe page.'
+        );
+    }
+
+    @IsTest
+    private static void shouldFetchCorrectOffsetForLaterChunk() {
+        List<Account> accounts = createAccounts(10);
+        MarkingChunkJob job = new MarkingChunkJob();
+        job.getRun().configure(ChunkSource.of(accounts), 5, false, null, false);
+        job.getRun().position = 5;
+
+        job.work();
+
+        Set<Id> laterHalf = new Set<Id>();
+        for (Integer i = 5; i < 10; i++) {
+            laterHalf.add(accounts[i].Id);
+        }
+        List<Account> processed = [SELECT Id FROM Account WHERE Site = :CHUNK_PROCESSED];
+        Assert.areEqual(
+            5,
+            processed.size(),
+            'Only the second page of records should be processed.'
+        );
+        for (Account processedAccount : processed) {
+            Assert.isTrue(
+                laterHalf.contains(processedAccount.Id),
+                'Offset fetch must return records from position 5 onward.'
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRejectChunkJobRunningOutsideAChunkRun() {
+        try {
+            new MarkingChunkJob().work();
+            Assert.fail('A ChunkJob without a configured run must not execute.');
+        } catch (IllegalArgumentException ex) {
+            Assert.areEqual(ChunkRun.ERROR_MESSAGE_RUN_NOT_STARTED, ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldCreateResultRowForChunk() {
+        List<Account> accounts = createAccounts(3);
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+
+        Test.startTest();
+        QueueableManager.get().setChain(chain);
+        Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts)).chunkSize(3).enqueue();
+        Test.stopTest();
+
+        List<AsyncResult__c> results = [
+            SELECT Id, Status__c, ChainId__c, ClassName__c
+            FROM AsyncResult__c
+        ];
+        Assert.areEqual(1, results.size(), 'A completed chunk page should record one AsyncResult.');
+        Assert.areEqual(QueueableManager.STATUS_COMPLETED, results[0].Status__c);
+        Assert.areNotEqual(null, results[0].ChainId__c);
+    }
+
+    @IsTest
+    private static void shouldReturnNextChunkWhenRecordsRemain() {
+        MarkingChunkJob job = new MarkingChunkJob();
+        job.getRun().configure(ChunkSource.of(createAccounts(10)), 5, false, null, false);
+
+        ChunkJob nextPage = job.nextPageOrNull();
+
+        Assert.areNotEqual(null, nextPage, 'A next page is expected while records remain.');
+        Assert.areEqual(5, nextPage.getRun().position, 'The next page must advance by chunkSize.');
+    }
+
+    @IsTest
+    private static void shouldNotCarryInitialDelayToLaterChunks() {
+        MarkingChunkJob job = new MarkingChunkJob();
+        job.getRun().configure(ChunkSource.of(createAccounts(10)), 5, false, null, false);
+        job.delay = 5;
+
+        ChunkJob nextPage = job.nextPageOrNull();
+
+        Assert.areEqual(null, nextPage.delay, 'An initial delay must not repeat on every page.');
+    }
+
+    @IsTest
+    private static void shouldApplyDelayBetweenChunks() {
+        MarkingChunkJob job = new MarkingChunkJob();
+        job.getRun().configure(ChunkSource.of(createAccounts(10)), 5, false, 3, false);
+
+        ChunkJob nextPage = job.nextPageOrNull();
+
+        Assert.areEqual(3, nextPage.delay, 'delayBetweenChunks must throttle each later page.');
+    }
+
+    @IsTest
+    private static void shouldRejectDeepCloneChunkJob() {
+        MarkingChunkJob job = new MarkingChunkJob();
+        job.deepClone = true;
+
+        try {
+            Async.chunk(job, ChunkSource.of(createAccounts(2)));
+            Assert.fail('A deepClone ChunkJob should be rejected at build time.');
+        } catch (Exception ex) {
+            Assert.areEqual(ChunkBuilder.ERROR_MESSAGE_DEEP_CLONE_UNSUPPORTED, ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldPruneSettledPagesByDefault() {
+        MarkingChunkJob job = new MarkingChunkJob();
+        job.getRun().configure(ChunkSource.of(createAccounts(4)), 2, false, null, false);
+
+        Assert.isFalse(job.getRun().keepPages, 'Settled pages are pruned by default.');
+    }
+
+    @IsTest
+    private static void shouldKeepSettledPagesWhenRequested() {
+        List<Account> accounts = createAccounts(6);
+
+        Test.startTest();
+        Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .keepChunkPages()
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            6,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'A kept-pages run still processes every page.'
+        );
+    }
+
+    @IsTest
+    private static void shouldReturnNoNextChunkAtEndOfSource() {
+        MarkingChunkJob job = new MarkingChunkJob();
+        job.getRun().configure(ChunkSource.of(createAccounts(10)), 5, false, null, false);
+        job.getRun().position = 5;
+
+        Assert.areEqual(null, job.nextPageOrNull(), 'No page should follow the final chunk.');
+    }
+
+    @IsTest
+    private static void shouldHaltRunAfterFailedPageWhenConfigured() {
+        MarkingChunkJob stopping = new MarkingChunkJob();
+        stopping.getRun().configure(ChunkSource.of(createAccounts(10)), 5, true, null, false);
+
+        Assert.isTrue(
+            stopping.getRun().isHaltedBy(true),
+            'A failed page must halt the run when stopRemainingChunksOnFailure is set.'
+        );
+        Assert.isFalse(
+            stopping.getRun().isHaltedBy(false),
+            'A page that succeeded must not halt the run.'
+        );
+    }
+
+    @IsTest
+    private static void shouldContinueRemainingChunksOnFailureByDefault() {
+        MarkingChunkJob continuing = new MarkingChunkJob();
+        continuing.getRun().configure(ChunkSource.of(createAccounts(10)), 5, false, null, false);
+
+        Assert.isFalse(
+            continuing.getRun().isHaltedBy(true),
+            'A failed chunk must not halt the run by default.'
+        );
+        Assert.areNotEqual(
+            null,
+            continuing.nextPageOrNull(),
+            'The run continues to the next page after a failed page.'
+        );
+    }
+
+    @IsTest
+    private static void shouldCarryFailedPageFlagToLaterPages() {
+        MarkingChunkJob job = new MarkingChunkJob();
+        job.getRun().configure(ChunkSource.of(createAccounts(6)), 2, false, null, false);
+        job.hasFailed = true;
+
+        ChunkJob nextPage = job.nextPageOrNull();
+
+        Assert.isTrue(
+            nextPage.getRun().hasFailedPage,
+            'The run remembers a failed page so the run outcome stays FAILURE.'
+        );
+        Assert.isFalse(nextPage.hasFailed, 'The next page starts clean.');
+    }
+
+    @IsTest
+    private static void shouldTreatEmptySourceAsNoOp() {
+        Async.Result result = Async.chunk(
+                new MarkingChunkJob(),
+                ChunkSource.of(new List<Account>())
+            )
+            .enqueue();
+
+        Assert.areEqual(null, result.salesforceJobId, 'An empty source should enqueue nothing.');
+        Assert.isTrue(result.queueableChainState.jobs.isEmpty());
+    }
+
+    @IsTest
+    private static void shouldStillRunChainedJobsWhenSourceIsEmpty() {
+        Test.startTest();
+        Async.queueable(new ProcessedCountMarkerJob('EMPTY_SOURCE'))
+            .chunk(new MarkingChunkJob(), ChunkSource.of(new List<Account>()))
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM Account WHERE Name = 'EMPTY_SOURCE'],
+            'An empty chunk source must not swallow the jobs already chained.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectInvalidChunkSize() {
+        ChunkBuilder builder = Async.chunk(
+            new MarkingChunkJob(),
+            ChunkSource.of(createAccounts(1))
+        );
+        for (Integer invalid : new List<Integer>{ 0, -1, null }) {
+            try {
+                builder.chunkSize(invalid);
+                Assert.fail('chunkSize ' + invalid + ' should be rejected.');
+            } catch (Exception ex) {
+                Assert.areEqual(ChunkBuilder.ERROR_MESSAGE_INVALID_CHUNK_SIZE, ex.getMessage());
+            }
+        }
+    }
+
+    @IsTest
+    private static void shouldRejectChunkSizeAboveTheCursorFetchCap() {
+        createAccounts(1);
+        ChunkBuilder builder = Async.chunk(
+            new MarkingChunkJob(),
+            ChunkSource.query('SELECT Id FROM Account')
+        );
+
+        try {
+            builder.chunkSize(2001);
+            Assert.fail('A cursor source cannot page more than 2000 records at a time.');
+        } catch (Exception ex) {
+            Assert.areEqual(
+                'chunkSize must be between 1 and 2000 for this source',
+                ex.getMessage()
+            );
+        }
+        Assert.areNotEqual(
+            null,
+            builder.chunkSize(2000),
+            'A chunk size at the cursor fetch cap is allowed.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotCapChunkSizeForAnInMemorySource() {
+        ChunkBuilder builder = Async.chunk(
+            new MarkingChunkJob(),
+            ChunkSource.of(createAccounts(1))
+        );
+
+        Assert.areEqual(
+            null,
+            ChunkSource.of(new List<Account>()).maxChunkSize(),
+            'An in-memory source has no cursor fetch ceiling.'
+        );
+        Assert.areNotEqual(
+            null,
+            builder.chunkSize(5000),
+            'An in-memory source is bounded by the job body, not by a page ceiling.'
+        );
+    }
+
+    @IsTest
+    private static void shouldExposeCursorFetchCapOnCursorSource() {
+        createAccounts(1);
+
+        Assert.areEqual(2000, ChunkSource.query('SELECT Id FROM Account').maxChunkSize());
+    }
+
+    @IsTest
+    private static void shouldRejectNullJobAndSource() {
+        try {
+            Async.chunk(null, ChunkSource.of(createAccounts(1)));
+            Assert.fail('A null job should be rejected.');
+        } catch (Exception ex) {
+            Assert.areEqual(ChunkBuilder.ERROR_MESSAGE_NULL_JOB, ex.getMessage());
+        }
+        try {
+            Async.chunk(new MarkingChunkJob(), null);
+            Assert.fail('A null source should be rejected.');
+        } catch (Exception ex) {
+            Assert.areEqual(ChunkBuilder.ERROR_MESSAGE_NULL_SOURCE, ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldRejectRetryAboveCapOnChunk() {
+        ChunkBuilder builder = Async.chunk(
+            new MarkingChunkJob(),
+            ChunkSource.of(createAccounts(1))
+        );
+        try {
+            builder.retry(QueueableManager.MAX_RETRY_CAP + 1);
+            Assert.fail('Retry above the cap should be rejected.');
+        } catch (Exception ex) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP,
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldAccumulateJobStateAcrossChunks() {
+        List<Account> accounts = createAccounts(6);
+
+        Test.startTest();
+        Async.chunk(new TotallingChunkJob(), ChunkSource.of(accounts)).chunkSize(2).enqueue();
+        Test.stopTest();
+
+        Set<String> runningTotals = new Set<String>();
+        for (Account marker : [SELECT Site FROM Account WHERE Name = 'RUNNING_TOTAL']) {
+            runningTotals.add(marker.Site);
+        }
+        Assert.areEqual(
+            new Set<String>{ '2', '4', '6' },
+            runningTotals,
+            'A member mutated in work() keeps accumulating on every later page.'
+        );
+    }
+
+    @IsTest
+    private static void shouldPageRecordsFromAConsumerDefinedSource() {
+        Test.startTest();
+        Async.chunk(new CountingChunkJob(), new SyntheticChunkSource(2500))
+            .chunkSize(1000)
+            .enqueue();
+        Test.stopTest();
+
+        Set<String> runningTotals = new Set<String>();
+        for (Account marker : [SELECT Site FROM Account WHERE Name = 'SYNTHETIC_TOTAL']) {
+            runningTotals.add(marker.Site);
+        }
+        Assert.areEqual(
+            new Set<String>{ '1000', '2000', '2500' },
+            runningTotals,
+            'A custom ChunkSource pages 2500 fabricated records without any DML behind it.'
+        );
+    }
+
+    @IsTest
+    private static void shouldInjectQueueableMockIntoAChunkPage() {
+        List<Account> accounts = createAccounts(2);
+        Id mockJobId = '707000000000001AAA';
+        AsyncMock.whenQueueable('chunk-page')
+            .thenReturn(new AsyncMock.MockQueueableContext().setJobId(mockJobId));
+
+        Test.startTest();
+        Async.chunk(new ContextReadingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .mockId('chunk-page')
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            String.valueOf(mockJobId),
+            [SELECT Site FROM Account WHERE Name = 'MOCKED_CONTEXT' LIMIT 1].Site,
+            'A chunk page reads the mocked QueueableContext like any other job.'
+        );
+    }
+
+    @IsTest
+    private static void shouldFailAJobFromAQueueableMock() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        AsyncMock.whenQueueable('mocked-failure')
+            .thenThrow(new CustomException(CUSTOM_ERROR_MESSAGE));
+
+        Test.startTest();
+        QueueableManager.get().setChain(chain);
+        Async.queueable(new AccountCreatorJob('never runs'))
+            .mockId('mocked-failure')
+            .continueOnJobExecuteFail()
+            .enqueue();
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT Status__c, ExceptionType__c, ExceptionMessage__c
+            FROM AsyncResult__c
+            LIMIT 1
+        ];
+        Assert.areEqual(
+            QueueableManager.STATUS_FAILED,
+            result.Status__c,
+            'A mocked failure settles through the same path a real one does.'
+        );
+        Assert.areEqual(CUSTOM_ERROR_MESSAGE, result.ExceptionMessage__c);
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM Account],
+            'The job body never runs when its execution is mocked to throw.'
+        );
+    }
+
+    @IsTest
+    private static void shouldFailOnlyTheMockedChunkPage() {
+        List<Account> accounts = createAccounts(6);
+        AsyncMock.whenQueueable('recalc-run')
+            .thenReturn(new AsyncMock.MockQueueableContext())
+            .thenThrow(new CustomException(CUSTOM_ERROR_MESSAGE))
+            .thenReturn(new AsyncMock.MockQueueableContext());
+
+        Test.startTest();
+        Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .mockId('recalc-run')
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            4,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'The mock queue picks which page fails; the rest of the run still processes.'
+        );
+    }
+
+    @IsTest
+    private static void shouldHaltRunFromAMockedPageFailure() {
+        List<Account> accounts = createAccounts(6);
+        AsyncMock.whenQueueable('recalc-run')
+            .thenReturn(new AsyncMock.MockQueueableContext())
+            .thenThrow(new CustomException(CUSTOM_ERROR_MESSAGE));
+
+        Test.startTest();
+        Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .mockId('recalc-run')
+            .stopRemainingChunksOnFailure()
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            2,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'A mocked page failure halts the run like a real one.'
+        );
+    }
+
+    @IsTest
+    private static void shouldMockFinalizerOutcomeForAChunkPage() {
+        List<Account> accounts = createAccounts(2);
+        AsyncMock.whenFinalizer('chunk-error-handler').thenThrow(new DmlException('Page blew up'));
+
+        Test.startTest();
+        Async.chunk(new FinalizerAttachingChunkJob('chunk-error-handler'), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            'Page blew up',
+            [SELECT Description FROM Account WHERE Name = 'Error Log' LIMIT 1].Description,
+            'A page finalizer can be told its page failed without the page actually failing.'
+        );
+    }
+
+    @IsTest
+    private static void shouldFailAndRetryAPageWhenTheSourceThrows() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+
+        Test.startTest();
+        QueueableManager.get().setChain(chain);
+        Async.chunk(new MarkingChunkJob(), new ExplodingChunkSource())
+            .chunkSize(2)
+            .retry(1)
+            .enqueue();
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT Status__c, ExceptionMessage__c, RetryAttempts__c
+            FROM AsyncResult__c
+            LIMIT 1
+        ];
+        Assert.areEqual(
+            QueueableManager.STATUS_FAILED,
+            result.Status__c,
+            'A source that throws fails the page instead of silently ending the run.'
+        );
+        Assert.areEqual(CUSTOM_ERROR_MESSAGE, result.ExceptionMessage__c);
+        Assert.areEqual(1, result.RetryAttempts__c, 'The page retried before it settled.');
+    }
+
+    @IsTest
+    private static void shouldChainRunWithoutEnqueueingIt() {
+        List<Account> accounts = createAccounts(2);
+
+        Async.Result result = Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .chain();
+
+        Assert.areNotEqual(
+            null,
+            result.customJobId,
+            'chain() returns the run handle so later jobs can depend on it.'
+        );
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'chain() adds the run to the chain without enqueuing anything.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRunASecondChunkRunAfterTheFirstOneFinishes() {
+        List<Account> accounts = createAccounts(4);
+
+        Test.startTest();
+        Async.chunk(new LabelingChunkJob('FIRST'), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .chunk(new LabelingChunkJob('SECOND'), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            4,
+            [SELECT COUNT() FROM Account WHERE Site = 'SECOND'],
+            'The second run overwrites the first, so it ran after every page of run one.'
+        );
+    }
+
+    @IsTest
+    private static void shouldGateASecondChunkRunOnTheFirstRunOutcome() {
+        List<Account> accounts = accountsWithOneFailingRecord();
+
+        Test.startTest();
+        Async.chunk(new FailMarkedChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .chunk(new LabelingChunkJob('SECOND'), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .dependsOn(Async.afterPrevious().succeeded())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM Account WHERE Site = 'SECOND'],
+            'dependsOn(previous) resolves against the first run outcome, which failed.'
+        );
+    }
+
+    @IsTest
+    private static void shouldOpenACursorInTheRequestedAccessLevel() {
+        createAccounts(2);
+
+        ChunkSource userMode = ChunkSource.query('SELECT Id FROM Account', AccessLevel.USER_MODE);
+        ChunkSource systemMode = ChunkSource.query(
+            'SELECT Id FROM Account WHERE Name LIKE :prefix',
+            new Map<String, Object>{ 'prefix' => 'Chunk%' },
+            AccessLevel.SYSTEM_MODE
+        );
+
+        Assert.areEqual(2, userMode.getNumRecords(), 'The admin running the test sees both.');
+        Assert.areEqual(2, systemMode.getNumRecords(), 'Binds and access level combine.');
+    }
+
+    @IsTest
+    private static void shouldChainNothingWhenSourceIsEmpty() {
+        Async.Result result = Async.chunk(
+                new MarkingChunkJob(),
+                ChunkSource.of(new List<Account>())
+            )
+            .chain();
+
+        Assert.areEqual(null, result.customJobId, 'An empty source chains no run.');
+        Assert.isTrue(result.queueableChainState.jobs.isEmpty());
+    }
+
+    @IsTest
+    private static void shouldRunChunkRunWhenItsDependencySucceeded() {
+        List<Account> accounts = createAccounts(4);
+
+        Test.startTest();
+        Async.queueable(new ProcessedCountMarkerJob('GATE'))
+            .chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .dependsOn(Async.afterPrevious().succeeded())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            4,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'The run starts once the job it depends on succeeded.'
+        );
+    }
+
+    @IsTest
+    private static void shouldSkipChunkRunWhenItsDependencyFailed() {
+        List<Account> accounts = createAccounts(4);
+
+        Test.startTest();
+        Async.queueable(new FailureQueueableTest())
+            .continueOnJobExecuteFail()
+            .chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .dependsOn(Async.afterPrevious().succeeded())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'The whole run is skipped when the job it depends on failed.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectInvalidDependencyOnChunk() {
+        ChunkBuilder builder = Async.chunk(
+            new MarkingChunkJob(),
+            ChunkSource.of(createAccounts(1))
+        );
+        try {
+            builder.dependsOn(null);
+            Assert.fail('A dependency without an outcome should be rejected.');
+        } catch (Exception ex) {
+            Assert.areEqual(QueueableManager.ERROR_MESSAGE_INVALID_DEPENDENCY, ex.getMessage());
+        }
+        try {
+            builder.dependsOn(Async.afterPrevious().succeeded());
+            Assert.fail('afterPrevious() without a previously chained job should be rejected.');
+        } catch (Exception ex) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB,
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldYieldIdOnlyShellsWhenSourceIsBuiltFromIds() {
+        List<Account> accounts = createAccounts(5);
+        ChunkSource source = ChunkSource.ofIds(new Map<Id, Account>(accounts).keySet());
+
+        List<SObject> page = source.fetch(0, 5);
+
+        Assert.areEqual(5, page.size());
+        Assert.areEqual(
+            new Map<Id, Account>(accounts).keySet(),
+            new Map<Id, SObject>(page).keySet(),
+            'A job reads ids straight off the page with new Map<Id, SObject>(chunk).keySet().'
+        );
+    }
+
+    @IsTest
+    private static void shouldExposeInMemorySourceRecordsAndSize() {
+        List<Account> accounts = createAccounts(5);
+        ChunkSource source = ChunkSource.of(accounts);
+
+        Assert.areEqual(5, source.getNumRecords());
+        Assert.areEqual(2, source.fetch(0, 2).size());
+        Assert.areEqual(
+            1,
+            source.fetch(4, 5).size(),
+            'A short final page must clamp to the remainder.'
+        );
+    }
+
+    @IsTest
+    private static void shouldBuildIdSourceRecordsWithIds() {
+        List<Account> accounts = createAccounts(3);
+        Set<Id> ids = new Map<Id, Account>(accounts).keySet();
+        ChunkSource source = ChunkSource.ofIds(ids);
+
+        Assert.areEqual(3, source.getNumRecords());
+        Set<Id> fetched = new Set<Id>();
+        for (SObject record : source.fetch(0, 3)) {
+            fetched.add(record.Id);
+        }
+        Assert.areEqual(ids, fetched);
+    }
+
+    @IsTest
+    private static void shouldTreatNullRecordsAsEmptySource() {
+        Assert.areEqual(0, ChunkSource.ofIds(null).getNumRecords());
+        Assert.areEqual(0, ChunkSource.of(null).getNumRecords());
+    }
+
+    @IsTest
+    private static void shouldDelegateToCursorSource() {
+        createAccounts(5);
+        ChunkSource source = ChunkSource.cursor(Database.getCursor('SELECT Id FROM Account'));
+
+        Assert.areEqual(5, source.getNumRecords());
+        Assert.areEqual(2, source.fetch(0, 2).size());
+    }
+
+    @IsTest
+    private static void shouldOpenCursorFromQuery() {
+        createAccounts(4);
+        ChunkSource source = ChunkSource.query('SELECT Id FROM Account');
+
+        Assert.areEqual(4, source.getNumRecords());
+    }
+
+    @IsTest
+    private static void shouldOpenCursorFromQueryWithBinds() {
+        createAccounts(4);
+        ChunkSource source = ChunkSource.query(
+            'SELECT Id FROM Account WHERE Name = :accountName',
+            new Map<String, Object>{ 'accountName' => 'Chunk 1' }
+        );
+
+        Assert.areEqual(1, source.getNumRecords(), 'Bind variables must reach the cursor.');
+    }
+
+    @IsTest
+    private static void shouldRejectNullCursorAndBlankQuery() {
+        try {
+            ChunkSource.cursor(null);
+            Assert.fail('A null cursor should be rejected.');
+        } catch (Exception ex) {
+            Assert.areEqual(ChunkSource.ERROR_MESSAGE_NULL_CURSOR, ex.getMessage());
+        }
+        try {
+            ChunkSource.query('   ');
+            Assert.fail('A blank query should be rejected.');
+        } catch (Exception ex) {
+            Assert.areEqual(ChunkSource.ERROR_MESSAGE_BLANK_QUERY, ex.getMessage());
+        }
+        try {
+            ChunkSource.query('   ', new Map<String, Object>());
+            Assert.fail('A blank query with binds should be rejected.');
+        } catch (Exception ex) {
+            Assert.areEqual(ChunkSource.ERROR_MESSAGE_BLANK_QUERY, ex.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldOrderJobsOfEqualPriorityByChainSequence() {
+        QueueableJobTest1 first = new QueueableJobTest1();
+        first.uniqueName = 'first';
+        first.chainSequence = 1;
+        QueueableJobTest2 second = new QueueableJobTest2();
+        second.uniqueName = 'second';
+        second.chainSequence = 2;
+
+        List<QueueableJob> jobs = new List<QueueableJob>{ second, first };
+        jobs.sort();
+
+        Assert.areEqual('first', jobs[0].uniqueName, 'Equal priority keeps the chained order.');
+        Assert.areEqual('second', jobs[1].uniqueName);
+    }
+
+    @IsTest
+    private static void shouldRunEveryChunkBeforeTheNextChainedJob() {
+        List<Account> accounts = createAccounts(6);
+
+        Test.startTest();
+        Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .chain(new ProcessedCountMarkerJob('AFTER_RUN'))
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            '6',
+            processedCountSeenBy('AFTER_RUN'),
+            'A job chained after the run must wait for every page.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRunChunkRunAfterAnEarlierChainedJob() {
+        List<Account> accounts = createAccounts(4);
+
+        Test.startTest();
+        Async.queueable(new ProcessedCountMarkerJob('BEFORE_RUN'))
+            .chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            '0',
+            processedCountSeenBy('BEFORE_RUN'),
+            'A job chained before the run must run first.'
+        );
+        Assert.areEqual(4, [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED]);
+    }
+
+    @IsTest
+    private static void shouldLetHigherPriorityJobPreemptTheNextChunk() {
+        List<Account> accounts = createAccounts(6);
+        PreemptingChunkJob job = new PreemptingChunkJob();
+        job.preemptPriority = 1;
+
+        Test.startTest();
+        Async.chunk(job, ChunkSource.of(accounts)).chunkSize(2).priority(5).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            '2',
+            processedCountSeenBy('PREEMPT'),
+            'A higher priority job added mid-run runs before the next page.'
+        );
+        Assert.areEqual(
+            6,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'The run resumes after the preempting job.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRunLowerPriorityJobAfterTheWholeRun() {
+        List<Account> accounts = createAccounts(6);
+        PreemptingChunkJob job = new PreemptingChunkJob();
+        job.preemptPriority = 9;
+
+        Test.startTest();
+        Async.chunk(job, ChunkSource.of(accounts)).chunkSize(2).priority(5).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            '6',
+            processedCountSeenBy('PREEMPT'),
+            'A lower priority job added mid-run waits for the whole run.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRunDependentJobWhenEveryChunkSucceeded() {
+        List<Account> accounts = createAccounts(6);
+
+        Test.startTest();
+        Async.chunk(new MarkingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .chain(new ProcessedCountMarkerJob('DEPENDENT'))
+            .dependsOn(Async.afterPrevious().succeeded())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            '6',
+            processedCountSeenBy('DEPENDENT'),
+            'The run outcome is SUCCESS when every page passed.'
+        );
+    }
+
+    @IsTest
+    private static void shouldSkipDependentJobWhenAnyChunkFailed() {
+        List<Account> accounts = accountsWithOneFailingRecord();
+
+        Test.startTest();
+        Async.chunk(new FailMarkedChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .chain(new ProcessedCountMarkerJob('DEPENDENT'))
+            .dependsOn(Async.afterPrevious().succeeded())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM Account WHERE Name = 'DEPENDENT'],
+            'One failed page makes the whole run outcome FAILURE.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRunDependentJobOnFinishedRunEvenAfterAFailedChunk() {
+        List<Account> accounts = accountsWithOneFailingRecord();
+
+        Test.startTest();
+        Async.chunk(new FailMarkedChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .chain(new ProcessedCountMarkerJob('DEPENDENT'))
+            .dependsOn(Async.afterPrevious().finished())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM Account WHERE Name = 'DEPENDENT'],
+            'finished() runs the dependent job whatever the run outcome was.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRecordSummaryResultWhenRunHaltsOnFailure() {
+        List<Account> accounts = accountsWithOneFailingRecord();
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+
+        Test.startTest();
+        QueueableManager.get().setChain(chain);
+        Async.chunk(new FailMarkedChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .stopRemainingChunksOnFailure()
+            .enqueue();
+        Test.stopTest();
+
+        List<AsyncResult__c> stopped = [
+            SELECT SkipReason__c
+            FROM AsyncResult__c
+            WHERE Status__c = :QueueableManager.STATUS_SKIPPED_CHUNK_STOPPED
+        ];
+        Assert.areEqual(1, stopped.size(), 'A halted run records one summary result.');
+        Assert.isTrue(
+            stopped[0].SkipReason__c.contains('page 3 of 3'),
+            'The summary states where the run stopped: ' + stopped[0].SkipReason__c
+        );
+        Assert.isTrue(
+            stopped[0].SkipReason__c.contains('2 record(s) were not processed'),
+            'The summary states how much work was left: ' + stopped[0].SkipReason__c
+        );
+    }
+
+    @IsTest
+    private static void shouldRecordSummaryResultWhenChainStopsDuringRun() {
+        List<Account> accounts = createAccounts(6);
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+
+        Test.startTest();
+        QueueableManager.get().setChain(chain);
+        Async.chunk(new ChainStoppingChunkJob(), ChunkSource.of(accounts)).chunkSize(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            2,
+            [SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED],
+            'Async.stopChain() ends the run wherever it is.'
+        );
+        List<AsyncResult__c> stopped = [
+            SELECT SkipReason__c
+            FROM AsyncResult__c
+            WHERE
+                Status__c = :QueueableManager.STATUS_SKIPPED_CHAIN_STOPPED
+                AND SkipReason__c LIKE '%not processed%'
+        ];
+        Assert.areEqual(1, stopped.size(), 'A stopped chain records what the run left behind.');
+        Assert.isTrue(
+            stopped[0].SkipReason__c.contains('page 2 of 3'),
+            'The summary points at the first page that never ran: ' + stopped[0].SkipReason__c
+        );
+    }
+
+    private static String processedCountSeenBy(String tag) {
+        return [SELECT Site FROM Account WHERE Name = :tag LIMIT 1].Site;
+    }
+
+    private static List<Account> createAccounts(Integer count) {
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < count; i++) {
+            accounts.add(new Account(Name = 'Chunk ' + i));
+        }
+        insert accounts;
+        return accounts;
+    }
+
+    private static List<Account> accountsWithOneFailingRecord() {
+        List<Account> accounts = new List<Account>{
+            new Account(Name = 'ok first'),
+            new Account(Name = 'ok second'),
+            new Account(Name = 'FAIL third'),
+            new Account(Name = 'ok fourth'),
+            new Account(Name = 'ok fifth'),
+            new Account(Name = 'ok sixth')
+        };
+        insert accounts;
+        return accounts;
+    }
+
+    private static void markProcessed(List<SObject> chunk, String marker) {
+        List<Account> toUpdate = new List<Account>();
+        for (SObject record : chunk) {
+            toUpdate.add(new Account(Id = record.Id, Site = marker));
+        }
+        update toUpdate;
+    }
+
+    private class MarkingChunkJob extends ChunkJob {
+        public override void work(List<SObject> chunk) {
+            markProcessed(chunk, CHUNK_PROCESSED);
+        }
+    }
+
+    private class LabelingChunkJob extends ChunkJob {
+        private String label;
+
+        public LabelingChunkJob(String label) {
+            this.label = label;
+        }
+
+        public override void work(List<SObject> chunk) {
+            markProcessed(chunk, label);
+        }
+    }
+
+    private class FailMarkedChunkJob extends ChunkJob {
+        public override void work(List<SObject> chunk) {
+            for (SObject record : chunk) {
+                Account account = (Account) record;
+                if (account.Name != null && account.Name.contains('FAIL')) {
+                    throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+                }
+            }
+            markProcessed(chunk, CHUNK_PROCESSED);
+        }
+    }
+
+    private class TotallingChunkJob extends ChunkJob {
+        public Integer processedSoFar = 0;
+
+        public override void work(List<SObject> chunk) {
+            processedSoFar += chunk.size();
+            markProcessed(chunk, CHUNK_PROCESSED);
+            insert new Account(Name = 'RUNNING_TOTAL', Site = String.valueOf(processedSoFar));
+        }
+    }
+
+    private class CountingChunkJob extends ChunkJob {
+        public Integer seenSoFar = 0;
+
+        public override void work(List<SObject> chunk) {
+            seenSoFar += chunk.size();
+            insert new Account(Name = 'SYNTHETIC_TOTAL', Site = String.valueOf(seenSoFar));
+        }
+    }
+
+    private class FinalizerAttachingChunkJob extends ChunkJob {
+        private String finalizerMockId;
+
+        public FinalizerAttachingChunkJob(String finalizerMockId) {
+            this.finalizerMockId = finalizerMockId;
+        }
+
+        public override void work(List<SObject> chunk) {
+            Async.queueable(new ErrorHandlerFinalizer()).mockId(finalizerMockId).attachFinalizer();
+        }
+    }
+
+    private class ContextReadingChunkJob extends ChunkJob {
+        public override void work(List<SObject> chunk) {
+            insert new Account(
+                Name = 'MOCKED_CONTEXT',
+                Site = String.valueOf(this.queueableCtx?.getJobId())
+            );
+        }
+    }
+
+    private class ExplodingChunkSource extends ChunkSource {
+        public override Integer getNumRecords() {
+            return 4;
+        }
+
+        public override List<SObject> fetch(Integer position, Integer count) {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class SyntheticChunkSource extends ChunkSource {
+        private Integer total;
+
+        public SyntheticChunkSource(Integer total) {
+            this.total = total;
+        }
+
+        public override Integer getNumRecords() {
+            return total;
+        }
+
+        public override List<SObject> fetch(Integer position, Integer count) {
+            List<Account> page = new List<Account>();
+            for (Integer i = position; i < Math.min(position + count, total); i++) {
+                page.add(new Account(Name = 'Synthetic ' + i));
+            }
+            return page;
+        }
+    }
+
+    private class ChainStoppingChunkJob extends ChunkJob {
+        public override void work(List<SObject> chunk) {
+            markProcessed(chunk, CHUNK_PROCESSED);
+            Async.stopChain();
+        }
+    }
+
+    private class PreemptingChunkJob extends ChunkJob {
+        public Integer preemptPriority;
+
+        public override void work(List<SObject> chunk) {
+            markProcessed(chunk, CHUNK_PROCESSED);
+            if (getRun().position == 0) {
+                Async.queueable(new ProcessedCountMarkerJob('PREEMPT'))
+                    .priority(preemptPriority)
+                    .chain();
+            }
+        }
+    }
+
+    private class ProcessedCountMarkerJob extends QueueableJob {
+        private String tag;
+
+        public ProcessedCountMarkerJob(String tag) {
+            this.tag = tag;
+        }
+
+        public override void work() {
+            insert new Account(
+                Name = tag,
+                Site = String.valueOf([SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED])
+            );
         }
     }
 }

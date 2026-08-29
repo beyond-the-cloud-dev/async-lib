@@ -22,6 +22,8 @@ logic stays where it always was, so things like `Database.Stateful`,
 | Enqueue next job inside `execute()`            | `.chain(new NextJob())`                                   |
 | 1 child queueable per transaction (hard limit) | Automatic overflow to a scheduled batch, no limit         |
 | `System.attachFinalizer` + `implements Finalizer` | `extends QueueableJob.Finalizer` + `attachFinalizer()` |
+| Hand-rolled paging over a list or cursor       | `Async.chunk(job, source).chunkSize(200).enqueue()`       |
+| Track retries yourself to log a final failure  | `override onFinalFailure(Async.FailureContext)`           |
 | `Database.executeBatch(job, scope)`            | `Async.batchable(job).scopeSize(scope).execute()`         |
 | `implements Schedulable` + `System.schedule`   | `Async.schedulable(job).cronExpression(...).schedule()`   |
 | Hand-written cron string                       | `CronBuilder` fluent helpers                              |
@@ -123,6 +125,71 @@ Async Lib also adds [`dependsOn(...)`](/api/queueable#dependson) so a chained jo
 can run only when an earlier one succeeded, failed, or finished. There is no
 standard-Apex equivalent.
 
+### Processing a large data set
+
+In standard Apex you carry the position yourself: slice the list, enqueue the next
+job with the new offset, and remember where you were.
+
+**Standard Apex**
+
+```apex
+public class RecalcJob implements Queueable {
+  private List<Id> ids;
+  private Integer position;
+
+  public void execute(QueueableContext context) {
+    List<Id> page = new List<Id>();
+    for (Integer i = position; i < Math.min(position + 200, ids.size()); i++) {
+      page.add(ids[i]);
+    }
+    // ... work on page ...
+    if (position + 200 < ids.size()) {
+      System.enqueueJob(new RecalcJob(ids, position + 200)); // one chance, no tracking
+    }
+  }
+}
+```
+
+**Async Lib**
+
+```apex
+public class RecalcJob extends ChunkJob {
+  public override void work(List<SObject> chunk) {
+    // ... work on chunk ...
+  }
+}
+
+Async.chunk(new RecalcJob(), ChunkSource.of(accounts)).chunkSize(200).enqueue();
+```
+
+The framework carries the position, retries a page that throws, records an
+`AsyncResult__c` per page, and can page a `Database.Cursor` instead of a list when
+the set is too big to hold in memory. See the [Chunk API](/api/chunk).
+
+Your job keeps its own members across the whole run, so a running total or a map
+built on one page is still there on the next one. This is what
+`Database.Stateful` gives a batch, except you do not have to ask for it.
+
+```apex
+public class RevenueRollupJob extends ChunkJob {
+  private Map<Id, Decimal> revenueByOwner = new Map<Id, Decimal>();
+  private Integer processed = 0;
+
+  public override void work(List<SObject> chunk) {
+    for (Opportunity opp : (List<Opportunity>) chunk) {
+      Decimal current = revenueByOwner.get(opp.OwnerId);
+      revenueByOwner.put(opp.OwnerId, (current == null ? 0 : current) + opp.Amount);
+    }
+    processed += chunk.size();
+  }
+}
+```
+
+Each page starts from the state the previous page left behind, so
+`revenueByOwner` keeps growing and `processed` keeps counting for the length of
+the run. Keep the members serializable and keep them small: they travel with the
+job on every hop.
+
 ### Finalizers
 
 A finalizer runs after the job completes, whether it succeeded or threw. The
@@ -172,6 +239,55 @@ public class MainJob extends QueueableJob {
 }
 ```
 
+### Reacting to a job that failed for good
+
+A finalizer tells you the job ended. It does not tell you whether a retry is
+still coming, and it cannot see a failure your own `catch` swallowed. Logging
+from one means logging on every attempt and hoping the last one wins.
+
+**Standard Apex**
+
+```apex
+public class SyncJob implements Queueable {
+  public void execute(QueueableContext context) {
+    System.attachFinalizer(new LogFinalizer());
+    try {
+      doWork();
+    } catch (Exception ex) {
+      // Committing partial work means the finalizer sees SUCCESS and
+      // context.getException() is null, so this catch is the only place
+      // that knows anything failed. Retry state is yours to track too.
+      insert new IntegrationLog__c(Message__c = ex.getMessage());
+    }
+  }
+}
+```
+
+**Async Lib**
+
+```apex
+public class SyncJob extends QueueableJob {
+  public override void work() {
+    doWork();
+  }
+
+  public override void onFinalFailure(Async.FailureContext failureCtx) {
+    insert new IntegrationLog__c(
+      Message__c = failureCtx.failure?.message,
+      StackTrace__c = failureCtx.failure?.stackTrace,
+      Outcome__c = failureCtx.retryOutcome.name(),
+      Attempts__c = failureCtx.retryAttempt,
+      History__c = failureCtx.retryHistory
+    );
+  }
+}
+```
+
+`onFinalFailure` fires once, only when the job will not run again, and it fires
+whether the exception propagated or was swallowed by
+[`continueOnJobExecuteFail`](/api/queueable#continueonjobexecutefail). See
+[`onFinalFailure`](/api/queueable#onfinalfailure).
+
 ## Batchable
 
 Your batch class does **not** change. It is a normal
@@ -203,7 +319,7 @@ public class AccountCleanupBatch implements Database.Batchable<SObject>, Databas
   public Integer deletedCount = 0;
 
   public Database.QueryLocator start(Database.BatchableContext bc) {
-    return Database.getQueryLocator('SELECT Id FROM Account WHERE Is_Active__c = false');
+    return Database.getQueryLocator('SELECT Id FROM Account WHERE IsActive__c = false');
   }
 
   public void execute(Database.BatchableContext bc, List<Account> scope) {

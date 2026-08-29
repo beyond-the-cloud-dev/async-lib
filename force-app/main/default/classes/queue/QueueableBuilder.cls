@@ -6,6 +6,11 @@ public inherited sharing class QueueableBuilder {
         this.job = job.clone();
     }
 
+    public QueueableBuilder(QueueableJob job, String lastChainedCustomJobId) {
+        this.job = job.clone();
+        this.lastChainedCustomJobId = lastChainedCustomJobId;
+    }
+
     public QueueableBuilder() {
     }
 
@@ -76,14 +81,7 @@ public inherited sharing class QueueableBuilder {
     }
 
     public QueueableBuilder retry(Integer maxRetries) {
-        if (maxRetries == null || maxRetries < 0) {
-            throw new IllegalArgumentException(QueueableManager.ERROR_MESSAGE_INVALID_MAX_RETRIES);
-        }
-        if (maxRetries > QueueableManager.MAX_RETRY_CAP) {
-            throw new IllegalArgumentException(
-                QueueableManager.ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP
-            );
-        }
+        QueueableManager.assertValidMaxRetries(maxRetries);
         job.maxRetries = maxRetries;
         return this;
     }
@@ -98,14 +96,7 @@ public inherited sharing class QueueableBuilder {
     }
 
     public QueueableBuilder retryOn(List<Type> exceptionTypes) {
-        if (job.retryOnExceptionTypes == null) {
-            job.retryOnExceptionTypes = new Set<String>();
-        }
-        for (Type exceptionType : exceptionTypes) {
-            if (exceptionType != null) {
-                job.retryOnExceptionTypes.add(exceptionType.getName());
-            }
-        }
+        QueueableManager.addRetryOnTypes(job, exceptionTypes);
         return this;
     }
 
@@ -120,6 +111,14 @@ public inherited sharing class QueueableBuilder {
         }
         this.job = job;
         return this;
+    }
+
+    public ChunkBuilder chunk(ChunkJob chunkJob, ChunkSource source) {
+        if (this.job != null) {
+            lastChainedCustomJobId = chain().customJobId;
+            this.job = null;
+        }
+        return new ChunkBuilder(chunkJob, source, lastChainedCustomJobId);
     }
 
     public SchedulableBuilder asSchedulable() {

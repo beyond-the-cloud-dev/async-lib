@@ -58,6 +58,22 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public virtual void resetForRetry() {
     }
 
+    public virtual void onFinalFailure(Async.FailureContext failureCtx) {
+    }
+
+    public void safeOnFinalFailure(Async.FailureContext failureCtx) {
+        try {
+            onFinalFailure(failureCtx);
+        } catch (Exception hookEx) {
+            appendRetryHistoryLine(
+                'onFinalFailure() override threw ' +
+                    hookEx.getTypeName() +
+                    ': ' +
+                    hookEx.getMessage()
+            );
+        }
+    }
+
     public virtual QueueableJob cloneForDeepCopy() {
         String fullName = this.className;
         Type resolvedType = Type.forName(fullName);
@@ -129,6 +145,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public void recordFailure(Exception ex) {
         this.hasFailed = true;
         this.failure = new FailureInfo(ex.getTypeName(), ex.getMessage());
+        this.failure.stackTrace = ex.getStackTraceString();
         this.retryDecision = matchesRetryOnTypes(ex.getTypeName()) && safeIsRetryable(ex);
     }
 
@@ -221,6 +238,7 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public class FailureInfo {
         public String type;
         public String message;
+        public String stackTrace;
 
         public FailureInfo(String type, String message) {
             this.type = type;

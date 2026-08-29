@@ -92,6 +92,7 @@ public inherited sharing class QueueableChain {
         previousJob.isProcessed = true;
         previousJob.finalizerCtx = ctx;
         recordOutcome(previousJob);
+        notifyFinalFailure(previousJob);
 
         setFinalizerContextToAllFinalizersForPreviousJob(previousJob, ctx);
         maybeAdvanceChunkRun(previousJob);
@@ -173,6 +174,13 @@ public inherited sharing class QueueableChain {
         if (job instanceof ChunkJob) {
             recordChunkRunOutcome((ChunkJob) job);
         }
+    }
+
+    private void notifyFinalFailure(QueueableJob job) {
+        if (!job.hasFailed) {
+            return;
+        }
+        job.safeOnFinalFailure(new Async.FailureContext(job));
     }
 
     private void recordChunkRunOutcome(ChunkJob settledPage) {

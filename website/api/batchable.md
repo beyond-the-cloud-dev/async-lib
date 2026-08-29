@@ -17,7 +17,7 @@ public class AccountCleanupBatch implements Database.Batchable<SObject>, Databas
   public Integer deletedCount = 0;
 
   public Database.QueryLocator start(Database.BatchableContext bc) {
-    return Database.getQueryLocator('SELECT Id FROM Account WHERE Is_Active__c = false');
+    return Database.getQueryLocator('SELECT Id FROM Account WHERE IsActive__c = false');
   }
 
   public void execute(Database.BatchableContext bc, List<Account> scope) {

@@ -23,6 +23,7 @@ logic stays where it always was, so things like `Database.Stateful`,
 | 1 child queueable per transaction (hard limit) | Automatic overflow to a scheduled batch, no limit         |
 | `System.attachFinalizer` + `implements Finalizer` | `extends QueueableJob.Finalizer` + `attachFinalizer()` |
 | Hand-rolled paging over a list or cursor       | `Async.chunk(job, source).chunkSize(200).enqueue()`       |
+| Track retries yourself to log a final failure  | `override onFinalFailure(Async.FailureContext)`           |
 | `Database.executeBatch(job, scope)`            | `Async.batchable(job).scopeSize(scope).execute()`         |
 | `implements Schedulable` + `System.schedule`   | `Async.schedulable(job).cronExpression(...).schedule()`   |
 | Hand-written cron string                       | `CronBuilder` fluent helpers                              |
@@ -238,6 +239,55 @@ public class MainJob extends QueueableJob {
 }
 ```
 
+### Reacting to a job that failed for good
+
+A finalizer tells you the job ended. It does not tell you whether a retry is
+still coming, and it cannot see a failure your own `catch` swallowed. Logging
+from one means logging on every attempt and hoping the last one wins.
+
+**Standard Apex**
+
+```apex
+public class SyncJob implements Queueable {
+  public void execute(QueueableContext context) {
+    System.attachFinalizer(new LogFinalizer());
+    try {
+      doWork();
+    } catch (Exception ex) {
+      // Committing partial work means the finalizer sees SUCCESS and
+      // context.getException() is null, so this catch is the only place
+      // that knows anything failed. Retry state is yours to track too.
+      insert new IntegrationLog__c(Message__c = ex.getMessage());
+    }
+  }
+}
+```
+
+**Async Lib**
+
+```apex
+public class SyncJob extends QueueableJob {
+  public override void work() {
+    doWork();
+  }
+
+  public override void onFinalFailure(Async.FailureContext failureCtx) {
+    insert new IntegrationLog__c(
+      Message__c = failureCtx.failure?.message,
+      StackTrace__c = failureCtx.failure?.stackTrace,
+      Outcome__c = failureCtx.retryOutcome.name(),
+      Attempts__c = failureCtx.retryAttempt,
+      History__c = failureCtx.retryHistory
+    );
+  }
+}
+```
+
+`onFinalFailure` fires once, only when the job will not run again, and it fires
+whether the exception propagated or was swallowed by
+[`continueOnJobExecuteFail`](/api/queueable#continueonjobexecutefail). See
+[`onFinalFailure`](/api/queueable#onfinalfailure).
+
 ## Batchable
 
 Your batch class does **not** change. It is a normal
@@ -269,7 +319,7 @@ public class AccountCleanupBatch implements Database.Batchable<SObject>, Databas
   public Integer deletedCount = 0;
 
   public Database.QueryLocator start(Database.BatchableContext bc) {
-    return Database.getQueryLocator('SELECT Id FROM Account WHERE Is_Active__c = false');
+    return Database.getQueryLocator('SELECT Id FROM Account WHERE IsActive__c = false');
   }
 
   public void execute(Database.BatchableContext bc, List<Account> scope) {

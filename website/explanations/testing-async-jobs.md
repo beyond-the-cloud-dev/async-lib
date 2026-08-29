@@ -21,7 +21,11 @@ hand it `ChunkSource.of(records)` or your own subclass. See
 [Pattern 5](#pattern-5-testing-a-chunk-job-without-a-cursor) and
 [Pattern 6](#pattern-6-a-custom-chunksource). The context objects inside a chunk
 page are still pushed, so those keep using `mockId(...)`
-([Pattern 7](#pattern-7-mocking-context-inside-a-chunk-page)).
+([Pattern 7](#pattern-7-mocking-inside-a-chunk-page)).
+
+An [`onFinalFailure`](/api/queueable#onfinalfailure) override needs neither: it
+runs in the finalizer, so let the job fail for real and assert what the override
+wrote ([Pattern 8](#pattern-8-testing-an-onfinalfailure-override)).
 
 View the full [AsyncMock API](/api/async-mock) documentation for method details.
 
@@ -461,6 +465,68 @@ static void shouldHaltAfterTheSecondPage() {
 
 Throwing from `work(chunk)` or from a `ChunkSource` subclass (Pattern 6) is still
 the right tool when the failure depends on the data itself.
+
+### Pattern 8: Testing an onFinalFailure Override
+
+[`onFinalFailure`](/api/queueable#onfinalfailure) runs inside the framework's
+finalizer, so an end-to-end test is the honest way to cover it: enqueue a job
+that fails, then assert on what the override wrote.
+
+The value worth asserting is `retryOutcome`, because it is the part a test can
+get wrong silently. Configure the retry policy three different ways and the same
+job produces three different outcomes.
+
+```apex
+private class FailingJob extends QueueableJob {
+    public override void work() {
+        throw new CalloutException('service down');
+    }
+
+    public override void onFinalFailure(Async.FailureContext failureCtx) {
+        insert new IntegrationLog__c(
+            Outcome__c = failureCtx.retryOutcome.name(),
+            Attempts__c = failureCtx.retryAttempt
+        );
+    }
+}
+
+@IsTest
+static void shouldReportExhaustedAfterRetrying() {
+    Test.startTest();
+    Async.queueable(new FailingJob()).continueOnJobExecuteFail().retry(2).enqueue();
+    Test.stopTest();
+
+    List<IntegrationLog__c> logs = [SELECT Outcome__c, Attempts__c FROM IntegrationLog__c];
+    Assert.areEqual(1, logs.size(), 'The hook fires once, not once per attempt.');
+    Assert.areEqual('EXHAUSTED', logs[0].Outcome__c);
+    Assert.areEqual(2, logs[0].Attempts__c);
+}
+
+@IsTest
+static void shouldReportNotRetryableWhenTypeIsExcluded() {
+    Test.startTest();
+    Async.queueable(new FailingJob())
+        .continueOnJobExecuteFail()
+        .retry(2)
+        .retryOn(DmlException.class)
+        .enqueue();
+    Test.stopTest();
+
+    Assert.areEqual('NOT_RETRYABLE', [SELECT Outcome__c FROM IntegrationLog__c].Outcome__c);
+}
+```
+
+Drop `retry(2)` entirely and the same job reports `NOT_CONFIGURED`.
+
+Two traps worth knowing:
+
+- **Asserting the hook did not fire proves very little on its own.** A test that
+  only checks "no log row" passes just as happily when the hook is broken. Pair
+  every negative case with a positive one.
+- **A throwing override is swallowed by design**, so a bug in your `onFinalFailure`
+  will not fail the test. The framework records it in `RetryHistory__c` instead.
+  If the override is doing real work, assert on its output rather than trusting
+  that the chain completed.
 
 ## Best Practices
 

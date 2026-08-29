@@ -2810,6 +2810,110 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
+    @IsTest
+    private static void shouldReportNoRetryConfiguredWhenJobHasNoRetryPolicy() {
+        Test.startTest();
+        Async.queueable(new FailureHookJob()).continueOnJobExecuteFail().enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            'NOT_CONFIGURED|HAS-TRACE|0/0',
+            hookRecord().Description,
+            'A job with no retry policy did not stop because of a retry decision.'
+        );
+    }
+
+    @IsTest
+    private static void shouldReportRetriesExhaustedAndFireOnlyOnce() {
+        Test.startTest();
+        Async.queueable(new FailureHookJob()).continueOnJobExecuteFail().retry(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, accountCount('HOOK'), 'The hook fires once, after the last attempt.');
+        Assert.areEqual('EXHAUSTED|HAS-TRACE|2/2', hookRecord().Description);
+    }
+
+    @IsTest
+    private static void shouldReportNotRetryableWhenExceptionTypeIsExcluded() {
+        Test.startTest();
+        Async.queueable(new FailureHookJob())
+            .continueOnJobExecuteFail()
+            .retry(2)
+            .retryOn(System.DmlException.class)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            'NOT_RETRYABLE|HAS-TRACE|0/2',
+            hookRecord().Description,
+            'The retryOn filter rejected the type, so no attempt was ever retried.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotCallOnFinalFailureWhenJobSucceeds() {
+        Test.startTest();
+        Async.queueable(new SucceedingHookJob()).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(0, accountCount('HOOK'), 'A job that succeeded never failed finally.');
+    }
+
+    @IsTest
+    private static void shouldNotCallOnFinalFailureWhenJobIsSkipped() {
+        Test.startTest();
+        Async.Result gate = Async.queueable(markerJob('GATE', true))
+            .continueOnJobExecuteFail()
+            .chain();
+        Async.queueable(new FailureHookJob()).dependsOn(Async.after(gate).succeeded()).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(0, accountCount('HOOK'), 'A skipped job never ran, so it never failed.');
+    }
+
+    @IsTest
+    private static void shouldKeepChainRunningWhenOnFinalFailureThrows() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        Async.queueable(new ExplodingHookJob()).continueOnJobExecuteFail().chain();
+        Async.queueable(markerJob('AFTER-HOOK', false)).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, accountCount('AFTER-HOOK'), 'A throwing hook must not stop the chain.');
+
+        AsyncResult__c result = [
+            SELECT RetryHistory__c
+            FROM AsyncResult__c
+            WHERE ClassName__c LIKE '%ExplodingHookJob'
+        ];
+        Assert.isTrue(
+            result.RetryHistory__c.contains('onFinalFailure() override threw'),
+            'A throwing hook is recorded instead of being swallowed silently.'
+        );
+    }
+
+    @IsTest
+    private static void shouldCallOnFinalFailureForEveryFailedChunkPage() {
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < 4; i++) {
+            accounts.add(new Account(Name = 'Chunk Hook ' + i));
+        }
+        insert accounts;
+
+        Test.startTest();
+        Async.chunk(new FailingChunkHookJob(), ChunkSource.of(accounts)).chunkSize(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(2, accountCount('HOOK'), 'Each failed page is its own final failure.');
+    }
+
+    private static Account hookRecord() {
+        return [SELECT Description FROM Account WHERE Name = 'HOOK' LIMIT 1];
+    }
+
     private static String getClassNameWithNamespaceDotPrefix(String className) {
         return getNamespaceDotPrefix() + className;
     }
@@ -3245,6 +3349,53 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private class MarkerFinalizer extends QueueableJob.Finalizer {
         public override void work() {
             insert new Account(Name = 'RETRY-FINALIZER');
+        }
+    }
+
+    private abstract class HookRecordingJob extends QueueableJob {
+        public override void onFinalFailure(Async.FailureContext failureCtx) {
+            insert new Account(
+                Name = 'HOOK',
+                Description = failureCtx.retryOutcome.name() +
+                    '|' +
+                    (String.isBlank(failureCtx.failure?.stackTrace) ? 'NO-TRACE' : 'HAS-TRACE') +
+                    '|' +
+                    failureCtx.retryAttempt +
+                    '/' +
+                    failureCtx.maxRetries
+            );
+        }
+    }
+
+    private class FailureHookJob extends HookRecordingJob {
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class SucceedingHookJob extends HookRecordingJob {
+        public override void work() {
+            insert new Account(Name = 'SUCCEEDED');
+        }
+    }
+
+    private class ExplodingHookJob extends QueueableJob {
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public override void onFinalFailure(Async.FailureContext failureCtx) {
+            throw new CustomException('hook exploded');
+        }
+    }
+
+    private class FailingChunkHookJob extends ChunkJob {
+        public override void work(List<SObject> chunk) {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public override void onFinalFailure(Async.FailureContext failureCtx) {
+            insert new Account(Name = 'HOOK', Description = failureCtx.retryOutcome.name());
         }
     }
 

@@ -66,3 +66,6 @@ scripts/agent/
 # Consumer-app scratch state, not source
 package-tests/consumer-app/.sf/
 package-tests/consumer-app/.sfdx/
+
+# Announcement drafts - marketing copy, not a repo artifact
+release-notes/linkedin/

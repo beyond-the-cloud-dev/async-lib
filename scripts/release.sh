@@ -211,27 +211,13 @@ echo "  Badge version: v$NEW_VERSION"
 step "Step 5/5 — Generating Release Notes"
 
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-if [ -z "$LAST_TAG" ]; then
-    COMMIT_LOG=$(git log --oneline --no-merges)
-    CHANGED_FILES=$(git diff --stat HEAD~20 2>/dev/null || git diff --stat)
-else
-    COMMIT_LOG=$(git log "$LAST_TAG"..HEAD --oneline --no-merges)
-    CHANGED_FILES=$(git diff "$LAST_TAG"..HEAD --stat)
-fi
 
 RELEASE_DIR="$PROJECT_ROOT/release-notes"
 mkdir -p "$RELEASE_DIR"
 RELEASE_FILE="$RELEASE_DIR/v$NEW_VERSION.md"
 
 cat > "$RELEASE_FILE" << RELEASE_EOF
-# GitHub Release
-
-**Title:** v$NEW_VERSION
-**Tag:** v$NEW_VERSION
-
----
-
-## Description (copy below)
+# v$NEW_VERSION
 
 <!-- gh-release-start -->
 # What's Changed
@@ -261,34 +247,17 @@ https://login.salesforce.com/packaging/installPackage.apexp?p0=$SUBSCRIBER_PKG_V
 \`\`\`
 <!-- gh-release-end -->
 
----
-
-# LinkedIn Post (copy below)
-
-New Async Lib release v$NEW_VERSION! 🚀
-
-<!-- Describe the headline change in 1-2 sentences -->
-
-<!-- List 3-5 key highlights with ✅ emoji -->
-
-----
-Release: https://github.com/beyond-the-cloud-dev/async-lib/releases/tag/v$NEW_VERSION
-Github: https://github.com/beyond-the-cloud-dev/async-lib
-Documentation: https://async.beyondthecloud.dev
-
----
-
-# Reference: Commits since $LAST_TAG
-
-$COMMIT_LOG
-
-# Reference: Changed files
-
-$CHANGED_FILES
 RELEASE_EOF
 
 ok "Release notes template created at:"
 echo "  $RELEASE_FILE"
+echo ""
+echo "Commits since ${LAST_TAG:-the beginning}, to categorise into the sections above:"
+if [ -z "$LAST_TAG" ]; then
+    git log --oneline --no-merges | sed 's/^/  /'
+else
+    git log "$LAST_TAG"..HEAD --oneline --no-merges | sed 's/^/  /'
+fi
 
 # ─────────────────────────────────────────────────
 # Summary

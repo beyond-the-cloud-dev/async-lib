@@ -2,8 +2,12 @@
  * PMD False Positives:
  * - ApexAssertionsShouldIncludeMessage: IMO not all assertions need a message
  * - EmptyStatementBlock: It is test class, some methods are just to create jobs placeholders
+ * - NcssTypeCount: It is a library and all of its tests live in ONE test class
+ * - NcssCount: It is a library and all of its tests live in ONE test class
  **/
-@SuppressWarnings('PMD.ApexAssertionsShouldIncludeMessage,PMD.EmptyStatementBlock')
+@SuppressWarnings(
+    'PMD.ApexAssertionsShouldIncludeMessage,PMD.EmptyStatementBlock,PMD.NcssTypeCount,PMD.NcssCount'
+)
 @IsTest
 @TestVisible
 private class AsyncTest implements Database.Batchable<SObject> {
@@ -4048,7 +4052,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldInjectQueueableMockIntoAChunkPage() {
         List<Account> accounts = createAccounts(2);
-        Id mockJobId = '707000000000001AAA';
+        Id mockJobId = AsyncApexJob.SObjectType.getDescribe().getKeyPrefix() + '000000000001AAA';
         AsyncMock.whenQueueable('chunk-page')
             .thenReturn(new AsyncMock.MockQueueableContext().setJobId(mockJobId));
 

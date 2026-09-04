@@ -1,3 +1,8 @@
+/**
+ * PMD False Positives:
+ * - CyclomaticComplexity: every fluent method validates its own argument
+ **/
+@SuppressWarnings('PMD.CyclomaticComplexity')
 public inherited sharing class ChunkBuilder {
     @TestVisible
     private static final String ERROR_MESSAGE_INVALID_CHUNK_SIZE = 'chunkSize must be a positive integer';

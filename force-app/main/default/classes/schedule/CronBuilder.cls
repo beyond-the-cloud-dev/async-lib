@@ -2,9 +2,12 @@
  * PMD False Positives:
  * - EmptyStatementBlock: In Apex it is required to have constructor overload with empty arguments, when there is other constructor, to create the object with empty constructor
  * - ExcessiveParameterList: This was intended to require all the values upfront
+ * - ExcessivePublicCount / CyclomaticComplexity: one fluent method per cron field
  **/
-@SuppressWarnings('PMD.EmptyStatementBlock,PMD.ExcessiveParameterList')
-public class CronBuilder {
+@SuppressWarnings(
+    'PMD.EmptyStatementBlock,PMD.ExcessiveParameterList,PMD.ExcessivePublicCount,PMD.CyclomaticComplexity'
+)
+public inherited sharing class CronBuilder {
     private static final String ALL_VALUES = '*';
     private static final String INCREMENTS = '/';
     private static final String VALUE_DELIMITER = ',';

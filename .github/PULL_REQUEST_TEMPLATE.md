@@ -38,6 +38,7 @@ Closes #
 - [ ] Tested in scratch org
 - [ ] Linting passes (`npm run lint`)
 - [ ] Code formatting is correct (`npm run prettier:verify`)
+- [ ] Static analysis passes (`npm run pmd:verify`)
 
 ## Screenshots
 

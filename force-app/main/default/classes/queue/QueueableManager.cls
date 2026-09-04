@@ -1,3 +1,8 @@
+/**
+ * PMD False Positives:
+ * - CyclomaticComplexity: one guard clause per documented error message
+ **/
+@SuppressWarnings('PMD.CyclomaticComplexity')
 public inherited sharing class QueueableManager {
     public static final String QUEUEABLE_JOB_SETTING_ALL = 'All';
     public static final String STATUS_COMPLETED = 'COMPLETED';

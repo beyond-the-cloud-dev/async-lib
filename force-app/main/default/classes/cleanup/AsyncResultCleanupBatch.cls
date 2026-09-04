@@ -1,3 +1,8 @@
+/**
+ * PMD False Positives:
+ * - EmptyStatementBlock: Database.Batchable requires finish(), nothing to do after the last chunk
+ **/
+@SuppressWarnings('PMD.EmptyStatementBlock')
 public inherited sharing class AsyncResultCleanupBatch implements Database.Batchable<SObject> {
     public static final String ERROR_MESSAGE_NO_RETENTION_CONFIGURED = 'Configure at least one retention track: failedOlderThanDays(...) and/or othersOlderThanDays(...).';
     public static final String ERROR_MESSAGE_INVALID_RETENTION_DAYS = 'Retention days must be greater than zero.';

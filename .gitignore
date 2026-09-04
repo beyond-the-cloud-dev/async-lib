@@ -6,7 +6,8 @@
 .idea/
 .project/
 .nx-cache
-.vscode/
+.vscode/*
+!.vscode/settings.json
 
 # Salesforce cache
 .sf/
@@ -36,6 +37,9 @@ node_modules/
 
 # Eslint cache
 .eslintcache
+
+# PMD distribution + analysis cache, bootstrapped by scripts/pmd.sh
+.pmd-dist/
 
 # MacOS system files
 .DS_Store

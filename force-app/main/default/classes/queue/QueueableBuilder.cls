@@ -1,3 +1,9 @@
+/**
+ * PMD False Positives:
+ * - ExcessivePublicCount: one fluent method per job option
+ * - EmptyStatementBlock: Apex requires an explicit no-arg constructor once another exists
+ **/
+@SuppressWarnings('PMD.ExcessivePublicCount,PMD.EmptyStatementBlock')
 public inherited sharing class QueueableBuilder {
     private QueueableJob job;
     private String lastChainedCustomJobId;

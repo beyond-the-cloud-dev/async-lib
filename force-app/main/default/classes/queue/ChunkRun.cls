@@ -1,3 +1,8 @@
+/**
+ * PMD False Positives:
+ * - ExcessiveParameterList: a half-configured run is not a valid state
+ **/
+@SuppressWarnings('PMD.ExcessiveParameterList')
 public inherited sharing class ChunkRun {
     @TestVisible
     private static final String ERROR_MESSAGE_RUN_NOT_STARTED = 'A ChunkJob runs only as part of a chunk run. Start it with Async.chunk(job, source) or Async.queueable(...).chunk(job, source).';

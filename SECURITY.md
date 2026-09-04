@@ -60,7 +60,8 @@ When using this template:
 
 ### Code Quality
 
-- Run security checks: `npm run lint`
+- Run security checks: `npm run pmd:verify` (the ruleset runs the full Apex security category)
+- Run JS/LWC linting: `npm run lint`
 - Review dependencies: `npm audit`
 - Keep dependencies updated: `npm update`
 - Use pre-commit hooks (Husky)

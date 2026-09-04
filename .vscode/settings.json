@@ -1,0 +1,5 @@
+{
+    "apexPMD.rulesetPath": "pmd/ruleset.xml",
+    "apexPMD.runOnFileOpen": true,
+    "apexPMD.runOnFileSave": true
+}

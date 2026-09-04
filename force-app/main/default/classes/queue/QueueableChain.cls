@@ -1,8 +1,9 @@
 /**
  * PMD False Positives:
- * - CognitiveComplexity: This was intended to have all the logic in one class
+ * - CognitiveComplexity / CyclomaticComplexity / StdCyclomaticComplexity: This was intended to
+ *   have all the logic in one class
  **/
-@SuppressWarnings('PMD.CognitiveComplexity')
+@SuppressWarnings('PMD.CognitiveComplexity,PMD.CyclomaticComplexity,PMD.StdCyclomaticComplexity')
 public inherited sharing class QueueableChain {
     @TestVisible
     private List<QueueableJob> jobs = new List<QueueableJob>();
@@ -43,6 +44,8 @@ public inherited sharing class QueueableChain {
         System.attachFinalizer(new QueueableChainFinalizer(this));
     }
 
+    // The debug output is a feature: it correlates a running job with its AsyncResult__c row.
+    @SuppressWarnings('PMD.AvoidDebugStatements,PMD.DebugsShouldUseLoggingLevel')
     public void executeCurrentJob(QueueableContext ctx) {
         if (!hasNextJob()) {
             return;
@@ -56,7 +59,6 @@ public inherited sharing class QueueableChain {
 
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
-            // Debug statements to determine the Job Id and Name
             System.debug(currentJob.customJobId);
             System.debug(currentJob.uniqueName);
             // A mocked failure has to be raised in here, so it settles through the same path a
@@ -276,7 +278,7 @@ public inherited sharing class QueueableChain {
         for (QueueableJob job : toRecord) {
             results.add(buildResult(job));
         }
-        insert results;
+        insert as system results;
         for (Integer i = 0; i < toRecord.size(); i++) {
             toRecord[i].resultCreated = true;
             resultIdByCustomJobId.put(toRecord[i].customJobId, results[i].Id);
@@ -329,7 +331,7 @@ public inherited sharing class QueueableChain {
             );
         }
         if (!toUpdate.isEmpty()) {
-            update toUpdate;
+            update as system toUpdate;
         }
     }
 

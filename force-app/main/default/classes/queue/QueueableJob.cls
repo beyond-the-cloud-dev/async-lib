@@ -1,16 +1,17 @@
-@SuppressWarnings('PMD.ExcessivePublicCount')
-public abstract class QueueableJob implements Queueable, Comparable {
+/**
+ * PMD False Positives:
+ * - ExcessivePublicCount / TooManyFields: every field is part of the job contract
+ * - CognitiveComplexity / CyclomaticComplexity: the base owns the whole retry lifecycle
+ * - EmptyStatementBlock: the lifecycle hooks are no-op virtuals meant to be overridden
+ **/
+@SuppressWarnings(
+    'PMD.ExcessivePublicCount,PMD.TooManyFields,PMD.CognitiveComplexity,PMD.CyclomaticComplexity,PMD.EmptyStatementBlock'
+)
+// A Queueable entry point with no sharing declaration runs in system mode. `inherited sharing`
+// would resolve to `with sharing` here and change data visibility for every subclass.
+public without sharing abstract class QueueableJob implements Queueable, Comparable {
     public Id salesforceJobId;
     public String customJobId;
-    public transient String className {
-        get {
-            if (className == null) {
-                className = getFullClassName(this);
-            }
-            return className;
-        }
-        private set;
-    }
     public String uniqueName;
     public Integer delay;
     public Integer priority;
@@ -41,13 +42,24 @@ public abstract class QueueableJob implements Queueable, Comparable {
     public String parentCustomJobId;
     public FinalizerContext finalizerCtx;
     public String mockId;
+
+    private QueueableChain chain;
+
+    public transient String className {
+        get {
+            if (className == null) {
+                className = getFullClassName(this);
+            }
+            return className;
+        }
+        private set;
+    }
+
     public Boolean isFinalizer {
         get {
             return String.isNotBlank(parentCustomJobId);
         }
     }
-
-    private QueueableChain chain;
 
     public abstract void work();
 
@@ -226,7 +238,8 @@ public abstract class QueueableJob implements Queueable, Comparable {
     private String getFullClassName(Object job) {
         String result;
         try {
-            DateTime typeCheck = (DateTime) job;
+            // A failed cast is the only way to read the runtime type with its namespace.
+            String.valueOf((DateTime) job);
         } catch (System.TypeException expectedTypeException) {
             String message = expectedTypeException.getMessage()
                 .substringAfter('Invalid conversion from runtime type ');

@@ -43,7 +43,19 @@ Before committing, ensure all tests pass:
 npm test                    # Run LWC Jest tests
 npm run lint                # Run ESLint
 npm run prettier:verify     # Check code formatting
+npm run pmd:verify          # Run PMD static analysis
 ```
+
+CI runs Prettier, ESLint and PMD on every pull request and fails on any violation, so a
+finding has to be resolved before merge. `npm run pmd` prints the same report without
+failing. PMD needs Java 8+ on your PATH; `scripts/pmd.sh` downloads the pinned PMD release
+into `.pmd-dist/` on first run.
+
+The ruleset lives in `pmd/ruleset.xml` and is kept identical to the shared Beyond The Cloud
+ruleset. Do not weaken it to silence a finding. Either fix the code, or add a narrow
+`@SuppressWarnings('PMD.RuleName')` at the class or method with a `PMD False Positives:` note
+saying why. Suppressions travel with the source, which matters because consumers vendor these
+classes into their own repos and scan them with their own ruleset.
 
 ### 6. Commit and Push
 

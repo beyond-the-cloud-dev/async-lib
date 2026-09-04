@@ -1,0 +1,5 @@
+npx lint-staged
+
+if git diff --cached --name-only --diff-filter=ACM | grep -q '\.cls$'; then
+    npm run pmd:verify
+fi

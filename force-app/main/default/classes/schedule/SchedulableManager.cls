@@ -19,59 +19,73 @@ public inherited sharing class SchedulableManager {
     private static SchedulableManager instance;
 
     public List<Async.Result> schedule(SchedulableBuilder builder) {
+        assertSchedulable(builder);
+
+        if (shouldSkipWhenAlreadyScheduled(builder)) {
+            return new List<Async.Result>();
+        }
+
+        return hasMinutesFromNow(builder)
+            ? new List<Async.Result>{ scheduleBatchFromNow(builder) }
+            : scheduleCrons(builder);
+    }
+
+    private void assertSchedulable(SchedulableBuilder builder) {
         if (builder == null || builder.scheduleJob == null) {
             throw new IllegalArgumentException(ERROR_MESSAGE_JOB_NOT_SET);
         }
         if (String.isBlank(builder.name)) {
             throw new IllegalArgumentException(ERROR_MESSAGE_JOB_NAME);
         }
-        if (
-            (builder.crons == null || builder.crons.isEmpty()) &&
-            builder.batchableBuilder?.minutesFromNow == null
-        ) {
+        assertExactlyOneTrigger(builder);
+    }
+
+    private void assertExactlyOneTrigger(SchedulableBuilder builder) {
+        Boolean cronTriggered = hasCrons(builder);
+        Boolean delayTriggered = hasMinutesFromNow(builder);
+        if (!cronTriggered && !delayTriggered) {
             throw new IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_NOT_SET);
         }
-        if (
-            (builder.crons != null && !builder.crons.isEmpty()) &&
-            builder.batchableBuilder?.minutesFromNow != null
-        ) {
+        if (cronTriggered && delayTriggered) {
             throw new IllegalArgumentException(ERROR_MESSAGE_CRON_AND_MINUTES_SET);
         }
+    }
 
+    private Boolean hasCrons(SchedulableBuilder builder) {
+        return builder.crons != null && !builder.crons.isEmpty();
+    }
+
+    private Boolean hasMinutesFromNow(SchedulableBuilder builder) {
+        return builder.batchableBuilder?.minutesFromNow != null;
+    }
+
+    private Async.Result scheduleBatchFromNow(SchedulableBuilder builder) {
+        BatchableBuilder batchable = builder.batchableBuilder;
+        return new Async.Result(
+                System.scheduleBatch(
+                    batchable.job,
+                    builder.name,
+                    batchable.minutesFromNow,
+                    batchable.scopeSize ?? BatchableManager.DEFAULT_BATCH_SIZE
+                )
+            )
+            .setAsyncType(Async.AsyncType.SCHEDULABLE);
+    }
+
+    private List<Async.Result> scheduleCrons(SchedulableBuilder builder) {
         List<Async.Result> results = new List<Async.Result>();
-
-        if (shouldSkipWhenAlreadyScheduled(builder)) {
-            return results;
-        }
-
-        if (builder.batchableBuilder?.minutesFromNow != null) {
+        for (CronBuilder cron : builder.crons) {
             results.add(
                 new Async.Result(
-                        System.scheduleBatch(
-                            builder.batchableBuilder.job,
-                            builder.name,
-                            builder.batchableBuilder.minutesFromNow,
-                            builder.batchableBuilder.scopeSize ??
-                                BatchableManager.DEFAULT_BATCH_SIZE
+                        System.schedule(
+                            builder.name + (builder.crons.size() == 1 ? '' : '/' + cron.minute),
+                            cron.getCronExpression(),
+                            builder.scheduleJob
                         )
                     )
                     .setAsyncType(Async.AsyncType.SCHEDULABLE)
             );
-        } else {
-            for (CronBuilder cron : builder.crons) {
-                results.add(
-                    new Async.Result(
-                            System.schedule(
-                                builder.name + (builder.crons.size() == 1 ? '' : '/' + cron.minute),
-                                cron.getCronExpression(),
-                                builder.scheduleJob
-                            )
-                        )
-                        .setAsyncType(Async.AsyncType.SCHEDULABLE)
-                );
-            }
         }
-
         return results;
     }
 

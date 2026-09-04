@@ -8,6 +8,43 @@ on:
   workflow_dispatch:
 
 jobs:
+  static-analysis:
+    name: Prettier / ESLint / PMD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cache PMD distribution
+        uses: actions/cache@v4
+        with:
+          path: .pmd-dist
+          key: pmd-${{ runner.os }}-${{ hashFiles('scripts/pmd.sh') }}
+
+      - run: npm ci
+
+      - run: npm run prettier:verify
+
+      # ESLint 9 hard-errors on a missing flat config instead of no-op'ing.
+      - name: ESLint
+        run: |
+          if find force-app -type d \( -name lwc -o -name aura \) -print -quit | grep -q .; then
+            npm run lint
+          else
+            echo "no LWC/Aura sources - skipped"
+          fi
+
+      - run: npm run pmd:verify
+
   salesforce-ci:
     uses: beyond-the-cloud-dev/cicd-template/.github/workflows/salesforce-ci.yml@main
     with:

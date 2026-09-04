@@ -2,8 +2,12 @@
  * PMD False Positives:
  * - ApexAssertionsShouldIncludeMessage: IMO not all assertions need a message
  * - EmptyStatementBlock: It is test class, some methods are just to create jobs placeholders
+ * - NcssTypeCount / CyclomaticComplexity / CognitiveComplexity: splitting would scatter the
+ *   shared job fixtures across files
  **/
-@SuppressWarnings('PMD.ApexAssertionsShouldIncludeMessage,PMD.EmptyStatementBlock')
+@SuppressWarnings(
+    'PMD.ApexAssertionsShouldIncludeMessage,PMD.EmptyStatementBlock,PMD.NcssTypeCount,PMD.CyclomaticComplexity,PMD.CognitiveComplexity'
+)
 @IsTest
 @TestVisible
 private class AsyncTest implements Database.Batchable<SObject> {
@@ -3178,14 +3182,8 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     private static void shouldDeleteOnlyOldNonFailedResultsWhenOnlyOthersRetentionIsSet() {
-        AsyncResult__c oldCompleted = insertAsyncResultWithAge(
-            QueueableManager.STATUS_COMPLETED,
-            31
-        );
-        AsyncResult__c oldSkipped = insertAsyncResultWithAge(
-            QueueableManager.STATUS_SKIPPED_DEPENDENCY,
-            31
-        );
+        insertAsyncResultWithAge(QueueableManager.STATUS_COMPLETED, 31);
+        insertAsyncResultWithAge(QueueableManager.STATUS_SKIPPED_DEPENDENCY, 31);
         AsyncResult__c veryOldFailed = insertAsyncResultWithAge(
             QueueableManager.STATUS_FAILED,
             400
@@ -3214,18 +3212,12 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     private static void shouldApplySeparateRetentionCutoffsPerTrack() {
-        AsyncResult__c failedPastCutoff = insertAsyncResultWithAge(
-            QueueableManager.STATUS_FAILED,
-            100
-        );
+        insertAsyncResultWithAge(QueueableManager.STATUS_FAILED, 100);
         AsyncResult__c failedWithinCutoff = insertAsyncResultWithAge(
             QueueableManager.STATUS_FAILED,
             60
         );
-        AsyncResult__c completedPastCutoff = insertAsyncResultWithAge(
-            QueueableManager.STATUS_COMPLETED,
-            60
-        );
+        insertAsyncResultWithAge(QueueableManager.STATUS_COMPLETED, 60);
         AsyncResult__c completedWithinCutoff = insertAsyncResultWithAge(
             QueueableManager.STATUS_COMPLETED,
             10
@@ -4060,7 +4052,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldInjectQueueableMockIntoAChunkPage() {
         List<Account> accounts = createAccounts(2);
-        Id mockJobId = '707000000000001AAA';
+        Id mockJobId = fakeAsyncApexJobId();
         AsyncMock.whenQueueable('chunk-page')
             .thenReturn(new AsyncMock.MockQueueableContext().setJobId(mockJobId));
 
@@ -4658,6 +4650,10 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     private static String processedCountSeenBy(String tag) {
         return [SELECT Site FROM Account WHERE Name = :tag LIMIT 1].Site;
+    }
+
+    private static Id fakeAsyncApexJobId() {
+        return AsyncApexJob.SObjectType.getDescribe().getKeyPrefix() + '0'.repeat(11) + '1AAA';
     }
 
     private static List<Account> createAccounts(Integer count) {

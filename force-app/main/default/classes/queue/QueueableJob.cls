@@ -226,7 +226,8 @@ public abstract class QueueableJob implements Queueable, Comparable {
     private String getFullClassName(Object job) {
         String result;
         try {
-            DateTime typeCheck = (DateTime) job;
+            // A failed cast is the only way to read the runtime type with its namespace
+            String.valueOf((DateTime) job);
         } catch (System.TypeException expectedTypeException) {
             String message = expectedTypeException.getMessage()
                 .substringAfter('Invalid conversion from runtime type ');

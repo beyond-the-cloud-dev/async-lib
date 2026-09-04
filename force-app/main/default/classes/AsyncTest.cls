@@ -3178,14 +3178,8 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     private static void shouldDeleteOnlyOldNonFailedResultsWhenOnlyOthersRetentionIsSet() {
-        AsyncResult__c oldCompleted = insertAsyncResultWithAge(
-            QueueableManager.STATUS_COMPLETED,
-            31
-        );
-        AsyncResult__c oldSkipped = insertAsyncResultWithAge(
-            QueueableManager.STATUS_SKIPPED_DEPENDENCY,
-            31
-        );
+        insertAsyncResultWithAge(QueueableManager.STATUS_COMPLETED, 31);
+        insertAsyncResultWithAge(QueueableManager.STATUS_SKIPPED_DEPENDENCY, 31);
         AsyncResult__c veryOldFailed = insertAsyncResultWithAge(
             QueueableManager.STATUS_FAILED,
             400
@@ -3214,18 +3208,12 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     private static void shouldApplySeparateRetentionCutoffsPerTrack() {
-        AsyncResult__c failedPastCutoff = insertAsyncResultWithAge(
-            QueueableManager.STATUS_FAILED,
-            100
-        );
+        insertAsyncResultWithAge(QueueableManager.STATUS_FAILED, 100);
         AsyncResult__c failedWithinCutoff = insertAsyncResultWithAge(
             QueueableManager.STATUS_FAILED,
             60
         );
-        AsyncResult__c completedPastCutoff = insertAsyncResultWithAge(
-            QueueableManager.STATUS_COMPLETED,
-            60
-        );
+        insertAsyncResultWithAge(QueueableManager.STATUS_COMPLETED, 60);
         AsyncResult__c completedWithinCutoff = insertAsyncResultWithAge(
             QueueableManager.STATUS_COMPLETED,
             10

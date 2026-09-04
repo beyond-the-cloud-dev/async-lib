@@ -1,3 +1,10 @@
+/**
+ * PMD False Positives:
+ * - CognitiveComplexity: a facade over the whole API, and the most complex member scores 1
+ * - PropertyNamingConventions: `Async.Backoff` is the Apex Fluently accessor idiom, matching
+ *   `SOQL.Filter` and `SOQL.SubQuery`, so it reads as a type at the call site
+ **/
+@SuppressWarnings('PMD.CognitiveComplexity,PMD.PropertyNamingConventions')
 public inherited sharing class Async {
     public static QueueableBuilder queueable(QueueableJob job) {
         return new QueueableBuilder(job);
@@ -49,6 +56,15 @@ public inherited sharing class Async {
 
     public static void skipJob(String customJobId) {
         QueueableManager.get().skipJob(customJobId);
+    }
+
+    // Inside a QueueableJob subclass the inherited `backoff` field shadows the Backoff type, so a
+    // bare `Backoff.exponential(1)` will not compile there. Reaching the factories through Async
+    // is collision-free in both packaged and source deployments.
+    public static BackoffFactory Backoff {
+        get {
+            return new BackoffFactory();
+        }
     }
 
     public class QueueableJobContext {

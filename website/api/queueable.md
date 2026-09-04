@@ -370,6 +370,39 @@ Async.queueable(new MyQueueableJob())
 	.enqueue();
 ```
 
+##### Configuring backoff inside the job class
+
+Retry settings often belong next to the job rather than on every enqueue call
+site. Inside a `QueueableJob` subclass, use `Async.Backoff` instead of the bare
+`Backoff` factories:
+
+```apex
+public without sharing class MyQueueableJob extends QueueableJob {
+	public MyQueueableJob() {
+		this.maxRetries = 5;
+		this.backoff = Async.Backoff.exponentialWithJitter(1);
+	}
+
+	public override void work() { /* ... */ }
+}
+```
+
+`Async.Backoff` exposes the same three strategies and returns the same `Backoff`
+object, so it is interchangeable with `.backoff(...)` on the builder.
+
+`Backoff.exponentialWithJitter(1)` **does not compile** in that position. Apex
+name resolution is case-insensitive, so inside the subclass the inherited
+`backoff` field hides the `Backoff` type and the compiler reads the call as an
+instance method on the field:
+
+```
+Static method cannot be referenced from a non static context:
+Backoff Backoff.exponentialWithJitter(Integer)
+```
+
+Qualifying through `Async` avoids the clash, and works the same whether the
+library is installed as a package or deployed as source.
+
 #### retryOn
 
 Restricts retry to the listed exception types (matched by full name or short

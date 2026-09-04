@@ -1816,6 +1816,65 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    private static void shouldConfigureBackoffInsideAJobSubclass() {
+        SelfConfiguringRetryJob job = new SelfConfiguringRetryJob();
+
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+        Test.stopTest();
+
+        Assert.areEqual(1, chain.jobs[0].retryAttempt, 'The job should have been retried.');
+        Assert.areEqual(
+            4,
+            chain.jobs[0].delay,
+            'A backoff configured in the subclass constructor should drive the retry delay.'
+        );
+    }
+
+    @IsTest
+    private static void shouldMatchTopLevelBackoffFromTheAsyncFactory() {
+        Assert.areEqual(
+            Backoff.fixed(3).delayMinutes(2),
+            Async.Backoff.fixed(3).delayMinutes(2),
+            'Async.Backoff.fixed must delegate to Backoff.fixed.'
+        );
+        Assert.areEqual(
+            Backoff.exponential(1).delayMinutes(4),
+            Async.Backoff.exponential(1).delayMinutes(4),
+            'Async.Backoff.exponential must delegate to Backoff.exponential.'
+        );
+
+        Integer jitteredDelay = Async.Backoff.exponentialWithJitter(2).delayMinutes(3);
+        Assert.isTrue(
+            jitteredDelay >= 4 && jitteredDelay <= 10,
+            'Async.Backoff.exponentialWithJitter must stay within the exponential-plus-jitter band.'
+        );
+    }
+
+    @IsTest
+    private static void shouldExposeAnAsyncFactoryForEveryBackoffStrategy() {
+        List<Backoff> exposedStrategies = new List<Backoff>{
+            Async.Backoff.fixed(1),
+            Async.Backoff.exponential(1),
+            Async.Backoff.exponentialWithJitter(1)
+        };
+
+        Assert.areEqual(
+            Backoff.Strategy.values().size(),
+            exposedStrategies.size(),
+            'A new Backoff.Strategy needs a matching Async.Backoff factory, otherwise it cannot ' +
+            'be configured inside a QueueableJob subclass.'
+        );
+    }
+
+    @IsTest
     private static void shouldBuildBackoffFromName() {
         Assert.isNotNull(Backoff.fromName('EXPONENTIAL', 2));
         Assert.isNotNull(Backoff.fromName('fixed', 2));
@@ -3303,6 +3362,18 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private class FailureQueueableTest extends QueueableJob.AllowsCallouts {
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class SelfConfiguringRetryJob extends QueueableJob {
+        private SelfConfiguringRetryJob() {
+            this.maxRetries = 2;
+            this.backoff = Async.Backoff.fixed(4);
+            this.continueOnJobExecuteFail = true;
+        }
+
+        public override void work() {
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
     }

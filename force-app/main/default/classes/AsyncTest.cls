@@ -4052,7 +4052,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldInjectQueueableMockIntoAChunkPage() {
         List<Account> accounts = createAccounts(2);
-        Id mockJobId = AsyncApexJob.SObjectType.getDescribe().getKeyPrefix() + '000000000001AAA';
+        Id mockJobId = fakeId(AsyncApexJob.SObjectType, 1);
         AsyncMock.whenQueueable('chunk-page')
             .thenReturn(new AsyncMock.MockQueueableContext().setJobId(mockJobId));
 
@@ -4659,6 +4659,12 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
         insert accounts;
         return accounts;
+    }
+
+    private static Id fakeId(Schema.SObjectType sObjectType, Integer index) {
+        String prefix = sObjectType.getDescribe(SObjectDescribeOptions.DEFERRED).getKeyPrefix();
+        String suffix = String.valueOf(index);
+        return Id.valueOf(prefix + '0'.repeat(15 - prefix.length() - suffix.length()) + suffix);
     }
 
     private static List<Account> accountsWithOneFailingRecord() {

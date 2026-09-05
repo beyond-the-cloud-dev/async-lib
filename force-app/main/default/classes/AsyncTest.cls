@@ -2845,6 +2845,182 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    private static void shouldDiscardJobsChainedByAnAttemptWhoseTransactionRolledBack() {
+        ChainingFailureJob job = new ChainingFailureJob();
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainRunning(job);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        Assert.areEqual(2, chain.jobs.size(), 'work() chained a follow-up before failing.');
+        chain.enqueueNextJobIfAnyFromFinalizer(rolledBack());
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            chain.jobs.size(),
+            'Salesforce rolls back a plain System.enqueueJob when the transaction dies, and so must we.'
+        );
+    }
+
+    @IsTest
+    private static void shouldDiscardJobsChainedByAnAttemptThatRolledItselfBack() {
+        ChainingFailureJob job = new ChainingFailureJob();
+        job.rollbackOnJobExecuteFail = true;
+        QueueableChain chain = chainRunning(job);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            chain.jobs.size(),
+            'rollbackOnJobExecuteFail discards the DML, so it must discard the chained work too.'
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepJobsChainedByAnAttemptThatCommitted() {
+        ChainingFailureJob job = new ChainingFailureJob();
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainRunning(job);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        Test.stopTest();
+
+        Assert.areEqual(
+            2,
+            chain.jobs.size(),
+            'continueOnJobExecuteFail commits the partial work, so the chained job stands.'
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepChainSiblingsQueuedBeforeTheFailedAttempt() {
+        ChainingFailureJob job = new ChainingFailureJob();
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainRunning(job);
+        chain.addJob(markerJob('SIBLING', false));
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(rolledBack());
+        Test.stopTest();
+
+        Assert.areEqual(
+            2,
+            chain.jobs.size(),
+            'Only what the attempt itself added is discarded; jobs queued before it still run.'
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepAnAttachedFinalizerWhenTheAttemptRolledBack() {
+        Test.startTest();
+        Async.queueable(new FinalizerAndJobChainingFailureJob())
+            .rollbackOnJobExecuteFail()
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            accountCount('RETRY-FINALIZER'),
+            'attachFinalizer survives a rollback, matching System.attachFinalizer.'
+        );
+        Assert.areEqual(
+            0,
+            accountCount('ROLLED-BACK-FOLLOWUP'),
+            'A job chained by the rolled back attempt must never run.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRestoreTheChainWhenTheAttemptThatStoppedItRolledBack() {
+        ChainStoppingFailureJob job = new ChainStoppingFailureJob();
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainRunning(job);
+        MarkerJob successor = markerJob('SUCCESSOR', false);
+        chain.addJob(successor);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        Assert.areEqual(
+            QueueableManager.STATUS_SKIPPED_CHAIN_STOPPED,
+            successor.skipStatus,
+            'stopChain() marks the successor while the attempt is still running.'
+        );
+        chain.enqueueNextJobIfAnyFromFinalizer(rolledBack());
+        Test.stopTest();
+
+        Assert.isNull(
+            successor.skipStatus,
+            'A rolled back stopChain() must not skip the successor.'
+        );
+        Assert.isFalse(successor.isProcessed, 'The successor is queued again, not consumed.');
+    }
+
+    @IsTest
+    private static void shouldKeepTheChainStoppedWhenTheAttemptThatStoppedItCommitted() {
+        ChainStoppingFailureJob job = new ChainStoppingFailureJob();
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainRunning(job);
+        MarkerJob successor = markerJob('SUCCESSOR', false);
+        chain.addJob(successor);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        Test.stopTest();
+
+        Assert.areEqual(
+            QueueableManager.STATUS_SKIPPED_CHAIN_STOPPED,
+            successor.skipStatus,
+            'The stop committed with the rest of the attempt, so it stands.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRestoreASkippedJobWhenTheAttemptThatSkippedItRolledBack() {
+        JobSkippingFailureJob job = new JobSkippingFailureJob();
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainRunning(job);
+        MarkerJob target = markerJob('TARGET', false);
+        chain.addJob(target);
+        job.targetCustomJobId = target.customJobId;
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(rolledBack());
+        Test.stopTest();
+
+        Assert.isNull(target.skipStatus, 'A rolled back skipJob() must not skip the target.');
+    }
+
+    @IsTest
+    private static void shouldNotLeakAStoppedChainFromAnAttemptThatWillBeRetried() {
+        ChainStoppingFailureJob job = new ChainStoppingFailureJob();
+        job.continueOnJobExecuteFail = true;
+        job.maxRetries = 1;
+        QueueableChain chain = chainRunning(job);
+        MarkerJob successor = markerJob('SUCCESSOR', false);
+        chain.addJob(successor);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(rolledBack());
+        Test.stopTest();
+
+        Assert.isNull(
+            successor.skipStatus,
+            'The retry throws the attempt away, so its stopChain() must not reach the next attempt.'
+        );
+    }
+
+    @IsTest
     private static void shouldKeepEveryAttemptInRetryHistoryAfterDiscardingChainChanges() {
         QueueableChain chain = new QueueableChain();
         chain.queueableJobSettingByJobName = resultsEnabledForAll();
@@ -3345,6 +3521,21 @@ private class AsyncTest implements Database.Batchable<SObject> {
         return result;
     }
 
+    private static QueueableChain chainRunning(QueueableJob job) {
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+        return chain;
+    }
+
+    private static AsyncMock.MockFinalizerContext rolledBack() {
+        return new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION);
+    }
+
+    private static AsyncMock.MockFinalizerContext committed() {
+        return new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS);
+    }
+
     private class DeepCloneFailJob extends QueueableJob {
         public override void work() {
         }
@@ -3466,6 +3657,36 @@ private class AsyncTest implements Database.Batchable<SObject> {
         public override void work() {
             insert new Account(Name = 'CHAIN-PARENT');
             Async.queueable(markerJob('CHAIN-FOLLOWUP', false)).chain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class ChainingFailureJob extends QueueableJob {
+        public override void work() {
+            Async.queueable(markerJob('ROLLED-BACK-FOLLOWUP', false)).chain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class FinalizerAndJobChainingFailureJob extends QueueableJob {
+        public override void work() {
+            Async.queueable(new MarkerFinalizer()).attachFinalizer();
+            Async.queueable(markerJob('ROLLED-BACK-FOLLOWUP', false)).chain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class ChainStoppingFailureJob extends QueueableJob {
+        public override void work() {
+            Async.stopChain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class JobSkippingFailureJob extends QueueableJob {
+        public String targetCustomJobId;
+        public override void work() {
+            Async.skipJob(targetCustomJobId);
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
     }

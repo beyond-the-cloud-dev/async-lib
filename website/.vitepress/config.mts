@@ -154,6 +154,10 @@ export default defineConfig({
             text: 'Deep Clone in Packages',
             link: '/explanations/deep-clone-in-packages'
           },
+          {
+            text: 'Failures and the Chain',
+            link: '/explanations/failures-and-the-chain'
+          },
           { text: 'Testing Async Jobs', link: '/explanations/testing-async-jobs' },
           {
             text: 'AsyncResult Cleanup',

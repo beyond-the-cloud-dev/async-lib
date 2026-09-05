@@ -14,6 +14,8 @@ public inherited sharing class QueueableChain {
     private Integer chainCounter = 0;
     private Integer jobSequence = 0;
     private Set<String> customJobIdsBeforeAttempt;
+    private Set<String> skippedCustomJobIdsBeforeAttempt;
+    private Boolean wasStoppedBeforeAttempt;
     private QueueableJob currentJob;
     private Map<String, Async.Outcome> outcomeByCustomJobId = new Map<String, Async.Outcome>();
     private Map<String, Id> resultIdByCustomJobId = new Map<String, Id>();
@@ -56,6 +58,8 @@ public inherited sharing class QueueableChain {
         currentJob.salesforceJobId = ctx.getJobId();
         currentJob.setChainCounterToName(++chainCounter);
         customJobIdsBeforeAttempt = currentCustomJobIds();
+        skippedCustomJobIdsBeforeAttempt = currentSkippedCustomJobIds();
+        wasStoppedBeforeAttempt = isStopped;
 
         Savepoint sp = currentJob.rollbackOnJobExecuteFail ? Database.setSavepoint() : null;
         try {
@@ -85,6 +89,12 @@ public inherited sharing class QueueableChain {
         if (previousJob.canRetry()) {
             enqueueRetry(previousJob);
             return;
+        }
+
+        // The chain rides the finalizer's serialized state, not the database, so a rolled back
+        // transaction leaves it intact. Salesforce would have undone a real System.enqueueJob.
+        if (attemptWasRolledBack(previousJob, ctx)) {
+            revertChainChangesFromRolledBackAttempt();
         }
 
         if (previousJob.hasFailed && previousJob.maxRetries > 0) {
@@ -216,28 +226,86 @@ public inherited sharing class QueueableChain {
         retryJob.retryHistory = previousJob.retryHistory;
         retryJob.resetForRetry();
 
-        discardJobsAddedByFailedAttempt();
+        revertChainChangesBeforeRetry();
         jobs.add(0, retryJob);
         enqueueNextJobIfAny();
     }
 
-    private void discardJobsAddedByFailedAttempt() {
-        if (customJobIdsBeforeAttempt == null) {
+    private Boolean attemptWasRolledBack(QueueableJob job, FinalizerContext ctx) {
+        return ctx?.getResult() == ParentJobResult.UNHANDLED_EXCEPTION ||
+            (job.hasFailed && job.rollbackOnJobExecuteFail);
+    }
+
+    private void revertChainChangesFromRolledBackAttempt() {
+        restoreSkipsFromBeforeAttempt();
+        discardJobsChainedByAttempt();
+    }
+
+    private void revertChainChangesBeforeRetry() {
+        restoreSkipsFromBeforeAttempt();
+        discardJobsChainedByAttempt();
+        discardFinalizersAttachedByAttempt();
+    }
+
+    private void restoreSkipsFromBeforeAttempt() {
+        if (skippedCustomJobIdsBeforeAttempt == null) {
             return;
         }
+        isStopped = wasStoppedBeforeAttempt;
+        for (QueueableJob job : jobs) {
+            if (
+                job.skipStatus == null || skippedCustomJobIdsBeforeAttempt.contains(job.customJobId)
+            ) {
+                continue;
+            }
+            job.skipStatus = null;
+            job.skipReason = null;
+            job.isProcessed = false;
+        }
+    }
+
+    private void discardJobsChainedByAttempt() {
         for (Integer i = jobs.size() - 1; i >= 0; i--) {
-            if (!customJobIdsBeforeAttempt.contains(jobs[i].customJobId)) {
-                outcomeByCustomJobId.remove(jobs[i].customJobId);
-                resultIdByCustomJobId.remove(jobs[i].customJobId);
-                jobs.remove(i);
+            if (addedByAttempt(jobs[i]) && !jobs[i].isFinalizer) {
+                discardJobAt(i);
             }
         }
+    }
+
+    private void discardFinalizersAttachedByAttempt() {
+        for (Integer i = jobs.size() - 1; i >= 0; i--) {
+            if (addedByAttempt(jobs[i]) && jobs[i].isFinalizer) {
+                discardJobAt(i);
+            }
+        }
+    }
+
+    private Boolean addedByAttempt(QueueableJob job) {
+        return customJobIdsBeforeAttempt != null &&
+            !customJobIdsBeforeAttempt.contains(job.customJobId);
+    }
+
+    private void discardJobAt(Integer index) {
+        QueueableJob job = jobs[index];
+        outcomeByCustomJobId.remove(job.customJobId);
+        resultIdByCustomJobId.remove(job.customJobId);
+        jobs.remove(index);
     }
 
     private Set<String> currentCustomJobIds() {
         Set<String> customJobIds = new Set<String>();
         for (QueueableJob job : jobs) {
             customJobIds.add(job.customJobId);
+        }
+        return customJobIds;
+    }
+
+    private Set<String> currentSkippedCustomJobIds() {
+        Set<String> customJobIds = new Set<String>();
+        for (QueueableJob job : jobs) {
+            if (job.skipStatus != null) {
+                customJobIds.add(job.customJobId);
+            }
         }
         return customJobIds;
     }

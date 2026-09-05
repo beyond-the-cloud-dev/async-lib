@@ -244,14 +244,19 @@ Async.queueable(new MyQueueableJob())
 #### continueOnJobExecuteFail
 
 Controls what happens to **this job's own work** when `work()` throws. It does
-**not** control the chain. Remaining jobs still run, because chain progression
-is driven by the finalizer, which always fires. To stop or branch the chain on
-failure, use [`dependsOn(...)`](#dependson).
+**not** control the chain. Jobs that were already in the chain still run, because
+chain progression is driven by the finalizer, which always fires. To stop or
+branch the chain on failure, use [`dependsOn(...)`](#dependson).
 
 - **Without it (default):** the exception propagates, so the platform rolls back
   this job's DML and the `AsyncApexJob` is marked **Failed**.
 - **With it:** the exception is caught, so the partial DML this job did before
   the failure is **committed** and the `AsyncApexJob` is marked **Completed**.
+
+This flag also decides the fate of anything the job chained inside `work()`.
+Without it the transaction rolls back and those jobs are discarded; with it the
+transaction commits and they run. See
+[What a Failed Job Does to the Chain](/explanations/failures-and-the-chain).
 
 In both cases the job is still recorded as failed for
 [`dependsOn(...)`](#dependson) outcome checks, and any [`retry(...)`](#retry)
@@ -278,6 +283,11 @@ the failure (the exception is not re-thrown), so the chain keeps going. The
 difference is that the partial DML is **discarded** instead of committed. You do
 not need to also set `continueOnJobExecuteFail()`.
 
+Because the job's work is discarded, so is anything it chained inside `work()`.
+Note that the `AsyncApexJob` reads **Completed** here while those jobs are gone;
+the `AsyncResult__c` row is the one that says `FAILED`. See
+[What a Failed Job Does to the Chain](/explanations/failures-and-the-chain).
+
 **Signature**
 
 ```apex
@@ -301,7 +311,10 @@ a higher value (whether passed to `retry(...)` or configured via
 `QueueableJobSetting__mdt`) throws an exception.
 
 On each failed attempt the framework re-enqueues a fresh clone of the job with
-an incremented attempt counter. By default **every** exception is retried.
+an incremented attempt counter. Jobs the failed attempt chained, and any
+`stopChain()` or `skipJob(...)` it called, do not reach the next attempt (see
+[What a Failed Job Does to the Chain](/explanations/failures-and-the-chain)).
+By default **every** exception is retried.
 Narrow retries to the failures worth re-running with the coarse type filter
 [`retryOn(...)`](#retryon) and/or the fine-grained
 [`isRetryable(Exception)`](#isretryable) override — when both are present,
@@ -798,6 +811,11 @@ public class GuardFinalizer extends QueueableJob.Finalizer {
 
 Skips every remaining (unprocessed) job in the current chain. Nothing else runs.
 
+Called from a `work()` whose transaction then dies, the stop is undone along with
+everything else that attempt did to the chain. To stop on failure, catch the
+exception yourself or stop from a finalizer. See
+[What a Failed Job Does to the Chain](/explanations/failures-and-the-chain).
+
 **Signature**
 
 ```apex
@@ -815,6 +833,10 @@ Async.stopChain();
 Skips the job with the given `customJobId` and any finalizers attached to it.
 Jobs that [`dependsOn`](#dependson) the skipped job are skipped in turn. Throws
 if no job in the chain has that id.
+
+Like [`stopChain()`](#stopchain), a skip is undone if the attempt that called it
+did not commit. See
+[What a Failed Job Does to the Chain](/explanations/failures-and-the-chain).
 
 **Signature**
 

@@ -125,6 +125,12 @@ Async Lib also adds [`dependsOn(...)`](/api/queueable#dependson) so a chained jo
 can run only when an earlier one succeeded, failed, or finished. There is no
 standard-Apex equivalent.
 
+Failure behaves the same as standard Apex: if `FirstJob` throws, the jobs it
+chained inside `work()` are rolled back with the transaction, exactly as
+`System.enqueueJob` would be. Jobs that were already in the chain still run,
+which is where `dependsOn(...)` comes in. See
+[What a Failed Job Does to the Chain](/explanations/failures-and-the-chain).
+
 ### Processing a large data set
 
 In standard Apex you carry the position yourself: slice the list, enqueue the next

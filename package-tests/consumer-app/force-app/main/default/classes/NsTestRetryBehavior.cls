@@ -129,6 +129,92 @@ public class NsTestRetryBehavior {
         }
     }
 
+    public class InheritedCloneJobA extends NsBaseQueueableJob {
+        public List<String> attempts = new List<String>();
+        public override void work() {
+            attempts.add('a');
+            insert new Account(Name = 'NS-INHERITED-A-' + retryAttempt);
+            throw new NsRetryException('ns retry failure');
+        }
+    }
+
+    public class InheritedCloneJobB extends NsBaseQueueableJob {
+        public String label = 'b';
+        public override void work() {
+            insert new Account(Name = 'NS-INHERITED-B');
+        }
+    }
+
+    public class InheritedCalloutJob extends NsBaseQueueableJob.AllowsCallouts {
+        public String label = 'default';
+        public List<String> items = new List<String>();
+        public override void work() {
+            insert new Account(Name = 'NS-INHERITED-CALLOUT');
+        }
+    }
+
+    public class InheritedFinalizerJob extends NsBaseQueueableJob.Finalizer {
+        public override void work() {
+            insert new Account(Name = 'NS-INHERITED-FINALIZER');
+        }
+    }
+
+    @IsTest
+    static void shouldKeepJobCapabilitiesAndStateThroughAnInheritedDeepClone() {
+        InheritedCalloutJob calloutJob = new InheritedCalloutJob();
+        calloutJob.deepClone = true;
+        calloutJob.label = 'CHANGED';
+        calloutJob.items = new List<String>{ 'a', 'b' };
+
+        btcdev.QueueableJob copy = calloutJob.cloneJob();
+        InheritedCalloutJob calloutCopy = (InheritedCalloutJob) copy;
+
+        System.assert(
+            copy instanceof Database.AllowsCallouts,
+            'A retried callout job must still be allowed to call out'
+        );
+        System.assertEquals('CHANGED', calloutCopy.label, 'Subclass state must survive the clone');
+        System.assertEquals(2, calloutCopy.items.size(), 'Subclass collections must survive');
+
+        calloutJob.items.add('AFTER-CLONE');
+        System.assertEquals(
+            2,
+            calloutCopy.items.size(),
+            'The copy must be isolated from the source'
+        );
+
+        InheritedFinalizerJob finalizerJob = new InheritedFinalizerJob();
+        finalizerJob.deepClone = true;
+
+        System.assert(
+            finalizerJob.cloneJob() instanceof btcdev.QueueableJob.Finalizer,
+            'A cloned finalizer must stay recognisable to the framework'
+        );
+    }
+
+    @IsTest
+    static void shouldDeepCloneEveryJobSharingOneBaseClassOverride() {
+        Test.startTest();
+        btcdev.Async.queueable(new InheritedCloneJobA())
+            .deepClone()
+            .continueOnJobExecuteFail()
+            .retry(2)
+            .enqueue();
+        btcdev.Async.queueable(new InheritedCloneJobB()).deepClone().enqueue();
+        Test.stopTest();
+
+        System.assertEquals(
+            3,
+            countOf('NS-INHERITED-A-0') + countOf('NS-INHERITED-A-1') + countOf('NS-INHERITED-A-2'),
+            'One shared cloneForDeepCopy() must serve retries of any subclass'
+        );
+        System.assertEquals(
+            1,
+            countOf('NS-INHERITED-B'),
+            'The same base class must serve a second, unrelated subclass'
+        );
+    }
+
     @IsTest
     static void shouldDeepCloneAJobHoldingAsyncLibTypes() {
         AsyncLibTypeHoldingJob job = new AsyncLibTypeHoldingJob();

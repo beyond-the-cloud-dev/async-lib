@@ -45,6 +45,11 @@
                 <default>false</default>
                 <label>Skipped - Disabled</label>
             </value>
+            <value>
+                <fullName>FRAMEWORK_ERROR</fullName>
+                <default>false</default>
+                <label>Framework Error</label>
+            </value>
         </valueSetDefinition>
     </valueSet>
 </CustomField>

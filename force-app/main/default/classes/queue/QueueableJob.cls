@@ -43,6 +43,7 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
     public FinalizerContext finalizerCtx;
     public String mockId;
 
+    @TestVisible
     private QueueableChain chain;
 
     public transient String className {
@@ -158,7 +159,16 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         this.hasFailed = true;
         this.failure = new FailureInfo(ex.getTypeName(), ex.getMessage());
         this.failure.stackTrace = ex.getStackTraceString();
-        this.retryDecision = matchesRetryOnTypes(ex.getTypeName()) && safeIsRetryable(ex);
+        Boolean typeIsRetryable = matchesRetryOnTypes(ex.getTypeName());
+        if (!typeIsRetryable && maxRetries > 0) {
+            appendRetryHistoryLine(
+                ex.getTypeName() +
+                    ' is not in retryOn(' +
+                    String.join(new List<String>(retryOnExceptionTypes), ', ') +
+                    ') - not retried'
+            );
+        }
+        this.retryDecision = typeIsRetryable && safeIsRetryable(ex);
     }
 
     public void recordUnknownFailure() {
@@ -219,20 +229,99 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
 
     public QueueableJob cloneJob() {
         if (deepClone) {
-            try {
-                return cloneForDeepCopy();
-            } catch (JSONException e) {
-                throw new IllegalArgumentException(
-                    'deepClone() failed for the job "' +
-                        className +
-                        '". ' +
-                        'When using a namespaced package, override cloneForDeepCopy() in your QueueableJob subclass: ' +
-                        'public override QueueableJob cloneForDeepCopy() { ' +
-                        'return (QueueableJob) JSON.deserialize(JSON.serialize(this), YourClassName.class); }'
-                );
-            }
+            return deepCloneWithoutRuntimeState();
         }
         return this.clone();
+    }
+
+    /**
+     * JSON cannot round-trip a live job, for three unrelated reasons:
+     * - `chain` points back at this job: "Cycle detected"
+     * - `queueableCtx` / `finalizerCtx` are platform interfaces: "Cannot deserialize JSON as
+     *   abstract type"
+     * - `backoff` / `dependencies` / `failure` are Async Lib types, and JSON.serialize refuses any
+     *   graph crossing a namespace, so a subscriber's override hits "Type cannot be serialized"
+     * Stripping a shallow copy rather than this job also covers subclass overrides.
+     **/
+    private QueueableJob deepCloneWithoutRuntimeState() {
+        QueueableJob stripped = this.clone();
+        stripped.chain = null;
+        stripped.queueableCtx = null;
+        stripped.finalizerCtx = null;
+        stripped.backoff = null;
+        stripped.dependencies = null;
+        stripped.failure = null;
+
+        try {
+            QueueableJob copy = stripped.cloneForDeepCopy();
+            // Backoff is immutable so sharing is safe. The other two are not, and sharing them
+            // would defeat the isolation deepClone() exists to provide.
+            copy.backoff = this.backoff;
+            copy.dependencies = deepCopyOf(this.dependencies);
+            copy.failure = deepCopyOf(this.failure);
+            return copy;
+        } catch (Exception cloneFailure) {
+            throw new IllegalArgumentException(deepCloneFailureMessage(cloneFailure));
+        }
+    }
+
+    // Every cause is a different mistake with a different fix, so the message has to name the
+    // right one. The two JSONException causes are only separable by their platform wording, which
+    // shouldStillSeeThePlatformWordingDeepCloneGuidanceBranchesOn() guards against changing.
+    private String deepCloneFailureMessage(Exception cloneFailure) {
+        String remedy;
+        if (cloneFailure instanceof TypeException) {
+            remedy =
+                'The job has a field typed as an interface or abstract class, which JSON cannot ' +
+                'rebuild. Mark that field transient, or hold a concrete type instead.';
+        } else if (cloneFailure.getMessage().contains('Cycle detected')) {
+            remedy =
+                'The job holds a reference back to itself. Break the cycle, or mark the ' +
+                'offending field transient.';
+        } else if (cloneFailure.getMessage().contains('Type cannot be serialized')) {
+            remedy =
+                'Async Lib is installed as a namespaced package, so it cannot serialize your ' +
+                'class. Override cloneForDeepCopy() in your QueueableJob subclass: ' +
+                'public override QueueableJob cloneForDeepCopy() { return (QueueableJob) ' +
+                'JSON.deserialize(JSON.serialize(this), YourClassName.class); }';
+        } else {
+            remedy = 'See ' + QueueableManager.DOCS_URL + '/explanations/job-cloning';
+        }
+        return 'deepClone() failed for the job "' +
+            className +
+            '": ' +
+            cloneFailure.getTypeName() +
+            ': ' +
+            cloneFailure.getMessage() +
+            '\n' +
+            remedy;
+    }
+
+    // Same namespace as these types, so never blocked by the boundary a subscriber hits.
+    private List<Async.Dependency> deepCopyOf(List<Async.Dependency> dependencies) {
+        return dependencies == null
+            ? null
+            : (List<Async.Dependency>) JSON.deserialize(
+                  JSON.serialize(dependencies),
+                  List<Async.Dependency>.class
+              );
+    }
+
+    private FailureInfo deepCopyOf(FailureInfo failure) {
+        return failure == null
+            ? null
+            : (FailureInfo) JSON.deserialize(JSON.serialize(failure), FailureInfo.class);
+    }
+
+    public void recordRetryNotEnqueued(Integer attemptNumber, Exception ex) {
+        appendRetryHistoryLine(
+            'Attempt ' +
+                attemptNumber +
+                ' could not be enqueued: ' +
+                ex.getTypeName() +
+                ': ' +
+                ex.getMessage()
+        );
     }
 
     private String getFullClassName(Object job) {
@@ -248,6 +337,7 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         return result;
     }
 
+    @JsonAccess(serializable='always' deserializable='always')
     public class FailureInfo {
         public String type;
         public String message;

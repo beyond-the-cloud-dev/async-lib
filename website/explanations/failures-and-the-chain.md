@@ -148,6 +148,84 @@ public class GuardFinalizer extends QueueableJob.Finalizer {
 }
 ```
 
+## When Async Lib itself fails
+
+Everything above is about your job failing. If the **library** fails while
+advancing the chain, that used to be invisible: a finalizer exception does not
+show up on the `AsyncApexJob`, which still reads `Completed`, so a chain could
+stop with no trace anywhere.
+
+Async Lib now writes an `AsyncResult__c` row with `Status__c = FRAMEWORK_ERROR`
+whenever it cannot advance a chain, and re-throws so the failure is not
+swallowed. `ExceptionMessage__c` carries the underlying exception, the stack
+trace, and where to go next:
+
+```
+Async Lib could not advance the chain: System.NullPointerException: ...
+
+Check your job and QueueableJobSetting__mdt configuration against
+https://async.beyondthecloud.dev first. If this looks like a library bug,
+report it at https://github.com/beyond-the-cloud-dev/async-lib/issues
+```
+
+::: warning Written even when results are off
+
+This row is written regardless of
+`QueueableJobSetting__mdt.CreateResult__c`. Turning result creation off opts out
+of routine bookkeeping, not out of being told the framework broke. It is the
+only status that ignores that setting.
+
+`FRAMEWORK_ERROR` rows are cleaned up on the `othersOlderThanDays(...)` track,
+see [AsyncResult Cleanup](/explanations/asyncresult-cleanup).
+
+:::
+
+A governor limit hit by **your job** is fully covered. It never reaches a
+`catch`, but the finalizer receives it and Async Lib records it like any other
+failure:
+
+```
+System.AsyncException :: System.LimitException: Too many SOQL queries: 201
+```
+
+Note the recorded type is `System.AsyncException`, not `System.LimitException`.
+`retryOn(LimitException.class)` will therefore not match it. Since Async Lib
+writes the reason to `RetryHistory__c` when a type does not match, you will see
+why rather than wondering where the retry went.
+
+The one real gap is a governor limit hit **inside the finalizer itself**, for
+example by an `onFinalFailure` override that burns through queries. Apex cannot
+catch a `LimitException`, so there is no second finalizer to record it: the
+`AsyncApexJob` reads `Completed` and no row is written. Keep `onFinalFailure`
+cheap.
+
+## Misconfiguration fails at enqueue, not later
+
+Configuration mistakes are reported when you enqueue, in your own transaction,
+rather than surfacing as a job that quietly does the wrong thing hours later.
+
+An unknown `QueueableJobSetting__mdt.BackoffStrategy__c` throws instead of
+silently running retries with no delay:
+
+```
+QueueableJobSetting__mdt.BackoffStrategy__c is "EXPONENTAIL" for "All", which is
+not a known strategy. Use one of: FIXED, EXPONENTIAL, EXPONENTIAL_JITTER.
+```
+
+`RetryableExceptions__c` is different, and deliberately so. Entries there are
+matched by name, and a typo would otherwise mean the job simply never retries.
+We cannot reject unknown names up front, because a subscriber's own exception
+class is not resolvable from inside the package. Instead, when a failure is not
+retried because its type is not in the list, the reason is written to
+`RetryHistory__c`:
+
+```
+AsyncTest.CustomException is not in retryOn(System.DmlException) - not retried
+```
+
+So a typo shows up on the result row rather than looking like retry silently not
+working.
+
 ## Nothing is recorded for a discarded job
 
 A job the framework discards produces no `AsyncResult__c` row. It never ran, and

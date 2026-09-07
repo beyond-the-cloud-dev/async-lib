@@ -337,8 +337,12 @@ exception, computed delay) is aggregated into `AsyncResult__c.RetryHistory__c`
 
 ::: tip Idempotency
 
-A retried job re-runs `work()`, so make retried jobs idempotent. For jobs
-carrying mutable member state, combine with [`deepClone()`](#deepclone).
+A retried job re-runs `work()`, so make retried jobs idempotent. State the
+previous attempt accumulated is carried into the next one, and
+[`deepClone()`](#deepclone) does **not** clear it, because the clone is taken
+after `work()` already mutated the job. Use
+[`resetForRetry()`](#resetforretry) to put mutable member state back to its
+starting point.
 
 :::
 

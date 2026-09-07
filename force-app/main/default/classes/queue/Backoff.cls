@@ -1,3 +1,4 @@
+@JsonAccess(serializable='always' deserializable='always')
 public inherited sharing class Backoff {
     // System.enqueueJob caps delay at 10 integer minutes.
     public static final Integer MAX_DELAY_MINUTES = 10;
@@ -7,6 +8,8 @@ public inherited sharing class Backoff {
         EXPONENTIAL,
         EXPONENTIAL_JITTER
     }
+
+    public static final String KNOWN_STRATEGIES = buildKnownStrategies();
 
     private final Strategy strategyValue;
     private final Integer baseMinutes;
@@ -36,6 +39,14 @@ public inherited sharing class Backoff {
     public static Backoff fromName(String strategy, Integer baseMinutes) {
         Strategy parsed = parseStrategy(strategy);
         return parsed == null ? null : new Backoff(parsed, baseMinutes);
+    }
+
+    private static String buildKnownStrategies() {
+        List<String> names = new List<String>();
+        for (Strategy candidate : Strategy.values()) {
+            names.add(candidate.name());
+        }
+        return String.join(names, ', ');
     }
 
     private static Strategy parseStrategy(String value) {

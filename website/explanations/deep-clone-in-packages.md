@@ -96,17 +96,37 @@ btcdev.Async.queueable(new AccountProcessorJob())
 | Installed as package, using `.deepClone()` | **Yes** |
 | Installed as package, NOT using `.deepClone()` | No |
 
-## Error Message
+## Error Messages
 
-If you forget the override, the framework throws a descriptive error:
+A failed deep clone always names the cause first, then what to do about it. Forgetting
+the override in a packaged org looks like this:
 
 ```
-deepClone() failed for the job "MyJob".
-When using a namespaced package, override cloneForDeepCopy() in your QueueableJob subclass:
-public override QueueableJob cloneForDeepCopy() {
-    return (QueueableJob) JSON.deserialize(JSON.serialize(this), YourClassName.class);
-}
+deepClone() failed for the job "MyJob": System.JSONException: Type cannot be serialized
+Async Lib is installed as a namespaced package, so it cannot serialize your class.
+Override cloneForDeepCopy() in your QueueableJob subclass: public override
+QueueableJob cloneForDeepCopy() { return (QueueableJob)
+JSON.deserialize(JSON.serialize(this), YourClassName.class); }
 ```
+
+The namespace is not the only thing that can stop a deep clone, and the message tells
+you which one you hit:
+
+| Cause | Fix |
+| ----- | --- |
+| `Type cannot be serialized` | You are on a packaged install without the override above |
+| `Cycle detected` | The job holds a reference back to itself. Break the cycle, or mark the field `transient` |
+| `Cannot deserialize JSON as abstract type` | A field is typed as an interface or abstract class, which JSON cannot rebuild. Mark it `transient`, or hold a concrete type |
+
+## Size Limits
+
+A deep clone holds the original and the copy at the same time, so it costs roughly
+twice the job's size in heap. Measured, a 1 MB job needs about 2 MB. With a 6 MB
+synchronous heap that puts the practical ceiling at roughly **2 MB of job state**, or
+about 4 MB from an asynchronous caller where the limit is 12 MB.
+
+There is no separate cap on the serialized job itself: a 5 MB job enqueues and runs
+fine. The caller's heap is what runs out first.
 
 ## Soft Clone vs Deep Clone Recap
 

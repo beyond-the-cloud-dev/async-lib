@@ -86,8 +86,7 @@ public inherited sharing class QueueableChain {
         QueueableJob previousJob = currentJob;
         reconcileOutcomeFromFinalizer(previousJob, ctx);
 
-        if (previousJob.canRetry()) {
-            enqueueRetry(previousJob);
+        if (previousJob.canRetry() && enqueuedRetry(previousJob)) {
             return;
         }
 
@@ -109,6 +108,30 @@ public inherited sharing class QueueableChain {
         setFinalizerContextToAllFinalizersForPreviousJob(previousJob, ctx);
         maybeAdvanceChunkRun(previousJob);
         enqueueNextJobIfAny();
+    }
+
+    // Ignores CreateResult__c on purpose: opting out of routine bookkeeping is not opting out of
+    // being told the framework broke. The debug is the last channel left if the insert fails too.
+    @SuppressWarnings('PMD.AvoidDebugStatements')
+    public void recordFrameworkFailure(Exception frameworkFailure) {
+        try {
+            insert as system new AsyncResult__c(
+                ChainId__c = chainId,
+                CustomJobId__c = currentJob?.customJobId,
+                ClassName__c = currentJob?.className,
+                SalesforceJobId__c = currentJob?.salesforceJobId,
+                Status__c = QueueableManager.STATUS_FRAMEWORK_ERROR,
+                ExceptionType__c = frameworkFailure.getTypeName(),
+                ExceptionMessage__c = QueueableManager.frameworkFailureMessage(frameworkFailure)
+            );
+        } catch (Exception recordingFailure) {
+            System.debug(
+                LoggingLevel.ERROR,
+                QueueableManager.frameworkFailureMessage(frameworkFailure) +
+                    '\nThe failure could not be recorded either: ' +
+                    recordingFailure.getMessage()
+            );
+        }
     }
 
     private void maybeAdvanceChunkRun(QueueableJob previousJob) {
@@ -204,16 +227,31 @@ public inherited sharing class QueueableChain {
         );
     }
 
+    // A retry that cannot be prepared must not kill the finalizer, which would stop the chain
+    // with no trace. Returning false lets the caller settle the job as a terminal failure.
+    private Boolean enqueuedRetry(QueueableJob previousJob) {
+        try {
+            enqueueRetry(previousJob);
+            return true;
+        } catch (Exception retryFailure) {
+            previousJob.recordRetryNotEnqueued(previousJob.retryAttempt + 1, retryFailure);
+            return false;
+        }
+    }
+
     private void enqueueRetry(QueueableJob previousJob) {
         Integer nextAttempt = previousJob.retryAttempt + 1;
         Integer delayMinutes = previousJob.backoff?.delayMinutes(nextAttempt);
+
+        // Clone before mutating previousJob: a clone that throws must leave it settleable. Safe
+        // to move because every field the mutations touch is overwritten on the clone below.
+        QueueableJob retryJob = previousJob.cloneJob();
 
         previousJob.recordRetryHistory(nextAttempt, delayMinutes);
         previousJob.isProcessed = true;
         // Only the final attempt produces a result row; suppress this superseded one.
         previousJob.resultCreated = true;
 
-        QueueableJob retryJob = previousJob.cloneJob();
         retryJob.retryAttempt = nextAttempt;
         retryJob.delay = delayMinutes;
         retryJob.asyncOptions = delayMinutes != null ? null : retryJob.asyncOptions;
@@ -592,6 +630,18 @@ public inherited sharing class QueueableChain {
         if (job.backoff == null && String.isNotBlank(setting.BackoffStrategy__c)) {
             Integer baseMinutes = setting.BackoffBaseMinutes__c?.intValue() ?? 1;
             job.backoff = Backoff.fromName(setting.BackoffStrategy__c, baseMinutes);
+            if (job.backoff == null) {
+                throw new IllegalArgumentException(
+                    String.format(
+                        QueueableManager.ERROR_MESSAGE_UNKNOWN_BACKOFF_STRATEGY,
+                        new List<String>{
+                            setting.BackoffStrategy__c,
+                            setting.QueueableJobName__c,
+                            Backoff.KNOWN_STRATEGIES
+                        }
+                    )
+                );
+            }
         }
 
         if (job.retryOnExceptionTypes == null) {
@@ -667,7 +717,6 @@ public inherited sharing class QueueableChain {
         Map<String, QueueableJobSetting__mdt> jobSettings = queueableJobSettingByJobName;
 
         if (jobSettings.isEmpty()) {
-            // If there are no job settings, do not remove any jobs
             return;
         }
 
@@ -676,13 +725,11 @@ public inherited sharing class QueueableChain {
         );
 
         if (allJobSetting?.IsDisabled__c == true) {
-            // If the global setting is disabled, clear all jobs
             markDisabledAndRecord(new List<QueueableJob>(jobs));
             jobs.clear();
             return;
         }
 
-        // there are job settings, and if the class is disabled it should be removed and if there is a finalizer that have parentJobId set to this removed job, it should be removed as well, think about creating some logical way to do that, maybe recursion
         Set<String> customJobIdsToRemove = new Set<String>();
         for (QueueableJob job : jobs) {
             QueueableJobSetting__mdt jobSetting = jobSettings.get(job.className);
@@ -691,7 +738,6 @@ public inherited sharing class QueueableChain {
             }
         }
 
-        // If there are no jobs to remove, return early
         if (customJobIdsToRemove.isEmpty()) {
             return;
         }

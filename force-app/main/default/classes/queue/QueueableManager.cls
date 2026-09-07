@@ -12,10 +12,14 @@ public inherited sharing class QueueableManager {
     public static final String STATUS_SKIPPED_CHUNK_STOPPED = 'SKIPPED_CHUNK_STOPPED';
     public static final String STATUS_SKIPPED_EXPLICIT = 'SKIPPED_EXPLICIT';
     public static final String STATUS_SKIPPED_DISABLED = 'SKIPPED_DISABLED';
+    public static final String STATUS_FRAMEWORK_ERROR = 'FRAMEWORK_ERROR';
+    public static final String DOCS_URL = 'https://async.beyondthecloud.dev';
+    public static final String ISSUES_URL = 'https://github.com/beyond-the-cloud-dev/async-lib/issues';
     public static final Integer MAX_RETRY_CAP = 10;
     public static final String ERROR_MESSAGE_INVALID_MAX_RETRIES = 'Max retries must be a non-negative integer';
     public static final String ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP =
         'Max retries cannot exceed the framework cap of ' + MAX_RETRY_CAP;
+    public static final String ERROR_MESSAGE_UNKNOWN_BACKOFF_STRATEGY = 'QueueableJobSetting__mdt.BackoffStrategy__c is "{0}" for "{1}", which is not a known strategy. Use one of: {2}.';
     public static final String ERROR_MESSAGE_INVALID_DEPENDENCY = 'A dependency requires a target and an outcome (e.g. Async.after(result).succeeded())';
     public static final String ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB = 'dependsOn(Async.afterPrevious()) requires a previously chained job';
     public static final String ERROR_MESSAGE_UNKNOWN_JOB = 'No job in this chain has custom job id "{0}".';
@@ -139,6 +143,19 @@ public inherited sharing class QueueableManager {
     private Boolean shouldExecuteOrReplaceInitialQueueableChainSchedulable() {
         return !chain.isChainedContext() &&
             (Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs() || System.isQueueable());
+    }
+
+    public static String frameworkFailureMessage(Exception frameworkFailure) {
+        return 'Async Lib could not advance the chain: ' +
+            frameworkFailure.getTypeName() +
+            ': ' +
+            frameworkFailure.getMessage() +
+            '\n\nCheck your job and QueueableJobSetting__mdt configuration against ' +
+            DOCS_URL +
+            ' first. If this looks like a library bug, report it at ' +
+            ISSUES_URL +
+            '\n\n' +
+            frameworkFailure.getStackTraceString();
     }
 
     public static void assertValidMaxRetries(Integer maxRetries) {

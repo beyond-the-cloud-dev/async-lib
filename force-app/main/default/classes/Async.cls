@@ -67,6 +67,7 @@ public inherited sharing class Async {
         }
     }
 
+    @JsonAccess(serializable='always' deserializable='always')
     public class QueueableJobContext {
         public QueueableJob currentJob;
         public QueueableContext queueableCtx {
@@ -81,6 +82,7 @@ public inherited sharing class Async {
         }
     }
 
+    @JsonAccess(serializable='always' deserializable='always')
     public class Result {
         public Id salesforceJobId;
         public AsyncType asyncType;
@@ -115,6 +117,7 @@ public inherited sharing class Async {
         }
     }
 
+    @JsonAccess(serializable='always' deserializable='always')
     public class QueueableChainState {
         public List<QueueableJob> jobs;
         public Id nextSalesforceJobId;
@@ -178,6 +181,7 @@ public inherited sharing class Async {
         EXHAUSTED
     }
 
+    @JsonAccess(serializable='always' deserializable='always')
     public class FailureContext {
         public RetryOutcome retryOutcome;
         public QueueableJob.FailureInfo failure;
@@ -207,6 +211,7 @@ public inherited sharing class Async {
         }
     }
 
+    @JsonAccess(serializable='always' deserializable='always')
     public class Dependency {
         public Boolean previous = false;
         public String resolvedTargetCustomJobId;

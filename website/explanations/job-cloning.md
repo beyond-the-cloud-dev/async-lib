@@ -176,6 +176,34 @@ Async.queueable(myJob)
     .enqueue();
 ```
 
+### What Deep Clone Does Not Do
+
+Deep clone copies the job **as it is at the moment of cloning**. It does not
+reset anything.
+
+That matters for [`retry(...)`](/api/queueable#retry), because the retry clone is
+taken *after* `work()` has already run and mutated the job. A soft clone and a
+deep clone of a failed attempt both carry whatever that attempt accumulated:
+
+```apex
+public class ImportJob extends QueueableJob {
+  public List<String> processed = new List<String>();
+
+  public override void work() {
+    processed.add('batch');   // attempt 2 starts with attempt 1's entry still here
+    callTheApiThatIsDown();
+  }
+
+  public override void resetForRetry() {
+    processed.clear();        // this is the reset hook, not deepClone()
+  }
+}
+```
+
+Use `deepClone()` to isolate a job from **the caller's** later mutations. Use
+`resetForRetry()` to clear state **between attempts**. They solve different
+problems.
+
 ## Performance Considerations
 
 ### Soft Clone Performance

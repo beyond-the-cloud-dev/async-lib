@@ -79,8 +79,6 @@ public inherited sharing class QueueableBuilder {
         return this;
     }
 
-    // Clones job with all complex class members, removing all references from original job
-    // Stored on job, for further reference
     public QueueableBuilder deepClone() {
         job.deepClone = true;
         return this;

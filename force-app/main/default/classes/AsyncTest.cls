@@ -3021,6 +3021,292 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    private static void shouldDeepCloneAJobThatIsAlreadyRunningInAChain() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.deepClone = true;
+        QueueableChain chain = chainWithEnqueuedJob(job);
+        job.queueableCtx = new AsyncMock.MockQueueableContext();
+        job.finalizerCtx = new AsyncMock.MockFinalizerContext();
+        job.backoff = Async.Backoff.exponential(2);
+        job.dependencies = new List<Async.Dependency>{ Async.afterPrevious().succeeded() };
+
+        Test.startTest();
+        QueueableJob copy = job.cloneJob();
+        Test.stopTest();
+
+        Assert.isNotNull(copy, 'A job that is already running must still be deep cloneable.');
+        Assert.areEqual(chain, job.chain, 'The source job is left untouched by the clone.');
+        Assert.isNotNull(job.queueableCtx, 'The source job is left untouched by the clone.');
+        Assert.isNull(copy.chain, 'The clone stays detached until it is enqueued.');
+        Assert.isNull(copy.queueableCtx, 'The clone gets a fresh context when it runs.');
+        Assert.isNotNull(copy.backoff, 'Retry configuration is put back on the clone.');
+        Assert.isNotNull(copy.dependencies, 'Dependencies are put back on the clone.');
+        Assert.areEqual(
+            Async.Outcome.SUCCESS,
+            copy.dependencies[0].requiredOutcome,
+            'The dependency survives the round trip intact.'
+        );
+
+        job.dependencies[0].failed();
+
+        Assert.areEqual(
+            Async.Outcome.SUCCESS,
+            copy.dependencies[0].requiredOutcome,
+            'deepClone() must isolate the copy: mutating the source dependency cannot reach it.'
+        );
+    }
+
+    @IsTest
+    private static void shouldStillSeeThePlatformWordingDeepCloneGuidanceBranchesOn() {
+        SelfReferencingJob cyclic = new SelfReferencingJob();
+        cyclic.self = cyclic;
+        try {
+            JSON.serialize(cyclic);
+            Assert.fail('A cycle must still fail to serialize.');
+        } catch (JSONException ex) {
+            Assert.isTrue(
+                ex.getMessage().contains('Cycle detected'),
+                'deepCloneFailureMessage() branches on this wording. If Salesforce changed it, ' +
+                'update the branch, not this assertion.'
+            );
+        }
+
+        AbstractFieldHoldingJob abstractlyTyped = new AbstractFieldHoldingJob();
+        abstractlyTyped.held = new SuccessfulQueueableTest();
+        try {
+            JSON.deserialize(JSON.serialize(abstractlyTyped), AbstractFieldHoldingJob.class);
+            Assert.fail('An interface-typed field must still fail to deserialize.');
+        } catch (TypeException ex) {
+            Assert.isTrue(
+                ex.getMessage().contains('Cannot deserialize JSON as abstract type'),
+                'deepCloneFailureMessage() branches on this wording.'
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldTellTheDeveloperHowToFixASelfReferencingJob() {
+        SelfReferencingJob job = new SelfReferencingJob();
+        job.self = job;
+        job.deepClone = true;
+
+        try {
+            job.cloneJob();
+            Assert.fail('A cycle in the job must be reported.');
+        } catch (IllegalArgumentException ex) {
+            Assert.isTrue(ex.getMessage().contains('Cycle detected'), 'The cause is named.');
+            Assert.isTrue(
+                ex.getMessage().contains('Break the cycle'),
+                'The message has to say what to do, not just what broke.'
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldTellTheDeveloperHowToFixAnAbstractlyTypedField() {
+        AbstractFieldHoldingJob job = new AbstractFieldHoldingJob();
+        job.held = new SuccessfulQueueableTest();
+        job.deepClone = true;
+
+        try {
+            job.cloneJob();
+            Assert.fail('An abstractly typed field must be reported.');
+        } catch (IllegalArgumentException ex) {
+            Assert.isTrue(
+                ex.getMessage().contains('Cannot deserialize JSON as abstract type'),
+                'The cause is named.'
+            );
+            Assert.isTrue(
+                ex.getMessage().contains('Mark that field transient'),
+                'The message has to say what to do.'
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldDeepCloneAJobHoldingAsyncLibTypes() {
+        AsyncLibTypeHoldingJob job = new AsyncLibTypeHoldingJob();
+        job.deepClone = true;
+        job.heldResult = new Async.Result((Id) null);
+        job.heldBackoff = Backoff.fixed(1);
+        job.heldDependency = Async.afterPrevious().succeeded();
+
+        AsyncLibTypeHoldingJob copy = (AsyncLibTypeHoldingJob) job.cloneJob();
+
+        Assert.isNotNull(copy.heldResult, 'A consumer may keep an Async.Result on their job.');
+        Assert.isNotNull(copy.heldBackoff, 'A consumer may keep a Backoff on their job.');
+        Assert.isNotNull(
+            copy.heldDependency,
+            'A consumer may keep an Async.Dependency on their job.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRecordWhyAGovernorFailureWasNotRetried() {
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+        job.maxRetries = 2;
+        job.retryOnExceptionTypes = new Set<String>{ 'System.LimitException' };
+
+        // A governor limit reaches the finalizer wrapped as AsyncException, never as LimitException.
+        job.recordFailure(new AsyncException('System.LimitException: Too many SOQL queries: 201'));
+
+        Assert.isFalse(job.retryDecision, 'AsyncException does not match retryOn(LimitException).');
+        Assert.isTrue(
+            job.retryHistory.contains('is not in retryOn'),
+            'The mismatch has to be visible, it is the least obvious one there is.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRetryADeepClonedJob() {
+        DeepCloneRetryJob job = new DeepCloneRetryJob();
+        job.deepClone = true;
+        job.maxRetries = 1;
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainWithEnqueuedJob(job);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        Test.stopTest();
+
+        Assert.areEqual(
+            2,
+            chain.jobs.size(),
+            'deepClone() and retry() have to work together. History: ' + job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldSettleTheJobWhenTheRetryCloneCannotBeCreated() {
+        DeepCloneFailRetryJob job = new DeepCloneFailRetryJob();
+        job.deepClone = true;
+        job.maxRetries = 1;
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainWithEnqueuedJob(job);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        Test.stopTest();
+
+        Assert.areEqual(1, chain.jobs.size(), 'No retry clone could be created.');
+        Assert.isTrue(job.isProcessed, 'The job settles instead of leaving the chain stuck.');
+        Assert.isTrue(
+            job.retryHistory.contains('could not be enqueued'),
+            'A retry that never happened has to say so.'
+        );
+        Assert.isTrue(
+            job.retryHistory.contains('forced deep clone failure'),
+            'The underlying cause has to reach the history.'
+        );
+    }
+
+    @IsTest
+    private static void shouldIncludeTheUnderlyingCauseInTheDeepCloneError() {
+        DeepCloneFailJob job = new DeepCloneFailJob();
+        job.deepClone = true;
+
+        try {
+            job.cloneJob();
+            Assert.fail('A failed deep clone must surface a helpful error.');
+        } catch (IllegalArgumentException ex) {
+            Assert.isTrue(
+                ex.getMessage().contains('forced deep clone failure'),
+                'The real cause must not be hidden behind the namespace advice.'
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldNotResetAccumulatedStateWhenDeepCloningForRetry() {
+        QueueableJobTest1 job = new QueueableJobTest1();
+        job.deepClone = true;
+        job.complexMember.primitiveMember = 'accumulated';
+
+        QueueableJob deepCopy = job.cloneJob();
+
+        Assert.areEqual(
+            'accumulated',
+            ((QueueableJobTest1) deepCopy).complexMember.primitiveMember,
+            'deepClone() copies accumulated state, it does not clear it. resetForRetry() is the reset hook.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRecordAFrameworkFailureWhenTheFinalizerCannotAdvanceTheChain() {
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(markerJob('NEVER-RAN', false));
+        QueueableChainFinalizer finalizer = new QueueableChainFinalizer(chain);
+
+        Test.startTest();
+        try {
+            finalizer.execute(committed());
+            Assert.fail('A framework failure must not be swallowed.');
+        } catch (Exception expectedFrameworkFailure) {
+            Assert.isNotNull(expectedFrameworkFailure);
+        }
+        Test.stopTest();
+
+        AsyncResult__c fault = [
+            SELECT Status__c, ExceptionType__c, ExceptionMessage__c
+            FROM AsyncResult__c
+        ];
+        Assert.areEqual(
+            QueueableManager.STATUS_FRAMEWORK_ERROR,
+            fault.Status__c,
+            'A framework fault is recorded even though result creation is off.'
+        );
+        Assert.isTrue(
+            fault.ExceptionMessage__c.contains(QueueableManager.DOCS_URL),
+            'The message points at the docs first.'
+        );
+        Assert.isTrue(
+            fault.ExceptionMessage__c.contains(QueueableManager.ISSUES_URL),
+            'The message says where to report a library bug.'
+        );
+    }
+
+    @IsTest
+    private static void shouldFailFastOnAnUnknownBackoffStrategyInMetadata() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                MaxRetries__c = 2,
+                BackoffStrategy__c = 'EXPONENTAIL'
+            )
+        };
+
+        try {
+            chain.addJob(new SuccessfulQueueableTest());
+            Assert.fail('A typo in BackoffStrategy__c must not silently disable backoff.');
+        } catch (IllegalArgumentException ex) {
+            Assert.isTrue(ex.getMessage().contains('EXPONENTAIL'), 'The bad value is named.');
+            Assert.isTrue(
+                ex.getMessage().contains('EXPONENTIAL_JITTER'),
+                'The valid strategies are listed.'
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRecordWhyAFailureWasNotRetriedWhenItsTypeIsNotListed() {
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+        job.maxRetries = 2;
+        job.retryOnExceptionTypes = new Set<String>{ 'System.DmlException' };
+
+        job.recordFailure(new CustomException(CUSTOM_ERROR_MESSAGE));
+
+        Assert.isFalse(job.retryDecision, 'The type is not in the allow list.');
+        Assert.isTrue(
+            job.retryHistory.contains('is not in retryOn'),
+            'A retry skipped on a type mismatch must not be silent, it is usually a typo.'
+        );
+    }
+
+    @IsTest
     private static void shouldKeepEveryAttemptInRetryHistoryAfterDiscardingChainChanges() {
         QueueableChain chain = new QueueableChain();
         chain.queueableJobSettingByJobName = resultsEnabledForAll();
@@ -3528,6 +3814,12 @@ private class AsyncTest implements Database.Batchable<SObject> {
         return chain;
     }
 
+    private static QueueableChain chainWithEnqueuedJob(QueueableJob job) {
+        QueueableChain chain = chainRunning(job);
+        job.chain = chain;
+        return chain;
+    }
+
     private static AsyncMock.MockFinalizerContext rolledBack() {
         return new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION);
     }
@@ -3538,6 +3830,43 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     private class DeepCloneFailJob extends QueueableJob {
         public override void work() {
+        }
+        public override QueueableJob cloneForDeepCopy() {
+            throw new JSONException('forced deep clone failure');
+        }
+    }
+
+    public class SelfReferencingJob extends QueueableJob {
+        public SelfReferencingJob self;
+        public override void work() {
+        }
+    }
+
+    public class AbstractFieldHoldingJob extends QueueableJob {
+        public Comparable held;
+        public override void work() {
+        }
+    }
+
+    public class AsyncLibTypeHoldingJob extends QueueableJob {
+        public Async.Result heldResult;
+        public Backoff heldBackoff;
+        public Async.Dependency heldDependency;
+        public override void work() {
+        }
+    }
+
+    public class DeepCloneRetryJob extends QueueableJob {
+        public List<String> attempts = new List<String>();
+        public override void work() {
+            attempts.add('attempt' + retryAttempt);
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    public class DeepCloneFailRetryJob extends QueueableJob {
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
         public override QueueableJob cloneForDeepCopy() {
             throw new JSONException('forced deep clone failure');

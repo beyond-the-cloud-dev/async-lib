@@ -245,7 +245,7 @@ public inherited sharing class QueueableChain {
 
         // Clone before mutating previousJob: a clone that throws must leave it settleable. Safe
         // to move because every field the mutations touch is overwritten on the clone below.
-        QueueableJob retryJob = previousJob.cloneJob();
+        QueueableJob retryJob = QueueableManager.retryJobFrom(previousJob);
 
         previousJob.recordRetryHistory(nextAttempt, delayMinutes);
         previousJob.isProcessed = true;
@@ -262,7 +262,7 @@ public inherited sharing class QueueableChain {
         retryJob.retryDecision = false;
         retryJob.finalizerCtx = null;
         retryJob.retryHistory = previousJob.retryHistory;
-        retryJob.resetForRetry();
+        QueueableManager.runRetryReset(retryJob, nextAttempt);
 
         revertChainChangesBeforeRetry();
         jobs.add(0, retryJob);
@@ -595,6 +595,8 @@ public inherited sharing class QueueableChain {
         job.chainId = chainId;
         keepSlotOfChunkRunOrTakeNextOne(job);
         applyRetryDefaultsIfNeeded(job);
+        QueueableManager.assertStateHandlingDeclared(job);
+        job.captureEnqueuedState();
         jobs.add(job);
         jobs.sort();
     }

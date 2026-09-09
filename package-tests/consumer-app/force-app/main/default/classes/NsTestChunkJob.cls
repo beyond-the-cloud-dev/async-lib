@@ -1,4 +1,10 @@
-public class NsTestChunkJob extends btcdev.ChunkJob {
+public class NsTestChunkJob extends btcdev.ChunkJob implements btcdev.Async.ChunkResettable, btcdev.Async.Retryable {
+    public void resetBeforeRetry(Integer attempt) {
+    }
+
+    public void resetBeforeNextChunk(Integer pageNumber) {
+    }
+
     public String label;
 
     public NsTestChunkJob(String label) {

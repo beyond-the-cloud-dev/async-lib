@@ -14,12 +14,6 @@ public abstract class NsBaseQueueableJob extends btcdev.QueueableJob {
         return deepCopy(this);
     }
 
-    public abstract class AllowsCallouts extends btcdev.QueueableJob.AllowsCallouts {
-        public virtual override btcdev.QueueableJob cloneForDeepCopy() {
-            return NsBaseQueueableJob.deepCopy(this);
-        }
-    }
-
     public abstract class Finalizer extends btcdev.QueueableJob.Finalizer {
         public virtual override btcdev.QueueableJob cloneForDeepCopy() {
             return NsBaseQueueableJob.deepCopy(this);

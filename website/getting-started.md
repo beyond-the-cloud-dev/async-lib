@@ -174,7 +174,7 @@ pages through a source and runs one job per page, with the same retry, backoff a
 `AsyncResult__c` tracking as any other job.
 
 ```apex
-public class AccountRecalcJob extends ChunkJob {
+public class AccountRecalcJob extends ChunkJob implements Async.ChunkResettable, Async.Retryable {
     public override void work(List<SObject> chunk) {
         List<Account> accounts = (List<Account>) chunk;
         for (Account acc : accounts) {
@@ -182,8 +182,20 @@ public class AccountRecalcJob extends ChunkJob {
         }
         update accounts;
     }
+
+    // This job keeps nothing between pages or attempts, and says so.
+    public void resetBeforeNextChunk(Integer pageNumber) {
+    }
+
+    public void resetBeforeRetry(Integer attempt) {
+    }
 }
 ```
+
+The same job object runs once per page, and again on every retry, so Async Lib
+makes you state what happens to its state. Empty bodies are a valid answer when
+there is nothing to clear. See
+[Job State Between Runs](/explanations/job-state-between-runs).
 
 ```apex
 // In-memory records or ids
@@ -332,4 +344,4 @@ Now that you understand the basics:
 - **Priority Matters**: Lower numbers = higher priority. Finalizers always run
   first.
 - **Test Friendly**: Framework handles test context automatically
-- **Callouts Supported**: Use `QueueableJob.AllowsCallouts` for HTTP callouts
+- **Callouts Supported**: add `implements Database.AllowsCallouts` to any job

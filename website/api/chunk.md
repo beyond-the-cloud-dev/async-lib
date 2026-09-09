@@ -182,6 +182,37 @@ truncated one:
 
 `Async.stopChain()` stops the whole chain wherever it is, including mid-run.
 
+## Callouts
+
+Mark the job with `Database.AllowsCallouts` and every page can call out:
+
+```apex
+public class SyncChunk extends ChunkJob
+    implements Database.AllowsCallouts, Async.ChunkResettable {
+
+    public override void work(List<SObject> page) {
+        HttpResponse response = new Http().send(request);
+    }
+
+    public void resetBeforeNextChunk(Integer pageNumber) {
+    }
+}
+```
+
+`Database.AllowsCallouts` is the standard Salesforce marker interface, the same one
+you put on any `Queueable` that calls out. Nothing Async Lib specific. It is the one
+way to declare callouts across every job type. See
+[Callouts](/api/queueable#callouts).
+
+Each page is its own transaction, so each page gets its own callout limit. The
+capability survives paging and retries because every page and every retry is a
+clone of the same concrete class, and it survives `restoreStateOnNextChunk()` for
+the same reason.
+
+Watch the usual ordering rule inside a page: a callout after DML in the same
+transaction throws `You have uncommitted work pending`. Call out first, then do
+your DML.
+
 ## Cursor governor caps
 
 `ChunkSource.cursor(...)` / `ChunkSource.query(...)` open a SOQL cursor. Salesforce
@@ -462,6 +493,58 @@ Sets the maximum retry attempts per chunk. Must be `0..10`.
 
 ```apex
 ChunkBuilder retry(Integer maxRetries);
+```
+
+#### restoreStateOnRetry
+
+Replays every retry of a page from the state the job had when the run was
+enqueued. Alternative to implementing
+[`Async.Retryable`](/api/queueable#resetbeforeretry). A chunk run with `retry(n)`
+needs one of the two, or it throws at enqueue.
+
+The page position is carried forward, so a restored retry re-runs the page it
+failed on, not the first page.
+
+**Signature**
+
+```apex
+ChunkBuilder restoreStateOnRetry();
+```
+
+#### restoreStateOnNextChunk
+
+Replays every page from the state the job had when the run was enqueued, so no
+page ever sees what the previous one left behind. Alternative to implementing
+[`Async.ChunkResettable`](/api/queueable#resetbeforenextchunk). Every chunk run
+needs one of the two, or it throws at enqueue.
+
+Only fields you declared are restored. The chunk position, page count and source
+carry forward, which is also why the `ChunkSource` itself is never serialized: a
+`Database.Cursor` source works here exactly like an in-memory one.
+
+::: warning Package Usage
+
+The restore takes a deep copy, so on a namespaced install the job needs a
+`cloneForDeepCopy()` override. Write it per job, or extend `BaseChunkJob`, which
+does it for you. See
+[Deep Clone in Packages](/explanations/deep-clone-in-packages).
+`resetBeforeNextChunk()` needs neither.
+
+:::
+
+**Signature**
+
+```apex
+ChunkBuilder restoreStateOnNextChunk();
+```
+
+**Example**
+
+```apex
+Async.chunk(new ImportChunk(), ChunkSource.query('SELECT Id FROM Account'))
+	.chunkSize(200)
+	.restoreStateOnNextChunk()
+	.enqueue();
 ```
 
 #### backoff

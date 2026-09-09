@@ -78,7 +78,7 @@ public inherited sharing class ChunkRun {
         return (totalSize + chunkSize - 1) / chunkSize;
     }
 
-    private Integer currentPageNumber() {
+    public Integer currentPageNumber() {
         return position / chunkSize + 1;
     }
 }

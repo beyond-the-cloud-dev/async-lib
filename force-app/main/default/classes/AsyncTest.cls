@@ -13,6 +13,10 @@
 private class AsyncTest implements Database.Batchable<SObject> {
     private static final String ACCOUNT_NAME = 'Test Account';
     private static final String CUSTOM_ERROR_MESSAGE = 'Something goes wrong.';
+    private static Integer chunkCalloutStatus = 0;
+    private static Integer chunkCalloutPages = 0;
+    private static Integer chunkPageFailures = 0;
+    private static List<String> chunkPagesRun = new List<String>();
     private static final String DUPLICATE_SIGNATURE_ERROR_MESSAGE = 'Attempt to enqueue job with duplicate queueable signature';
     private static final String TEST_SIGNATURE_NAME = 'SignatureName';
     private static final String TEST_SCHEDULABLE_JOB_NAME = 'SchedulableTestJob';
@@ -2080,7 +2084,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    private static void shouldRunResetForRetryOnRetryClone() {
+    private static void shouldRunResetBeforeRetryOnRetryClone() {
         ResettableRetryJob job = new ResettableRetryJob();
         QueueableChain chain = new QueueableChain();
         chain.addJob(job);
@@ -2098,7 +2102,251 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(2, chain.jobs.size(), 'A retry clone should have been inserted.');
         Assert.isTrue(
             ((ResettableRetryJob) chain.jobs[0]).wasReset,
-            'resetForRetry() must run on the retry clone.'
+            'resetBeforeRetry() must run on the retry clone.'
+        );
+        Assert.areEqual(
+            1,
+            ((ResettableRetryJob) chain.jobs[0]).resetAttempt,
+            'resetBeforeRetry() must receive the attempt it is preparing for.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNoLongerCallTheDeprecatedResetForRetryHook() {
+        LegacyResetForRetryJob job = new LegacyResetForRetryJob();
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        job.maxRetries = 2;
+        job.continueOnJobExecuteFail = true;
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+        Test.stopTest();
+
+        Assert.isFalse(
+            ((LegacyResetForRetryJob) chain.jobs[0]).legacyHookRan,
+            'resetForRetry() is superseded by Async.Retryable and must not be called.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectRetryWhenTheJobDoesNotDeclareHowItResets() {
+        try {
+            Async.queueable(new UngatedRetryJob()).retry(2).enqueue();
+            Assert.fail('A job that retries without declaring its reset must not enqueue.');
+        } catch (IllegalArgumentException ex) {
+            Assert.isTrue(
+                ex.getMessage().contains('Async.Retryable'),
+                'The gate must name the interface to implement, but was: ' + ex.getMessage()
+            );
+            Assert.isTrue(
+                ex.getMessage().contains('restoreStateOnRetry()'),
+                'The gate must name the alternative, but was: ' + ex.getMessage()
+            );
+            Assert.isTrue(
+                ex.getMessage().contains('resetForRetry()'),
+                'The gate must tell migrating users the old hook is dead, but was: ' +
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRejectAChunkJobThatDoesNotDeclareHowItResets() {
+        try {
+            Async.chunk(new UngatedChunkJob(), ChunkSource.of(createAccounts(2))).enqueue();
+            Assert.fail('A chunk job without a declared reset must not enqueue.');
+        } catch (IllegalArgumentException ex) {
+            Assert.isTrue(
+                ex.getMessage().contains('Async.ChunkResettable'),
+                'The gate must name the interface to implement, but was: ' + ex.getMessage()
+            );
+            Assert.isTrue(
+                ex.getMessage().contains('restoreStateOnNextChunk()'),
+                'The gate must name the alternative, but was: ' + ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRetryTheFailedPageNotTheFirstOneWhenRestoringOnRetry() {
+        List<Account> source = new List<Account>();
+        for (Integer i = 1; i <= 6; i++) {
+            source.add(new Account(Name = 'P' + i));
+        }
+
+        Test.startTest();
+        Async.chunk(new RetryingChunkJob(), ChunkSource.of(source))
+            .chunkSize(2)
+            .retry(1)
+            .restoreStateOnRetry()
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            new List<String>{ 'P1:0', 'P3:1', 'P3:1', 'P5:2' },
+            chunkPagesRun,
+            'The retry must replay the page that failed, from that page\'s enqueued state.'
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepTheRestOfTheChainRunningWhenAJobTripsTheGate() {
+        Test.startTest();
+        Async.queueable(new GateTrippingParentJob()).continueOnJobExecuteFail().chain();
+        Async.queueable(markerJob('AFTER-GATE', false)).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            accountCount('AFTER-GATE'),
+            'A misconfigured job must fail on its own without taking the chain down with it.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotEnqueueAnythingWhenTheGateTripsBeforeTheChainStarts() {
+        Async.queueable(markerJob('NEVER-ENQUEUED', false)).chain();
+
+        Test.startTest();
+        try {
+            Async.queueable(new UngatedRetryJob()).retry(2).enqueue();
+            Assert.fail('The gate must reject the misconfigured job.');
+        } catch (IllegalArgumentException expected) {
+            Assert.isTrue(expected.getMessage().contains('Async.Retryable'), expected.getMessage());
+        }
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            accountCount('NEVER-ENQUEUED'),
+            'The gate fires before anything is enqueued, so the chain never starts.'
+        );
+    }
+
+    @IsTest
+    private static void shouldGateAJobThatGetsItsRetryFromCustomMetadata() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                MaxRetries__c = 2
+            )
+        };
+
+        try {
+            chain.addJob(new UngatedRetryJob());
+            Assert.fail('Retry configured by CMDT must be gated the same as retry().');
+        } catch (IllegalArgumentException ex) {
+            Assert.isTrue(
+                ex.getMessage().contains('Async.Retryable'),
+                'CMDT-configured retry must reach the same gate, but was: ' + ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldReplayARetryFromTheEnqueuedStateWhenAsked() {
+        Test.startTest();
+        Async.queueable(new StateCarryingRetryJob())
+            .restoreStateOnRetry()
+            .continueOnJobExecuteFail()
+            .retry(2)
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            [SELECT COUNT() FROM Account WHERE Name = 'RETRY-SIZE-0'],
+            'Every attempt must start from the state the job had when it was enqueued.'
+        );
+    }
+
+    @IsTest
+    private static void shouldCarryStateAcrossRetriesWithoutTheRestoreOption() {
+        Test.startTest();
+        Async.queueable(new StateCarryingRetryJob()).continueOnJobExecuteFail().retry(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM Account WHERE Name = 'RETRY-SIZE-2'],
+            'Without the restore option the shallow clone keeps what the last attempt left.'
+        );
+    }
+
+    @IsTest
+    private static void shouldReplayEveryChunkPageFromTheEnqueuedStateWhenAsked() {
+        List<Account> accounts = createAccounts(6);
+
+        Test.startTest();
+        Async.chunk(new StateCarryingChunkJob(), ChunkSource.of(accounts))
+            .chunkSize(2)
+            .restoreStateOnNextChunk()
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            [SELECT COUNT() FROM Account WHERE Name = 'CHUNK-SIZE-0'],
+            'A ChunkJob deep copy must succeed and every page must start from the enqueued state.'
+        );
+    }
+
+    @IsTest
+    private static void shouldAllowCalloutsFromAChunkJobThatMarksItself() {
+        Test.setMock(HttpCalloutMock.class, new OkCalloutMock());
+        List<Account> pages = new List<Account>{
+            new Account(Name = 'a'),
+            new Account(Name = 'b'),
+            new Account(Name = 'c'),
+            new Account(Name = 'd')
+        };
+
+        Test.startTest();
+        Async.chunk(new MarkerCalloutChunkJob(), ChunkSource.of(pages)).chunkSize(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(2, chunkCalloutPages, 'Both pages must run.');
+        Assert.areEqual(
+            200,
+            chunkCalloutStatus,
+            'A ChunkJob implementing Database.AllowsCallouts must be able to call out.'
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepCalloutCapabilityOnAClonedChunkPage() {
+        MarkerCalloutChunkJob job = new MarkerCalloutChunkJob();
+        job.deepClone = true;
+
+        Assert.isTrue(
+            job.cloneJob() instanceof Database.AllowsCallouts,
+            'The next page and any retry are clones, so they must stay allowed to call out.'
+        );
+    }
+
+    @IsTest
+    private static void shouldCallResetBeforeNextChunkWithThePageItIsPreparing() {
+        List<Account> accounts = createAccounts(6);
+
+        Test.startTest();
+        Async.chunk(new StateCarryingChunkJob(), ChunkSource.of(accounts)).chunkSize(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            3,
+            [SELECT COUNT() FROM Account WHERE Name LIKE 'CHUNK-SIZE-%'],
+            'Three pages of two records each must run.'
+        );
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM Account WHERE Name = 'CHUNK-SIZE-0'],
+            'Only the first page starts empty when the reset hook records rather than clears.'
         );
     }
 
@@ -2860,6 +3108,51 @@ private class AsyncTest implements Database.Batchable<SObject> {
             1,
             chain.jobs.size(),
             'Salesforce rolls back a plain System.enqueueJob when the transaction dies, and so must we.'
+        );
+    }
+
+    @IsTest
+    private static void shouldDiscardJobsChainedByTheFinalAttemptWhenItRolledBack() {
+        ChainingFailureJob job = new ChainingFailureJob();
+        QueueableChain chain = chainRunning(job);
+        job.maxRetries = 1;
+        job.retryDecision = true;
+        job.continueOnJobExecuteFail = true;
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(rolledBack());
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(rolledBack());
+        Integer followUpsAfterFinalAttempt = followUpsLeftIn(chain);
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            followUpsAfterFinalAttempt,
+            'The last attempt rolled back, so the work it chained must roll back with it.'
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepJobsChainedByTheFinalAttemptWhenItCommitted() {
+        ChainingFailureJob job = new ChainingFailureJob();
+        QueueableChain chain = chainRunning(job);
+        job.maxRetries = 1;
+        job.retryDecision = true;
+        job.continueOnJobExecuteFail = true;
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            followUpsLeftIn(chain),
+            'A committed final attempt keeps what it chained, exactly once across all attempts.'
         );
     }
 
@@ -3807,6 +4100,16 @@ private class AsyncTest implements Database.Batchable<SObject> {
         return result;
     }
 
+    private static Integer followUpsLeftIn(QueueableChain chain) {
+        Integer followUps = 0;
+        for (QueueableJob job : chain.jobs) {
+            if (job instanceof MarkerJob) {
+                followUps++;
+            }
+        }
+        return followUps;
+    }
+
     private static QueueableChain chainRunning(QueueableJob job) {
         QueueableChain chain = new QueueableChain();
         chain.addJob(job);
@@ -3856,15 +4159,21 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    public class DeepCloneRetryJob extends QueueableJob {
+    public class DeepCloneRetryJob extends QueueableJob implements Async.Retryable {
         public List<String> attempts = new List<String>();
         public override void work() {
             attempts.add('attempt' + retryAttempt);
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
     }
 
-    public class DeepCloneFailRetryJob extends QueueableJob {
+    public class DeepCloneFailRetryJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
@@ -3879,14 +4188,20 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class FailureQueueableTest extends QueueableJob.AllowsCallouts {
+    private class FailureQueueableTest extends QueueableJob.AllowsCallouts implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
     }
 
-    private class SelfConfiguringRetryJob extends QueueableJob {
+    private class SelfConfiguringRetryJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         private SelfConfiguringRetryJob() {
             this.maxRetries = 2;
             this.backoff = Async.Backoff.fixed(4);
@@ -3904,7 +4219,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class MarkerJob extends QueueableJob {
+    private class MarkerJob extends QueueableJob implements Async.Retryable {
         public String tag;
         public Boolean shouldFail = false;
         public override void work() {
@@ -3912,6 +4227,9 @@ private class AsyncTest implements Database.Batchable<SObject> {
             if (shouldFail) {
                 throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
             }
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
         }
     }
 
@@ -3921,7 +4239,10 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class FinalizerAttachingRetryJob extends QueueableJob {
+    private class FinalizerAttachingRetryJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             insert new Account(Name = 'RETRY-PARENT');
             Async.queueable(new MarkerFinalizer()).attachFinalizer();
@@ -3935,7 +4256,10 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private abstract class HookRecordingJob extends QueueableJob {
+    private abstract class HookRecordingJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void onFinalFailure(Async.FailureContext failureCtx) {
             insert new Account(
                 Name = 'HOOK',
@@ -3972,7 +4296,10 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class FailingChunkHookJob extends ChunkJob {
+    private class FailingChunkHookJob extends ChunkJob implements Async.ChunkResettable {
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+
         public override void work(List<SObject> chunk) {
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
@@ -3982,7 +4309,10 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class JobChainingRetryJob extends QueueableJob {
+    private class JobChainingRetryJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             insert new Account(Name = 'CHAIN-PARENT');
             Async.queueable(markerJob('CHAIN-FOLLOWUP', false)).chain();
@@ -4005,7 +4335,10 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class ChainStoppingFailureJob extends QueueableJob {
+    private class ChainStoppingFailureJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             Async.stopChain();
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
@@ -4044,13 +4377,112 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class ResettableRetryJob extends QueueableJob {
+    private class ResettableRetryJob extends QueueableJob implements Async.Retryable {
         public Boolean wasReset = false;
+        public Integer resetAttempt;
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+        public void resetBeforeRetry(Integer attempt) {
+            this.wasReset = true;
+            this.resetAttempt = attempt;
+        }
+    }
+
+    private class UngatedRetryJob extends QueueableJob {
+        public override void work() {
+        }
+    }
+
+    public class RetryingChunkJob extends ChunkJob implements Async.Retryable, Async.ChunkResettable {
+        public List<String> touched = new List<String>();
+
+        public override void work(List<SObject> chunk) {
+            String firstOfPage = (String) chunk[0].get('Name');
+            AsyncTest.chunkPagesRun.add(firstOfPage + ':' + touched.size());
+            touched.add('page');
+            if (firstOfPage == 'P3' && AsyncTest.chunkPageFailures == 0) {
+                AsyncTest.chunkPageFailures++;
+                throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+            }
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+    }
+
+    private class GateTrippingParentJob extends QueueableJob {
+        public override void work() {
+            insert new Account(Name = 'GATE-PARENT-RAN');
+            Async.queueable(new UngatedRetryJob()).retry(2).chain();
+        }
+    }
+
+    public class UngatedChunkJob extends ChunkJob {
+        public override void work(List<SObject> chunk) {
+        }
+    }
+
+    private class OkCalloutMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest request) {
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(200);
+            return response;
+        }
+    }
+
+    public class MarkerCalloutChunkJob extends ChunkJob implements Database.AllowsCallouts, Async.ChunkResettable {
+        public override void work(List<SObject> chunk) {
+            HttpRequest request = new HttpRequest();
+            request.setEndpoint('https://example.com');
+            request.setMethod('GET');
+            AsyncTest.chunkCalloutStatus = new Http().send(request).getStatusCode();
+            AsyncTest.chunkCalloutPages++;
+        }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+    }
+
+    public class StateCarryingRetryJob extends QueueableJob implements Async.Retryable {
+        public List<String> seen = new List<String>();
+
+        public override void work() {
+            insert new Account(Name = 'RETRY-SIZE-' + seen.size());
+            seen.add('attempt');
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
+    }
+
+    public class StateCarryingChunkJob extends ChunkJob implements Async.ChunkResettable {
+        public List<String> seen = new List<String>();
+        public List<Integer> pagesReset = new List<Integer>();
+
+        public override void work(List<SObject> chunk) {
+            insert new Account(Name = 'CHUNK-SIZE-' + seen.size());
+            seen.add('page');
+        }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+            pagesReset.add(pageNumber);
+        }
+    }
+
+    private class LegacyResetForRetryJob extends QueueableJob implements Async.Retryable {
+        public Boolean legacyHookRan = false;
         public override void work() {
             throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
         }
         public override void resetForRetry() {
-            this.wasReset = true;
+            this.legacyHookRan = true;
+        }
+        public void resetBeforeRetry(Integer attempt) {
         }
     }
 
@@ -4089,9 +4521,12 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    public class QueueableJobTest1 extends QueueableJob {
+    public class QueueableJobTest1 extends QueueableJob implements Async.Retryable {
         public QueueableJobTest2 complexMember = new QueueableJobTest2();
         public override void work() {
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
         }
     }
 
@@ -5307,13 +5742,19 @@ private class AsyncTest implements Database.Batchable<SObject> {
         update toUpdate;
     }
 
-    private class MarkingChunkJob extends ChunkJob {
+    private class MarkingChunkJob extends ChunkJob implements Async.ChunkResettable, Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+
         public override void work(List<SObject> chunk) {
             markProcessed(chunk, CHUNK_PROCESSED);
         }
     }
 
-    private class LabelingChunkJob extends ChunkJob {
+    private class LabelingChunkJob extends ChunkJob implements Async.ChunkResettable {
         private String label;
 
         public LabelingChunkJob(String label) {
@@ -5323,9 +5764,15 @@ private class AsyncTest implements Database.Batchable<SObject> {
         public override void work(List<SObject> chunk) {
             markProcessed(chunk, label);
         }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
     }
 
-    private class FailMarkedChunkJob extends ChunkJob {
+    private class FailMarkedChunkJob extends ChunkJob implements Async.ChunkResettable {
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+
         public override void work(List<SObject> chunk) {
             for (SObject record : chunk) {
                 Account account = (Account) record;
@@ -5337,7 +5784,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class TotallingChunkJob extends ChunkJob {
+    private class TotallingChunkJob extends ChunkJob implements Async.ChunkResettable {
         public Integer processedSoFar = 0;
 
         public override void work(List<SObject> chunk) {
@@ -5345,18 +5792,24 @@ private class AsyncTest implements Database.Batchable<SObject> {
             markProcessed(chunk, CHUNK_PROCESSED);
             insert new Account(Name = 'RUNNING_TOTAL', Site = String.valueOf(processedSoFar));
         }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
     }
 
-    private class CountingChunkJob extends ChunkJob {
+    private class CountingChunkJob extends ChunkJob implements Async.ChunkResettable {
         public Integer seenSoFar = 0;
 
         public override void work(List<SObject> chunk) {
             seenSoFar += chunk.size();
             insert new Account(Name = 'SYNTHETIC_TOTAL', Site = String.valueOf(seenSoFar));
         }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
     }
 
-    private class FinalizerAttachingChunkJob extends ChunkJob {
+    private class FinalizerAttachingChunkJob extends ChunkJob implements Async.ChunkResettable {
         private String finalizerMockId;
 
         public FinalizerAttachingChunkJob(String finalizerMockId) {
@@ -5366,9 +5819,15 @@ private class AsyncTest implements Database.Batchable<SObject> {
         public override void work(List<SObject> chunk) {
             Async.queueable(new ErrorHandlerFinalizer()).mockId(finalizerMockId).attachFinalizer();
         }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
     }
 
-    private class ContextReadingChunkJob extends ChunkJob {
+    private class ContextReadingChunkJob extends ChunkJob implements Async.ChunkResettable {
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+
         public override void work(List<SObject> chunk) {
             insert new Account(
                 Name = 'MOCKED_CONTEXT',
@@ -5407,14 +5866,17 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
-    private class ChainStoppingChunkJob extends ChunkJob {
+    private class ChainStoppingChunkJob extends ChunkJob implements Async.ChunkResettable {
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+
         public override void work(List<SObject> chunk) {
             markProcessed(chunk, CHUNK_PROCESSED);
             Async.stopChain();
         }
     }
 
-    private class PreemptingChunkJob extends ChunkJob {
+    private class PreemptingChunkJob extends ChunkJob implements Async.ChunkResettable {
         public Integer preemptPriority;
 
         public override void work(List<SObject> chunk) {
@@ -5424,6 +5886,9 @@ private class AsyncTest implements Database.Batchable<SObject> {
                     .priority(preemptPriority)
                     .chain();
             }
+        }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
         }
     }
 

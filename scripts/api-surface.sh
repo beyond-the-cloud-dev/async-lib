@@ -64,6 +64,16 @@ revert_internal_wiring() {
     api_surface_sed 's/global void enqueue(QueueableChain chain)/public void enqueue(QueueableChain chain)/g' \
         "force-app/main/default/classes/queue/QueueableJob.cls"
 
+    # Enqueue-time snapshot plumbing. QueueableChain, QueueableManager and ChunkJob call these
+    # across class boundaries so they cannot be protected, but a subscriber has no use for them
+    # and a global member can never be withdrawn. See docs/api-evolution.md.
+    api_surface_sed 's/global void captureEnqueuedState(/public void captureEnqueuedState(/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global Boolean canRestoreEnqueuedState(/public Boolean canRestoreEnqueuedState(/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global QueueableJob restoreEnqueuedState(/public QueueableJob restoreEnqueuedState(/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+
     api_surface_sed 's/global ChunkRun getRun(/public ChunkRun getRun(/g' \
         "force-app/main/default/classes/queue/ChunkJob.cls"
     api_surface_sed 's/global ChunkJob nextPageOrNull(/public ChunkJob nextPageOrNull(/g' \

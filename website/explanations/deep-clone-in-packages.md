@@ -23,16 +23,21 @@ public abstract class BaseQueueableJob extends btcdev.QueueableJob {
         return deepCopy(this);
     }
 
-    public abstract class AllowsCallouts extends btcdev.QueueableJob.AllowsCallouts {
-        public virtual override btcdev.QueueableJob cloneForDeepCopy() {
-            return BaseQueueableJob.deepCopy(this);
-        }
-    }
-
     public abstract class Finalizer extends btcdev.QueueableJob.Finalizer {
         public virtual override btcdev.QueueableJob cloneForDeepCopy() {
             return BaseQueueableJob.deepCopy(this);
         }
+    }
+}
+```
+
+Chunk jobs get a second file, because Apex rejects an inner type inside an inner type and
+`btcdev.ChunkJob` is top level anyway:
+
+```apex
+public abstract class BaseChunkJob extends btcdev.ChunkJob {
+    public virtual override btcdev.QueueableJob cloneForDeepCopy() {
+        return BaseQueueableJob.deepCopy(this);
     }
 }
 ```
@@ -42,8 +47,10 @@ It mirrors the shape of `btcdev.QueueableJob`, so swap the prefix and carry on:
 | Extend | instead of |
 | ------ | ---------- |
 | `BaseQueueableJob` | `btcdev.QueueableJob` |
-| `BaseQueueableJob.AllowsCallouts` | `btcdev.QueueableJob.AllowsCallouts` |
 | `BaseQueueableJob.Finalizer` | `btcdev.QueueableJob.Finalizer` |
+| `BaseChunkJob` | `btcdev.ChunkJob` |
+
+Callouts are a marker, not a base class. Add `implements Database.AllowsCallouts` to any of them.
 
 ```apex
 public class MyJob extends BaseQueueableJob {
@@ -56,13 +63,13 @@ public class MyJob extends BaseQueueableJob {
 Every job that extends one of them is covered. There is no per-job override to write and nothing
 to remember when you add a new job.
 
-Callout capability survives the clone. The copy is the same concrete class, so it still
-implements `Database.AllowsCallouts` and a retried job can still call out. Finalizers stay
-recognisable to the framework as `btcdev.QueueableJob.Finalizer`.
+Callout capability survives the clone. The copy is the same concrete class, so a job marked
+`Database.AllowsCallouts` can still call out after a retry or on the next chunk page. Finalizers
+stay recognisable to the framework as `btcdev.QueueableJob.Finalizer`.
 
-The file is in
-[`extras/classes/BaseQueueableJob.cls`](https://github.com/beyond-the-cloud-dev/async-lib/blob/main/extras/classes/BaseQueueableJob.cls),
-ready to copy. Rename it to suit your project.
+Both files are in
+[`extras/classes/`](https://github.com/beyond-the-cloud-dev/async-lib/tree/main/extras/classes),
+ready to copy. Rename them to suit your project.
 
 If you deploy Async Lib **without a namespace** (Deploy button, `sf project deploy`), skip all of
 this. Everything already works.

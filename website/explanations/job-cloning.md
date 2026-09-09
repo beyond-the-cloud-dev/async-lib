@@ -186,7 +186,7 @@ taken *after* `work()` has already run and mutated the job. A soft clone and a
 deep clone of a failed attempt both carry whatever that attempt accumulated:
 
 ```apex
-public class ImportJob extends QueueableJob {
+public class ImportJob extends QueueableJob implements Async.Retryable {
   public List<String> processed = new List<String>();
 
   public override void work() {
@@ -194,15 +194,16 @@ public class ImportJob extends QueueableJob {
     callTheApiThatIsDown();
   }
 
-  public override void resetForRetry() {
+  public void resetBeforeRetry(Integer attempt) {
     processed.clear();        // this is the reset hook, not deepClone()
   }
 }
 ```
 
 Use `deepClone()` to isolate a job from **the caller's** later mutations. Use
-`resetForRetry()` to clear state **between attempts**. They solve different
-problems.
+[`resetBeforeRetry()`](/explanations/job-state-between-runs) to clear state
+**between attempts**. They solve different problems, and Async Lib will not let
+you enqueue a retrying job without picking one of the reset options.
 
 ## Performance Considerations
 

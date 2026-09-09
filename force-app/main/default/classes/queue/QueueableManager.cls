@@ -1,8 +1,9 @@
 /**
  * PMD False Positives:
- * - CyclomaticComplexity: one guard clause per documented error message
+ * - CyclomaticComplexity / CognitiveComplexity: one guard clause per documented error message,
+ *   and the most complex member scores 7
  **/
-@SuppressWarnings('PMD.CyclomaticComplexity')
+@SuppressWarnings('PMD.CyclomaticComplexity,PMD.CognitiveComplexity')
 public inherited sharing class QueueableManager {
     public static final String QUEUEABLE_JOB_SETTING_ALL = 'All';
     public static final String STATUS_COMPLETED = 'COMPLETED';
@@ -20,6 +21,21 @@ public inherited sharing class QueueableManager {
     public static final String ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP =
         'Max retries cannot exceed the framework cap of ' + MAX_RETRY_CAP;
     public static final String ERROR_MESSAGE_UNKNOWN_BACKOFF_STRATEGY = 'QueueableJobSetting__mdt.BackoffStrategy__c is "{0}" for "{1}", which is not a known strategy. Use one of: {2}.';
+    public static final String DOCS_URL_JOB_STATE =
+        DOCS_URL + '/explanations/job-state-between-runs';
+    // A packaged consumer has to write btcdev.Async.Retryable, an unpackaged one Async.Retryable.
+    // An error message that names the wrong one sends them somewhere that will not compile.
+    public static final String API_PREFIX = resolveApiPrefix();
+    public static final String ERROR_MESSAGE_RETRY_WITHOUT_RESET =
+        'The job "{0}" configures retry but does not say what happens to its state between attempts. A retry re-runs the same object, so anything the failed attempt left behind carries into the next one and can duplicate work.\nPick one:\n- implement ' +
+        API_PREFIX +
+        'Async.Retryable and clear your own state in resetBeforeRetry(Integer attempt)\n- call restoreStateOnRetry() to have Async Lib replay the job from the state it had when it was enqueued\nAn empty resetBeforeRetry() body is a valid answer, and keeps whatever the failed attempt left behind, exactly as 2.x did.\nIf you used to override resetForRetry(), that hook is no longer called. Move its body into resetBeforeRetry(Integer attempt).\nSee ' +
+        DOCS_URL_JOB_STATE;
+    public static final String ERROR_MESSAGE_CHUNK_WITHOUT_RESET =
+        'The chunk job "{0}" does not say what happens to its state between pages. Every page re-runs the same object, so anything the previous page left behind carries into the next one and can duplicate work.\nPick one:\n- implement ' +
+        API_PREFIX +
+        'Async.ChunkResettable and clear your own state in resetBeforeNextChunk(Integer pageNumber)\n- call restoreStateOnNextChunk() to have Async Lib replay every page from the state the job had when it was enqueued\nAn empty resetBeforeNextChunk() body is a valid answer, and keeps whatever the previous page left behind, exactly as 2.x did.\nSee ' +
+        DOCS_URL_JOB_STATE;
     public static final String ERROR_MESSAGE_INVALID_DEPENDENCY = 'A dependency requires a target and an outcome (e.g. Async.after(result).succeeded())';
     public static final String ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB = 'dependsOn(Async.afterPrevious()) requires a previously chained job';
     public static final String ERROR_MESSAGE_UNKNOWN_JOB = 'No job in this chain has custom job id "{0}".';
@@ -38,6 +54,11 @@ public inherited sharing class QueueableManager {
     private static QueueableManager instance;
 
     private QueueableChain chain = new QueueableChain();
+
+    private static String resolveApiPrefix() {
+        String managerName = QueueableManager.class.getName();
+        return managerName.contains('.') ? managerName.substringBefore('.') + '.' : '';
+    }
 
     // Should only be used by QueueableChain to set the chain in the context
     public void setChain(QueueableChain chain) {
@@ -156,6 +177,37 @@ public inherited sharing class QueueableManager {
             ISSUES_URL +
             '\n\n' +
             frameworkFailure.getStackTraceString();
+    }
+
+    public static void assertStateHandlingDeclared(QueueableJob job) {
+        if (job.maxRetries > 0 && !job.restoreStateOnRetry && !(job instanceof Async.Retryable)) {
+            throw new IllegalArgumentException(
+                String.format(ERROR_MESSAGE_RETRY_WITHOUT_RESET, new List<String>{ job.className })
+            );
+        }
+        if (
+            job instanceof ChunkJob &&
+            !job.restoreStateOnNextChunk &&
+            !(job instanceof Async.ChunkResettable)
+        ) {
+            throw new IllegalArgumentException(
+                String.format(ERROR_MESSAGE_CHUNK_WITHOUT_RESET, new List<String>{ job.className })
+            );
+        }
+    }
+
+    public static QueueableJob retryJobFrom(QueueableJob previousJob) {
+        return previousJob.restoreStateOnRetry && previousJob.canRestoreEnqueuedState()
+            ? previousJob.restoreEnqueuedState()
+            : previousJob.cloneJob();
+    }
+
+    // Restoring the enqueue-time copy already puts the job back to a clean state, so running the
+    // consumer's reset on top of it would undo what the restore just promised.
+    public static void runRetryReset(QueueableJob retryJob, Integer attempt) {
+        if (!retryJob.restoreStateOnRetry && retryJob instanceof Async.Retryable) {
+            ((Async.Retryable) retryJob).resetBeforeRetry(attempt);
+        }
     }
 
     public static void assertValidMaxRetries(Integer maxRetries) {

@@ -3,7 +3,10 @@ public class NsTestChunkRun {
     public class NsChunkException extends Exception {
     }
 
-    public class MarkingChunkJob extends btcdev.ChunkJob {
+    public class MarkingChunkJob extends btcdev.ChunkJob implements btcdev.Async.ChunkResettable {
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+
         public override void work(List<SObject> chunk) {
             List<Account> toUpdate = new List<Account>();
             for (SObject record : chunk) {
@@ -13,7 +16,10 @@ public class NsTestChunkRun {
         }
     }
 
-    public class TotallingChunkJob extends btcdev.ChunkJob {
+    public class TotallingChunkJob extends btcdev.ChunkJob implements btcdev.Async.ChunkResettable {
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+
         public Integer seen = 0;
 
         public override void work(List<SObject> chunk) {
@@ -22,7 +28,10 @@ public class NsTestChunkRun {
         }
     }
 
-    public class FailingChunkJob extends btcdev.ChunkJob {
+    public class FailingChunkJob extends btcdev.ChunkJob implements btcdev.Async.ChunkResettable {
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+
         public override void work(List<SObject> chunk) {
             throw new NsChunkException('ns chunk failure');
         }

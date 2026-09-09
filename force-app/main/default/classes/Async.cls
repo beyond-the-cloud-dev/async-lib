@@ -67,6 +67,14 @@ public inherited sharing class Async {
         }
     }
 
+    public interface Retryable {
+        void resetBeforeRetry(Integer attempt);
+    }
+
+    public interface ChunkResettable {
+        void resetBeforeNextChunk(Integer pageNumber);
+    }
+
     @JsonAccess(serializable='always' deserializable='always')
     public class QueueableJobContext {
         public QueueableJob currentJob;

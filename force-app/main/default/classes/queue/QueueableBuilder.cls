@@ -79,6 +79,11 @@ public inherited sharing class QueueableBuilder {
         return this;
     }
 
+    public QueueableBuilder restoreStateOnRetry() {
+        job.restoreStateOnRetry = true;
+        return this;
+    }
+
     public QueueableBuilder deepClone() {
         job.deepClone = true;
         return this;

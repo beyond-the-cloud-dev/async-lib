@@ -21,6 +21,8 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
     public Boolean continueOnJobExecuteFail = false;
     public Boolean rollbackOnJobExecuteFail = false;
     public Boolean deepClone = false;
+    public Boolean restoreStateOnRetry = false;
+    public Boolean restoreStateOnNextChunk = false;
     public QueueableContext queueableCtx;
 
     public List<Async.Dependency> dependencies;
@@ -45,6 +47,8 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
 
     @TestVisible
     private QueueableChain chain;
+    @TestVisible
+    private QueueableJob enqueuedState;
 
     public transient String className {
         get {
@@ -68,7 +72,18 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         return true;
     }
 
+    /**
+     * Superseded by Async.Retryable.resetBeforeRetry(Integer). Nothing calls this any more.
+     * It cannot be deleted: dropping a global member makes the package install fail in every
+     * subscriber org that referenced it, before any of our code runs. See docs/api-evolution.md.
+     **/
     public virtual void resetForRetry() {
+    }
+
+    protected virtual void clearFrameworkStateForCopy() {
+    }
+
+    protected virtual void carryFrameworkStateFrom(QueueableJob liveJob) {
     }
 
     public virtual void onFinalFailure(Async.FailureContext failureCtx) {
@@ -229,9 +244,55 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
 
     public QueueableJob cloneJob() {
         if (deepClone) {
-            return deepCloneWithoutRuntimeState();
+            try {
+                return deepCloneWithoutRuntimeState();
+            } catch (Exception cloneFailure) {
+                throw new IllegalArgumentException(
+                    'deepClone() failed for the job "' +
+                        className +
+                        '": ' +
+                        causeAndRemedy(cloneFailure)
+                );
+            }
         }
         return this.clone();
+    }
+
+    public void captureEnqueuedState() {
+        Boolean retryWillRestore = restoreStateOnRetry && maxRetries > 0;
+        Boolean pagingWillRestore = restoreStateOnNextChunk && this instanceof ChunkJob;
+        if (!retryWillRestore && !pagingWillRestore) {
+            return;
+        }
+        try {
+            enqueuedState = deepCloneWithoutRuntimeState();
+        } catch (Exception captureFailure) {
+            throw new IllegalArgumentException(
+                'restoreStateOnRetry() and restoreStateOnNextChunk() replay the job from a deep ' +
+                    'copy taken at enqueue, and the job "' +
+                    className +
+                    '" cannot be copied: ' +
+                    causeAndRemedy(captureFailure) +
+                    '\nOr drop the option and clear your own state in resetBeforeRetry(Integer) ' +
+                    'or resetBeforeNextChunk(Integer) instead.'
+            );
+        }
+    }
+
+    public Boolean canRestoreEnqueuedState() {
+        return enqueuedState != null;
+    }
+
+    // Only the fields the subclass declared come back. Everything QueueableJob and ChunkJob own
+    // is progression the caller re-applies from the live job.
+    public QueueableJob restoreEnqueuedState() {
+        QueueableJob restored = enqueuedState.deepCloneWithoutRuntimeState();
+        restored.enqueuedState = enqueuedState;
+        restored.restoreStateOnRetry = restoreStateOnRetry;
+        restored.restoreStateOnNextChunk = restoreStateOnNextChunk;
+        restored.retryHistory = retryHistory;
+        restored.carryFrameworkStateFrom(this);
+        return restored;
     }
 
     /**
@@ -251,24 +312,22 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         stripped.backoff = null;
         stripped.dependencies = null;
         stripped.failure = null;
+        stripped.enqueuedState = null;
+        stripped.clearFrameworkStateForCopy();
 
-        try {
-            QueueableJob copy = stripped.cloneForDeepCopy();
-            // Backoff is immutable so sharing is safe. The other two are not, and sharing them
-            // would defeat the isolation deepClone() exists to provide.
-            copy.backoff = this.backoff;
-            copy.dependencies = deepCopyOf(this.dependencies);
-            copy.failure = deepCopyOf(this.failure);
-            return copy;
-        } catch (Exception cloneFailure) {
-            throw new IllegalArgumentException(deepCloneFailureMessage(cloneFailure));
-        }
+        QueueableJob copy = stripped.cloneForDeepCopy();
+        // Backoff is immutable so sharing is safe. The other two are not, and sharing them
+        // would defeat the isolation deepClone() exists to provide.
+        copy.backoff = this.backoff;
+        copy.dependencies = deepCopyOf(this.dependencies);
+        copy.failure = deepCopyOf(this.failure);
+        return copy;
     }
 
     // Every cause is a different mistake with a different fix, so the message has to name the
     // right one. The two JSONException causes are only separable by their platform wording, which
     // shouldStillSeeThePlatformWordingDeepCloneGuidanceBranchesOn() guards against changing.
-    private String deepCloneFailureMessage(Exception cloneFailure) {
+    private String causeAndRemedy(Exception cloneFailure) {
         String remedy;
         if (cloneFailure instanceof TypeException) {
             remedy =
@@ -281,20 +340,13 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         } else if (cloneFailure.getMessage().contains('Type cannot be serialized')) {
             remedy =
                 'Async Lib is installed as a namespaced package, so it cannot serialize your ' +
-                'class. Override cloneForDeepCopy() in your QueueableJob subclass: ' +
-                'public override QueueableJob cloneForDeepCopy() { return (QueueableJob) ' +
-                'JSON.deserialize(JSON.serialize(this), YourClassName.class); }';
+                'class. Extend BaseQueueableJob, or override cloneForDeepCopy() on this job. See ' +
+                QueueableManager.DOCS_URL +
+                '/explanations/deep-clone-in-packages';
         } else {
             remedy = 'See ' + QueueableManager.DOCS_URL + '/explanations/job-cloning';
         }
-        return 'deepClone() failed for the job "' +
-            className +
-            '": ' +
-            cloneFailure.getTypeName() +
-            ': ' +
-            cloneFailure.getMessage() +
-            '\n' +
-            remedy;
+        return cloneFailure.getTypeName() + ': ' + cloneFailure.getMessage() + '\n' + remedy;
     }
 
     // Same namespace as these types, so never blocked by the boundary a subscriber hits.

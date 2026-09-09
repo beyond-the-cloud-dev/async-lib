@@ -3,7 +3,10 @@ public class NsTestFailureHook {
     public class NsHookException extends Exception {
     }
 
-    public class FailingHookJob extends btcdev.QueueableJob {
+    public class FailingHookJob extends btcdev.QueueableJob implements btcdev.Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             throw new NsHookException('ns hook failure');
         }

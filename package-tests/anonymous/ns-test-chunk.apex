@@ -1,6 +1,9 @@
 // NsTestChunkJob is a deployed helper (package-tests/consumer-app) so its pages can be
 // deserialized across async transactions - proves cloning of a real consumer ChunkJob.
-public class ConsumerIdChunkJob extends btcdev.ChunkJob {
+public class ConsumerIdChunkJob extends btcdev.ChunkJob implements btcdev.Async.ChunkResettable {
+    public void resetBeforeNextChunk(Integer pageNumber) {
+    }
+
     public override void work(List<SObject> chunk) {
         Set<Id> ids = new Map<Id, SObject>(chunk).keySet();
         System.debug('processing ids: ' + ids.size());

@@ -3,7 +3,10 @@ public class NsTestRetryBehavior {
     public class NsRetryException extends Exception {
     }
 
-    public class HistoryCapturingJob extends btcdev.QueueableJob {
+    public class HistoryCapturingJob extends btcdev.QueueableJob implements btcdev.Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             throw new NsRetryException('ns retry failure');
         }
@@ -19,7 +22,10 @@ public class NsTestRetryBehavior {
         }
     }
 
-    public class FinalizerAttachingJob extends btcdev.QueueableJob {
+    public class FinalizerAttachingJob extends btcdev.QueueableJob implements btcdev.Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             insert new Account(Name = 'NS-PARENT');
             btcdev.Async.queueable(new MarkerFinalizer()).attachFinalizer();
@@ -33,7 +39,10 @@ public class NsTestRetryBehavior {
         }
     }
 
-    public class JobChainingJob extends btcdev.QueueableJob {
+    public class JobChainingJob extends btcdev.QueueableJob implements btcdev.Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             insert new Account(Name = 'NS-PARENT');
             btcdev.Async.queueable(new FollowUpJob()).chain();
@@ -41,8 +50,11 @@ public class NsTestRetryBehavior {
         }
     }
 
-    public class DeepCloneRetryJob extends btcdev.QueueableJob {
+    public class DeepCloneRetryJob extends btcdev.QueueableJob implements btcdev.Async.Retryable {
         public List<String> attempts = new List<String>();
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
 
         public override void work() {
             attempts.add('attempt');
@@ -58,8 +70,111 @@ public class NsTestRetryBehavior {
         }
     }
 
+    public class UngatedNsJob extends btcdev.QueueableJob {
+        public override void work() {
+        }
+    }
+
+    public class UngatedNsChunkJob extends btcdev.ChunkJob {
+        public override void work(List<SObject> page) {
+        }
+    }
+
+    public class RestoringNsJob extends NsBaseQueueableJob {
+        public List<String> seen = new List<String>();
+
+        public override void work() {
+            insert new Account(Name = 'NS-RESTORE-' + seen.size());
+            seen.add('attempt');
+            throw new NsRetryException('ns retry failure');
+        }
+    }
+
+    public class RestoringNsChunkJob extends NsBaseChunkJob {
+        public List<String> seen = new List<String>();
+
+        public override void work(List<SObject> page) {
+            insert new Account(Name = 'NS-CHUNK-RESTORE-' + seen.size());
+            seen.add('page');
+        }
+    }
+
     private static Integer countOf(String name) {
         return [SELECT COUNT() FROM Account WHERE Name = :name];
+    }
+
+    private static List<Account> nsAccounts(Integer howMany) {
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < howMany; i++) {
+            accounts.add(new Account(Name = 'NS-SOURCE-' + i));
+        }
+        insert accounts;
+        return accounts;
+    }
+
+    @IsTest
+    static void shouldStopAConsumerRetryJobThatNeverDeclaresItsReset() {
+        try {
+            btcdev.Async.queueable(new UngatedNsJob()).retry(2).enqueue();
+            System.assert(false, 'The gate must reject a consumer job with no declared reset');
+        } catch (Exception ex) {
+            System.assert(
+                ex.getMessage().contains('btcdev.Async.Retryable'),
+                'A packaged consumer must be told the namespaced type name, but was: ' +
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void shouldStopAConsumerChunkJobThatNeverDeclaresItsReset() {
+        try {
+            btcdev.Async.chunk(new UngatedNsChunkJob(), btcdev.ChunkSource.of(nsAccounts(2)))
+                .enqueue();
+            System.assert(
+                false,
+                'The gate must reject a consumer chunk job with no declared reset'
+            );
+        } catch (Exception ex) {
+            System.assert(
+                ex.getMessage().contains('btcdev.Async.ChunkResettable'),
+                'A packaged consumer must be told the namespaced type name, but was: ' +
+                ex.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void shouldRestoreTheEnqueuedStateOnRetryFromASubscriberNamespace() {
+        Test.startTest();
+        btcdev.Async.queueable(new RestoringNsJob())
+            .restoreStateOnRetry()
+            .continueOnJobExecuteFail()
+            .retry(2)
+            .enqueue();
+        Test.stopTest();
+
+        System.assertEquals(
+            3,
+            countOf('NS-RESTORE-0'),
+            'Every attempt must replay from the enqueue-time copy taken through the base class'
+        );
+    }
+
+    @IsTest
+    static void shouldRestoreTheEnqueuedStateOnEveryChunkPageFromASubscriberNamespace() {
+        Test.startTest();
+        btcdev.Async.chunk(new RestoringNsChunkJob(), btcdev.ChunkSource.of(nsAccounts(6)))
+            .chunkSize(2)
+            .restoreStateOnNextChunk()
+            .enqueue();
+        Test.stopTest();
+
+        System.assertEquals(
+            3,
+            countOf('NS-CHUNK-RESTORE-0'),
+            'A packaged ChunkJob must deep copy without the ChunkSource blocking it'
+        );
     }
 
     @IsTest
@@ -129,8 +244,12 @@ public class NsTestRetryBehavior {
         }
     }
 
-    public class InheritedCloneJobA extends NsBaseQueueableJob {
+    public class InheritedCloneJobA extends NsBaseQueueableJob implements btcdev.Async.Retryable {
         public List<String> attempts = new List<String>();
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
         public override void work() {
             attempts.add('a');
             insert new Account(Name = 'NS-INHERITED-A-' + retryAttempt);
@@ -145,7 +264,7 @@ public class NsTestRetryBehavior {
         }
     }
 
-    public class InheritedCalloutJob extends NsBaseQueueableJob.AllowsCallouts {
+    public class InheritedCalloutJob extends NsBaseQueueableJob implements Database.AllowsCallouts {
         public String label = 'default';
         public List<String> items = new List<String>();
         public override void work() {

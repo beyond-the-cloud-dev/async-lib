@@ -102,6 +102,7 @@ Before submitting your PR, make sure you've:
 - [ ] Verified that all existing tests pass (`npm test`)
 - [ ] Run linting and formatting (`npm run lint`, `npm run prettier`)
 - [ ] Updated the documentation site if needed
+- [ ] Checked [API evolution rules](docs/api-evolution.md) if you touched a `global` type or added an extension point
 
 ## 📝 Types of Contributions
 

@@ -149,6 +149,10 @@ export default defineConfig({
             text: 'Initial Queueable Chain Schedulable',
             link: '/explanations/initial-scheduled-queuable-batch-job'
           },
+          {
+            text: 'Job State Between Runs',
+            link: '/explanations/job-state-between-runs'
+          },
           { text: 'Job Cloning', link: '/explanations/job-cloning' },
           {
             text: 'Deep Clone in Packages',

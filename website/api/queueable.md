@@ -71,6 +71,38 @@ harmless. See
 
 :::
 
+## Callouts
+
+Add `implements Database.AllowsCallouts` to any job that calls out. This is the
+standard Salesforce marker interface, the same one you put on any `Queueable`, not
+an Async Lib invention.
+
+It works on every job type, on `QueueableJob`, on `ChunkJob`, on a finalizer, and on
+the base classes used for [packaged installs](/explanations/deep-clone-in-packages).
+
+```apex
+public class SyncJob extends QueueableJob implements Database.AllowsCallouts {
+    public override void work() {
+        HttpResponse response = new Http().send(request);
+    }
+}
+```
+
+Callout capability survives cloning, so a retried job and every chunk page can
+still call out. The copy is always the same concrete class.
+
+::: tip QueueableJob.AllowsCallouts
+
+`extends QueueableJob.AllowsCallouts` is the pre-3.0 form and still works. It is
+an empty class that does nothing but implement `Database.AllowsCallouts` for you.
+
+Prefer the marker on new code. A job can only extend one class, so the marker
+composes with whatever base your job already needs, while the base class does not.
+`QueueableJob.Finalizer` is different and stays a base class, because the framework
+tests for that type rather than for a capability.
+
+:::
+
 ## Methods
 
 The following are methods for using Async with Queueable jobs:
@@ -93,6 +125,7 @@ The following are methods for using Async with Queueable jobs:
 - [`retryOn(Type exceptionType)`](#retryon)
 - [`dependsOn(Async.Dependency dependency)`](#dependson)
 - [`deepClone()`](#deepclone)
+- [`restoreStateOnRetry()`](#restorestateonretry)
 - [`chain()`](#chain)
 - [`chain(QueueableJob job)`](#chain-next-job)
 - [`asSchedulable()`](#asschedulable)
@@ -118,8 +151,10 @@ The following are methods for using Async with Queueable jobs:
 `QueueableJob` subclass (not fluent builder calls)
 
 - [`isRetryable(Exception ex)`](#isretryable)
-- [`resetForRetry()`](#resetforretry)
+- [`resetBeforeRetry(Integer attempt)`](#resetbeforeretry) — `Async.Retryable`
+- [`resetBeforeNextChunk(Integer pageNumber)`](#resetbeforenextchunk) — `Async.ChunkResettable`
 - [`onFinalFailure(Async.FailureContext failureCtx)`](#onfinalfailure)
+- ~~[`resetForRetry()`](#resetforretry)~~ <Badge type="danger" text="DEPRECATED - never called" />
 
 ### INIT
 
@@ -340,9 +375,13 @@ exception, computed delay) is aggregated into `AsyncResult__c.RetryHistory__c`
 A retried job re-runs `work()`, so make retried jobs idempotent. State the
 previous attempt accumulated is carried into the next one, and
 [`deepClone()`](#deepclone) does **not** clear it, because the clone is taken
-after `work()` already mutated the job. Use
-[`resetForRetry()`](#resetforretry) to put mutable member state back to its
-starting point.
+after `work()` already mutated the job.
+
+Async Lib will not let you leave this undecided. `retry(n)` requires either
+[`resetBeforeRetry(Integer)`](#resetbeforeretry) via `Async.Retryable`, or
+[`restoreStateOnRetry()`](#restorestateonretry) to replay the job from the state
+it had at enqueue. See
+[Job State Between Runs](/explanations/job-state-between-runs).
 
 :::
 
@@ -531,6 +570,44 @@ QueueableBuilder deepClone();
 ```apex
 Async.queueable(new MyQueueableJob())
 	.deepClone();
+```
+
+#### restoreStateOnRetry
+
+Replays every retry from the state the job had when it was enqueued, instead of
+from whatever the failed attempt left behind. Async Lib takes a deep copy at
+enqueue and restores your fields from it before each attempt.
+
+Only fields **you** declared are restored. `retryAttempt`, the retry history and
+the backoff delay carry forward, so the retry still knows which attempt it is.
+
+This is the alternative to implementing
+[`Async.Retryable`](#resetbeforeretry). A job with `retry(n)` needs one of the
+two, or it throws at enqueue.
+
+::: warning Package Usage
+
+The restore takes a deep copy, so on a namespaced install the job needs a
+`cloneForDeepCopy()` override. Write it per job, or extend a base class that does
+it for you, whichever suits. See
+[Deep Clone in Packages](/explanations/deep-clone-in-packages).
+`resetBeforeRetry()` needs neither.
+
+:::
+
+**Signature**
+
+```apex
+QueueableBuilder restoreStateOnRetry();
+```
+
+**Example**
+
+```apex
+Async.queueable(new MyQueueableJob())
+	.retry(3)
+	.restoreStateOnRetry()
+	.enqueue();
 ```
 
 #### chain
@@ -898,36 +975,119 @@ public class SyncContactsJob extends QueueableJob {
 }
 ```
 
-#### resetForRetry
+#### resetBeforeRetry
 
-Override to reset transient state before a retry runs. The framework re-enqueues
-a **clone** of the failed job; a shallow clone copies object members by
-reference, so anything that accumulated state during the failed run (most
-commonly a Unit of Work holding registered records) is carried into the retry
-and can cause duplicate or stale DML. `resetForRetry()` runs on the fresh retry
-clone, after the framework has reset its own bookkeeping — recreate or clear
-your transient members here. Default is a no-op.
+Declared by `Async.Retryable`. Runs on the retry clone before the next attempt,
+after the framework has reset its own bookkeeping. Clear or recreate your own
+members here.
+
+The framework re-enqueues a **clone** of the failed job, and a shallow clone
+copies object members by reference, so anything that accumulated during the
+failed run (most commonly a Unit of Work holding registered records) is carried
+into the retry and can cause duplicate or stale DML.
+
+Any job configuring `retry(n)` must either implement this or call
+[`restoreStateOnRetry()`](#restorestateonretry), otherwise it throws at enqueue.
+An empty body is a valid answer when the job holds nothing worth clearing.
 
 **Signature**
 
 ```apex
-public virtual void resetForRetry();
+public interface Retryable {
+  void resetBeforeRetry(Integer attempt);
+}
 ```
 
 **Example**
 
 ```apex
-public class SyncContactsJob extends QueueableJob {
+public class SyncContactsJob extends QueueableJob implements Async.Retryable {
   private MyUnitOfWork uow = new MyUnitOfWork();
 
   public override void work() {
     /* registers into uow, then commits */
   }
 
-  public override void resetForRetry() {
-    this.uow = new MyUnitOfWork(); // fresh, empty — drop the failed run's registrations
+  public void resetBeforeRetry(Integer attempt) {
+    this.uow = new MyUnitOfWork(); // fresh, empty, drop the failed run's registrations
   }
 }
+```
+
+See [Job State Between Runs](/explanations/job-state-between-runs) for the full
+picture, including the chunk equivalent.
+
+#### resetBeforeNextChunk
+
+Declared by `Async.ChunkResettable`. The chunk equivalent of
+[`resetBeforeRetry`](#resetbeforeretry). Runs before the run advances to the
+next page, receiving the page number it is preparing.
+
+Every page re-runs the same job object, so per-page buffers carry over unless
+you clear them. State you want to survive the whole run, such as a running
+total, is exactly what you leave alone here.
+
+Every `ChunkJob` must either implement this or call
+[`restoreStateOnNextChunk()`](/api/chunk#restorestateonnextchunk), otherwise it
+throws at enqueue. An empty body is a valid answer.
+
+**Signature**
+
+```apex
+public interface ChunkResettable {
+  void resetBeforeNextChunk(Integer pageNumber);
+}
+```
+
+**Example**
+
+```apex
+public class ImportChunk extends ChunkJob implements Async.ChunkResettable {
+  private List<Id> pending = new List<Id>();
+  private Integer totalProcessed = 0;
+
+  public override void work(List<SObject> page) { ... }
+
+  public void resetBeforeNextChunk(Integer pageNumber) {
+    pending.clear();   // totalProcessed deliberately survives the whole run
+  }
+}
+```
+
+#### ~~resetForRetry~~ <Badge type="danger" text="DEPRECATED" /> {#resetforretry}
+
+::: danger This method is never called
+
+As of **3.0.0** `resetForRetry()` does nothing. Overriding it has no effect and
+your reset logic will silently not run.
+
+**Move it:**
+
+```apex
+// Before, no longer runs
+public override void resetForRetry() {
+    inserted.clear();
+}
+
+// After
+public class MyJob extends QueueableJob implements Async.Retryable {
+    public void resetBeforeRetry(Integer attempt) {
+        inserted.clear();
+    }
+}
+```
+
+You will not miss the migration by accident: any job that configures `retry(n)`
+without declaring [`Async.Retryable`](#resetbeforeretry) or
+[`restoreStateOnRetry()`](#restorestateonretry) throws at enqueue.
+
+The method still exists only because it cannot be removed. Dropping a `global`
+member makes the package install fail in every org that referenced it.
+
+:::
+
+```apex
+public virtual void resetForRetry(); // deprecated, no-op
 ```
 
 #### onFinalFailure

@@ -1,8 +1,9 @@
 /**
  * PMD False Positives:
  * - CyclomaticComplexity: every fluent method validates its own argument
+ * - ExcessivePublicCount: one fluent method per chunk option
  **/
-@SuppressWarnings('PMD.CyclomaticComplexity')
+@SuppressWarnings('PMD.CyclomaticComplexity,PMD.ExcessivePublicCount')
 public inherited sharing class ChunkBuilder {
     @TestVisible
     private static final String ERROR_MESSAGE_INVALID_CHUNK_SIZE = 'chunkSize must be a positive integer';
@@ -107,6 +108,16 @@ public inherited sharing class ChunkBuilder {
     public ChunkBuilder retry(Integer maxRetries) {
         QueueableManager.assertValidMaxRetries(maxRetries);
         job.maxRetries = maxRetries;
+        return this;
+    }
+
+    public ChunkBuilder restoreStateOnRetry() {
+        job.restoreStateOnRetry = true;
+        return this;
+    }
+
+    public ChunkBuilder restoreStateOnNextChunk() {
+        job.restoreStateOnNextChunk = true;
         return this;
     }
 

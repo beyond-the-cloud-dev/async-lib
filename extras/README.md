@@ -24,8 +24,10 @@ It mirrors the shape of `btcdev.QueueableJob`, so swap the prefix and carry on:
 | Extend | instead of |
 | ------ | ---------- |
 | `BaseQueueableJob` | `btcdev.QueueableJob` |
-| `BaseQueueableJob.AllowsCallouts` | `btcdev.QueueableJob.AllowsCallouts` |
 | `BaseQueueableJob.Finalizer` | `btcdev.QueueableJob.Finalizer` |
+| `BaseChunkJob` | `btcdev.ChunkJob` |
+
+Callouts are a marker, not a base class. Add `implements Database.AllowsCallouts` to any of them.
 
 ```apex
 public class ImportJob extends BaseQueueableJob {

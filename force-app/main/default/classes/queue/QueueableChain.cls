@@ -1,9 +1,11 @@
 /**
  * PMD False Positives:
- * - CognitiveComplexity / CyclomaticComplexity / StdCyclomaticComplexity: This was intended to
- *   have all the logic in one class
+ * - CognitiveComplexity / CyclomaticComplexity / StdCyclomaticComplexity / NcssTypeCount: This
+ *   was intended to have all the logic in one class
  **/
-@SuppressWarnings('PMD.CognitiveComplexity,PMD.CyclomaticComplexity,PMD.StdCyclomaticComplexity')
+@SuppressWarnings(
+    'PMD.CognitiveComplexity,PMD.CyclomaticComplexity,PMD.StdCyclomaticComplexity,PMD.NcssTypeCount'
+)
 public inherited sharing class QueueableChain {
     @TestVisible
     private List<QueueableJob> jobs = new List<QueueableJob>();
@@ -22,18 +24,22 @@ public inherited sharing class QueueableChain {
     private String chainId;
 
     @TestVisible
-    private Map<String, QueueableJobSetting__mdt> queueableJobSettingByJobName {
+    public static Map<String, QueueableJobSetting__mdt> jobSettingByName {
         get {
-            if (Test.isRunningTest()) {
-                return queueableJobSettingByJobName ?? new Map<String, QueueableJobSetting__mdt>();
+            if (jobSettingByName == null) {
+                jobSettingByName = fromCustomMetadata();
             }
-            Map<String, QueueableJobSetting__mdt> jobSettings = new Map<String, QueueableJobSetting__mdt>();
-            for (QueueableJobSetting__mdt jobSetting : QueueableJobSetting__mdt.getAll().values()) {
-                jobSettings.put(jobSetting.QueueableJobName__c, jobSetting);
-            }
-            return jobSettings;
+            return jobSettingByName;
         }
         private set;
+    }
+
+    private static Map<String, QueueableJobSetting__mdt> fromCustomMetadata() {
+        Map<String, QueueableJobSetting__mdt> settings = new Map<String, QueueableJobSetting__mdt>();
+        for (QueueableJobSetting__mdt setting : QueueableJobSetting__mdt.getAll().values()) {
+            settings.put(setting.QueueableJobName__c, setting);
+        }
+        return settings;
     }
 
     public void execute(QueueableContext ctx) {
@@ -216,17 +222,11 @@ public inherited sharing class QueueableChain {
             return;
         }
         if (!job.hasFailed) {
-            AsyncEventDispatcher.jobSucceeded(
-                job,
-                QueueableManager.loggerClassFor(queueableJobSettingByJobName, job)
-            );
+            AsyncEventDispatcher.jobSucceeded(job, QueueableManager.loggerClassFor(job));
             return;
         }
         job.safeOnFinalFailure(new Async.FailureContext(job));
-        AsyncEventDispatcher.jobFailed(
-            job,
-            QueueableManager.loggerClassFor(queueableJobSettingByJobName, job)
-        );
+        AsyncEventDispatcher.jobFailed(job, QueueableManager.loggerClassFor(job));
     }
 
     private void recordChunkRunOutcome(ChunkJob settledPage) {
@@ -280,7 +280,7 @@ public inherited sharing class QueueableChain {
         AsyncEventDispatcher.retryEnqueued(
             previousJob,
             delayMinutes,
-            QueueableManager.loggerClassFor(queueableJobSettingByJobName, previousJob)
+            QueueableManager.loggerClassFor(previousJob)
         );
         enqueueNextJobIfAny();
     }
@@ -365,9 +365,9 @@ public inherited sharing class QueueableChain {
     }
 
     private Boolean resultEnabledFor(QueueableJob job) {
-        return queueableJobSettingByJobName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
-                ?.CreateResult__c == true ||
-            queueableJobSettingByJobName.get(job.className)?.CreateResult__c == true;
+        return jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)?.CreateResult__c ==
+            true ||
+            jobSettingByName.get(job.className)?.CreateResult__c == true;
     }
 
     private void createPendingResults() {
@@ -615,10 +615,7 @@ public inherited sharing class QueueableChain {
         job.captureEnqueuedState();
         jobs.add(job);
         jobs.sort();
-        AsyncEventDispatcher.jobEnqueued(
-            job,
-            QueueableManager.loggerClassFor(queueableJobSettingByJobName, job)
-        );
+        AsyncEventDispatcher.jobEnqueued(job, QueueableManager.loggerClassFor(job));
     }
 
     private void keepSlotOfChunkRunOrTakeNextOne(QueueableJob job) {
@@ -660,7 +657,7 @@ public inherited sharing class QueueableChain {
     }
 
     private QueueableJobSetting__mdt resolveRetrySetting(String jobClassName) {
-        Map<String, QueueableJobSetting__mdt> jobSettings = queueableJobSettingByJobName;
+        Map<String, QueueableJobSetting__mdt> jobSettings = jobSettingByName;
         QueueableJobSetting__mdt setting = jobSettings.get(jobClassName);
         if (setting == null || setting.MaxRetries__c == null) {
             setting = jobSettings.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL);
@@ -724,7 +721,7 @@ public inherited sharing class QueueableChain {
 
     @TestVisible
     private void removeJobsThatAreDisabledAndDependentFinalizers() {
-        Map<String, QueueableJobSetting__mdt> jobSettings = queueableJobSettingByJobName;
+        Map<String, QueueableJobSetting__mdt> jobSettings = jobSettingByName;
 
         if (jobSettings.isEmpty()) {
             return;

@@ -76,6 +76,7 @@ revert_internal_wiring() {
     api_surface_sed 's/global void recordConfigurationWarning(/public void recordConfigurationWarning(/g' \
         "force-app/main/default/classes/queue/QueueableJob.cls"
 
+
     api_surface_sed 's/global ChunkRun getRun(/public ChunkRun getRun(/g' \
         "force-app/main/default/classes/queue/ChunkJob.cls"
     api_surface_sed 's/global ChunkJob nextPageOrNull(/public ChunkJob nextPageOrNull(/g' \

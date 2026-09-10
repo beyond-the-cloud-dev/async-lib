@@ -32,13 +32,14 @@ public class NsTestLogging {
     }
 
     private static void registerLogger() {
-        btcdev.QueueableChain chain = btcdev.QueueableManager.get().getChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            'All' => new QueueableJobSetting__mdt(
-                QueueableJobName__c = 'All',
-                LoggerClass__c = 'NsAsyncLogger'
-            )
-        };
+        btcdev.AsyncMock.jobSettings(
+            new List<btcdev__QueueableJobSetting__mdt>{
+                new btcdev__QueueableJobSetting__mdt(
+                    btcdev__QueueableJobName__c = 'All',
+                    btcdev__LoggerClass__c = 'NsAsyncLogger'
+                )
+            }
+        );
     }
 
     @IsTest

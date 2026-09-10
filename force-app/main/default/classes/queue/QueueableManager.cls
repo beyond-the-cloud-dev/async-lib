@@ -214,10 +214,8 @@ public inherited sharing class QueueableManager {
         }
     }
 
-    public static String loggerClassFor(
-        Map<String, QueueableJobSetting__mdt> settings,
-        QueueableJob job
-    ) {
+    public static String loggerClassFor(QueueableJob job) {
+        Map<String, QueueableJobSetting__mdt> settings = QueueableChain.jobSettingByName;
         String jobSpecific = settings.get(job.className)?.LoggerClass__c;
         return String.isNotBlank(jobSpecific)
             ? jobSpecific

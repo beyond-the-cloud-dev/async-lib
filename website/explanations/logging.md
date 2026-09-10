@@ -108,6 +108,35 @@ failing it over a logging problem would turn an observability problem into a dat
 The same applies to a `LoggerClass__c` that cannot be resolved: jobs keep running, and the reason
 is recorded. See [Configuration Safety](/explanations/configuration-safety).
 
+## Testing your logger
+
+Custom Metadata cannot be inserted in Apex, so register the logger through
+`AsyncMock` instead. This is the only way to assert that the framework actually routes to you:
+
+```apex
+@IsTest
+static void shouldLogFailures() {
+    AsyncMock.jobSettings(
+        new List<QueueableJobSetting__mdt>{
+            new QueueableJobSetting__mdt(
+                QueueableJobName__c = 'All',
+                LoggerClass__c = 'MyAsyncLogger'
+            )
+        }
+    );
+
+    Test.startTest();
+    Async.queueable(new FailingJob()).continueOnJobExecuteFail().enqueue();
+    Test.stopTest();
+
+    // assert on whatever MyAsyncLogger recorded
+}
+```
+
+The same call covers every other Custom Metadata driven behaviour: retry defaults, backoff,
+retryable exceptions, result creation and disabled jobs. See
+[AsyncMock.jobSettings](/api/async-mock#jobsettings).
+
 ## Nebula Logger adapter
 
 ```apex

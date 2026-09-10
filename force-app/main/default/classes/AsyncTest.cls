@@ -384,7 +384,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         job3.uniqueName = 'job3';
 
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 IsDisabled__c = true
@@ -413,7 +413,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest8 job8 = new QueueableJobTest8();
 
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             getClassNameWithNamespaceDotPrefix(
                 'AsyncTest.QueueableJobTest1'
             ) => new QueueableJobSetting__mdt(
@@ -464,7 +464,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest2 job2 = new QueueableJobTest2();
 
         QueueableChain chain1 = new QueueableChain();
-        chain1.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             getClassNameWithNamespaceDotPrefix(
                 'AsyncTest.QueueableJobTest1'
             ) => new QueueableJobSetting__mdt(
@@ -473,7 +473,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
             )
         };
         QueueableChain chain2 = new QueueableChain();
-        chain2.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             getClassNameWithNamespaceDotPrefix(
                 'AsyncTest.QueueableJobTest1'
             ) => new QueueableJobSetting__mdt(
@@ -2243,6 +2243,73 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    private static void shouldRouteToALoggerRegisteredThroughAsyncMock() {
+        AsyncMock.jobSettings(
+            new List<QueueableJobSetting__mdt>{
+                new QueueableJobSetting__mdt(
+                    QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                    LoggerClass__c = loggerName('RecordingLogger')
+                )
+            }
+        );
+        QueueableChain chain = new QueueableChain();
+        QueueableManager.get().setChain(chain);
+
+        chain.addJob(new SuccessfulQueueableTest());
+
+        Assert.isTrue(
+            loggedEvents.contains('enqueued:' + loggerName('SuccessfulQueueableTest') + ':null'),
+            'A consumer must be able to register a logger without reaching into the framework: ' +
+            loggedEvents
+        );
+    }
+
+    @IsTest
+    private static void shouldApplyRetryDefaultsRegisteredThroughAsyncMock() {
+        AsyncMock.jobSettings(
+            new List<QueueableJobSetting__mdt>{
+                new QueueableJobSetting__mdt(
+                    QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                    MaxRetries__c = 3,
+                    BackoffStrategy__c = 'FIXED',
+                    BackoffBaseMinutes__c = 5
+                )
+            }
+        );
+        QueueableChain chain = new QueueableChain();
+        StateCarryingRetryJob job = new StateCarryingRetryJob();
+
+        chain.addJob(job);
+
+        Assert.areEqual(3, job.maxRetries, 'Retry settings must reach the chain through the mock.');
+        Assert.areEqual(5, job.backoff.delayMinutes(1), 'Backoff settings must reach it too.');
+    }
+
+    @IsTest
+    private static void shouldForgetMockedJobSettingsOnReset() {
+        AsyncMock.jobSettings(
+            new List<QueueableJobSetting__mdt>{
+                new QueueableJobSetting__mdt(
+                    QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                    MaxRetries__c = 3
+                )
+            }
+        );
+
+        AsyncMock.reset();
+
+        QueueableChain chain = new QueueableChain();
+        StateCarryingRetryJob job = new StateCarryingRetryJob();
+        chain.addJob(job);
+
+        Assert.areEqual(
+            0,
+            job.maxRetries,
+            'reset() must clear mocked settings with everything else.'
+        );
+    }
+
+    @IsTest
     private static void shouldSendEveryLifecycleEventToTheRegisteredLogger() {
         QueueableChain chain = chainWithLogger(loggerName('RecordingLogger'));
         QueueableManager.get().setChain(chain);
@@ -2365,7 +2432,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldPreferAJobSpecificLoggerOverTheOrgWideDefault() {
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 LoggerClass__c = loggerName('RecordingLogger')
@@ -2612,7 +2679,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest1 job = new QueueableJobTest1();
 
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 MaxRetries__c = 3,
@@ -2635,7 +2702,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         job.maxRetries = 5;
 
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 MaxRetries__c = 3
@@ -3020,7 +3087,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         SuccessfulQueueableTest job = new SuccessfulQueueableTest();
 
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
         chain.addJob(job);
         QueueableManager.get().setChain(chain);
 
@@ -3050,7 +3117,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
 
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
         chain.addJob(jobA);
         jobB.dependencies = new List<Async.Dependency>{
             dependencyOn(jobA.customJobId, Async.Outcome.SUCCESS)
@@ -3109,7 +3176,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 IsDisabled__c = true
             )
         );
-        chain.queueableJobSettingByJobName = settings;
+        QueueableChain.jobSettingByName = settings;
         chain.addJob(job);
 
         Test.startTest();
@@ -3152,7 +3219,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldRecordChainResultsEndToEnd() {
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
         QueueableManager.get().setChain(chain);
 
         Test.startTest();
@@ -3229,7 +3296,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldRecordRetryHistoryOnExhaustionEndToEnd() {
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
         QueueableManager.get().setChain(chain);
 
         Test.startTest();
@@ -3776,7 +3843,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldKeepEveryAttemptInRetryHistoryAfterDiscardingChainChanges() {
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
         QueueableManager.get().setChain(chain);
 
         Test.startTest();
@@ -3866,7 +3933,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldKeepChainRunningWhenOnFinalFailureThrows() {
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
         QueueableManager.get().setChain(chain);
 
         Test.startTest();
@@ -4036,7 +4103,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest1 job = new QueueableJobTest1();
 
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 MaxRetries__c = 2,
@@ -4286,7 +4353,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     private static QueueableChain chainWithSettings(QueueableJobSetting__mdt setting) {
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             setting.QueueableJobName__c => setting
         };
         return chain;
@@ -5018,7 +5085,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldCreateResultRowForChunk() {
         List<Account> accounts = createAccounts(3);
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
 
         Test.startTest();
         QueueableManager.get().setChain(chain);
@@ -5348,7 +5415,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldFailAJobFromAQueueableMock() {
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
         AsyncMock.whenQueueable('mocked-failure')
             .thenThrow(new CustomException(CUSTOM_ERROR_MESSAGE));
 
@@ -5443,7 +5510,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldFailAndRetryAPageWhenTheSourceThrows() {
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
 
         Test.startTest();
         QueueableManager.get().setChain(chain);
@@ -5867,7 +5934,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldRecordSummaryResultWhenRunHaltsOnFailure() {
         List<Account> accounts = accountsWithOneFailingRecord();
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
 
         Test.startTest();
         QueueableManager.get().setChain(chain);
@@ -5897,7 +5964,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldRecordSummaryResultWhenChainStopsDuringRun() {
         List<Account> accounts = createAccounts(6);
         QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = resultsEnabledForAll();
+        QueueableChain.jobSettingByName = resultsEnabledForAll();
 
         Test.startTest();
         QueueableManager.get().setChain(chain);

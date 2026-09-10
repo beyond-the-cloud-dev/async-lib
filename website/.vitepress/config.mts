@@ -153,6 +153,10 @@ export default defineConfig({
             text: 'Job State Between Runs',
             link: '/explanations/job-state-between-runs'
           },
+          {
+            text: 'Configuration Safety',
+            link: '/explanations/configuration-safety'
+          },
           { text: 'Job Cloning', link: '/explanations/job-cloning' },
           {
             text: 'Deep Clone in Packages',

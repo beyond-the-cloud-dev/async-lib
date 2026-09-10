@@ -341,9 +341,11 @@ Async.queueable(new MyQueueableJob())
 Opts the job into automatic retry on execution failure. `maxRetries` is the
 number of retries **after** the first run (so `retry(3)` runs the job up to 4
 times total). Retry is **off by default**, so without this call a failed job is
-never retried. `maxRetries` must not exceed the framework safety limit of `10`;
-a higher value (whether passed to `retry(...)` or configured via
-`QueueableJobSetting__mdt`) throws an exception.
+never retried. `maxRetries` must not exceed the framework safety limit of `10`.
+Passing a higher value to `retry(...)` throws. Configuring one on
+`QueueableJobSetting__mdt` clamps to the limit and records why, because a
+Custom Metadata mistake must never stop an org's jobs from running. See
+[Configuration Safety](/explanations/configuration-safety).
 
 On each failed attempt the framework re-enqueues a fresh clone of the job with
 an incremented attempt counter. Jobs the failed attempt chained, and any

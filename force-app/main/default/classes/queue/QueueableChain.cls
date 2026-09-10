@@ -621,30 +621,18 @@ public inherited sharing class QueueableChain {
             return;
         }
 
-        Integer settingMaxRetries = setting.MaxRetries__c.intValue();
-        if (settingMaxRetries > QueueableManager.MAX_RETRY_CAP) {
-            throw new IllegalArgumentException(
-                QueueableManager.ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP
+        if (!QueueableManager.declaresRetryStateHandling(job)) {
+            job.recordConfigurationWarning(
+                String.format(
+                    QueueableManager.WARNING_CMDT_RETRY_WITHOUT_RESET,
+                    new List<String>{ job.className, QueueableManager.API_PREFIX }
+                )
             );
+            return;
         }
-        job.maxRetries = settingMaxRetries;
 
-        if (job.backoff == null && String.isNotBlank(setting.BackoffStrategy__c)) {
-            Integer baseMinutes = setting.BackoffBaseMinutes__c?.intValue() ?? 1;
-            job.backoff = Backoff.fromName(setting.BackoffStrategy__c, baseMinutes);
-            if (job.backoff == null) {
-                throw new IllegalArgumentException(
-                    String.format(
-                        QueueableManager.ERROR_MESSAGE_UNKNOWN_BACKOFF_STRATEGY,
-                        new List<String>{
-                            setting.BackoffStrategy__c,
-                            setting.QueueableJobName__c,
-                            Backoff.KNOWN_STRATEGIES
-                        }
-                    )
-                );
-            }
-        }
+        job.maxRetries = QueueableManager.cappedRetries(job, setting.MaxRetries__c.intValue());
+        QueueableManager.applyBackoffDefault(job, setting);
 
         if (job.retryOnExceptionTypes == null) {
             job.retryOnExceptionTypes = parseExceptionTypes(setting.RetryableExceptions__c);

@@ -2,8 +2,10 @@
  * PMD False Positives:
  * - CyclomaticComplexity / CognitiveComplexity: one guard clause per documented error message,
  *   and the most complex member scores 7
+ * - ExcessivePublicCount: most of the count is error and warning message constants, kept here so
+ *   every message the framework can raise is visible and assertable in one place
  **/
-@SuppressWarnings('PMD.CyclomaticComplexity,PMD.CognitiveComplexity')
+@SuppressWarnings('PMD.CyclomaticComplexity,PMD.CognitiveComplexity,PMD.ExcessivePublicCount')
 public inherited sharing class QueueableManager {
     public static final String QUEUEABLE_JOB_SETTING_ALL = 'All';
     public static final String STATUS_COMPLETED = 'COMPLETED';
@@ -36,6 +38,11 @@ public inherited sharing class QueueableManager {
         API_PREFIX +
         'Async.ChunkResettable and clear your own state in resetBeforeNextChunk(Integer pageNumber)\n- call restoreStateOnNextChunk() to have Async Lib replay every page from the state the job had when it was enqueued\nAn empty resetBeforeNextChunk() body is a valid answer, and keeps whatever the previous page left behind, exactly as 2.x did.\nSee ' +
         DOCS_URL_JOB_STATE;
+    public static final String WARNING_CMDT_RETRY_WITHOUT_RESET =
+        'QueueableJobSetting__mdt turns retry on for "{0}", but that job does not say what happens to its state between attempts, so retry was NOT applied and the job ran once. A retry re-runs the same object and would carry the failed attempt state forward. To enable retry for this job, implement {1}Async.Retryable or call restoreStateOnRetry(). See ' +
+        DOCS_URL_JOB_STATE;
+    public static final String WARNING_UNKNOWN_BACKOFF_STRATEGY = 'QueueableJobSetting__mdt.BackoffStrategy__c is "{0}" for "{1}", which is not a known strategy, so no backoff was applied and retries run without delay. Use one of: {2}.';
+    public static final String WARNING_MAX_RETRIES_EXCEEDS_CAP = 'QueueableJobSetting__mdt.MaxRetries__c is {0} for "{1}", above the framework cap of {2}, so it was clamped to {2}.';
     public static final String ERROR_MESSAGE_INVALID_DEPENDENCY = 'A dependency requires a target and an outcome (e.g. Async.after(result).succeeded())';
     public static final String ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB = 'dependsOn(Async.afterPrevious()) requires a previously chained job';
     public static final String ERROR_MESSAGE_UNKNOWN_JOB = 'No job in this chain has custom job id "{0}".';
@@ -179,8 +186,49 @@ public inherited sharing class QueueableManager {
             frameworkFailure.getStackTraceString();
     }
 
+    public static void applyBackoffDefault(QueueableJob job, QueueableJobSetting__mdt setting) {
+        if (job.backoff != null || String.isBlank(setting.BackoffStrategy__c)) {
+            return;
+        }
+        Integer baseMinutes = setting.BackoffBaseMinutes__c?.intValue() ?? 1;
+        job.backoff = Backoff.fromName(setting.BackoffStrategy__c, baseMinutes);
+        if (job.backoff == null) {
+            job.recordConfigurationWarning(
+                String.format(
+                    WARNING_UNKNOWN_BACKOFF_STRATEGY,
+                    new List<String>{
+                        setting.BackoffStrategy__c,
+                        setting.QueueableJobName__c,
+                        Backoff.KNOWN_STRATEGIES
+                    }
+                )
+            );
+        }
+    }
+
+    public static Boolean declaresRetryStateHandling(QueueableJob job) {
+        return job.restoreStateOnRetry || job instanceof Async.Retryable;
+    }
+
+    public static Integer cappedRetries(QueueableJob job, Integer requested) {
+        if (requested <= MAX_RETRY_CAP) {
+            return requested;
+        }
+        job.recordConfigurationWarning(
+            String.format(
+                WARNING_MAX_RETRIES_EXCEEDS_CAP,
+                new List<String>{
+                    String.valueOf(requested),
+                    job.className,
+                    String.valueOf(MAX_RETRY_CAP)
+                }
+            )
+        );
+        return MAX_RETRY_CAP;
+    }
+
     public static void assertStateHandlingDeclared(QueueableJob job) {
-        if (job.maxRetries > 0 && !job.restoreStateOnRetry && !(job instanceof Async.Retryable)) {
+        if (job.maxRetries > 0 && !declaresRetryStateHandling(job)) {
             throw new IllegalArgumentException(
                 String.format(ERROR_MESSAGE_RETRY_WITHOUT_RESET, new List<String>{ job.className })
             );

@@ -173,5 +173,11 @@ At `.enqueue()` or `.chain()`, synchronously, before anything is sent to the que
 - a job with `retry(n)` that neither implements `Async.Retryable` nor calls `restoreStateOnRetry()`
 - a `ChunkJob` that neither implements `Async.ChunkResettable` nor calls `restoreStateOnNextChunk()`
 
-Retry configured through `QueueableJobSetting__mdt` is gated too. Turning retry on for a job in
-custom metadata cannot bypass the check.
+Retry configured through `QueueableJobSetting__mdt` cannot bypass the check either, but it does
+not throw. An admin can edit Custom Metadata in production with no deploy and no test run, and the
+`All` record reaches every job in the org, so refusing to enqueue would turn one typo into an
+org-wide outage.
+
+Instead, **retry is simply not applied** to a job that has not declared how its state resets, the
+job runs once as its code was written and tested to, and the reason is recorded on the job. See
+[Configuration Safety](/explanations/configuration-safety).

@@ -2229,22 +2229,85 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    private static void shouldGateAJobThatGetsItsRetryFromCustomMetadata() {
-        QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+    private static void shouldNotApplyCustomMetadataRetryToAJobThatDeclaresNoReset() {
+        QueueableChain chain = chainWithSettings(
+            new QueueableJobSetting__mdt(
                 QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 MaxRetries__c = 2
             )
-        };
+        );
+        UngatedRetryJob job = new UngatedRetryJob();
 
+        chain.addJob(job);
+
+        Assert.areEqual(
+            0,
+            job.maxRetries,
+            'An admin turning retry on org-wide must not enable it for a job that never declared a reset.'
+        );
+        Assert.isTrue(
+            job.retryHistory.contains('Async.Retryable'),
+            'The job must carry the reason retry was skipped, but was: ' + job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldNotHaltAJobWhenCustomMetadataNamesAnUnknownBackoffStrategy() {
+        QueueableChain chain = chainWithSettings(
+            new QueueableJobSetting__mdt(
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                MaxRetries__c = 2,
+                BackoffStrategy__c = 'expnential'
+            )
+        );
+        StateCarryingRetryJob job = new StateCarryingRetryJob();
+
+        chain.addJob(job);
+
+        Assert.areEqual(2, job.maxRetries, 'Retry still applies; only the bad backoff is dropped.');
+        Assert.isNull(job.backoff, 'An unknown strategy must leave backoff unset, not throw.');
+        Assert.isTrue(
+            job.retryHistory.contains('expnential'),
+            'The typo must be named in the job history, but was: ' + job.retryHistory
+        );
+        Assert.isTrue(
+            job.retryHistory.contains('EXPONENTIAL_JITTER'),
+            'The valid strategies must still be listed, but was: ' + job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldClampCustomMetadataRetriesAboveTheCapInsteadOfThrowing() {
+        QueueableChain chain = chainWithSettings(
+            new QueueableJobSetting__mdt(
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                MaxRetries__c = QueueableManager.MAX_RETRY_CAP + 40
+            )
+        );
+        StateCarryingRetryJob job = new StateCarryingRetryJob();
+
+        chain.addJob(job);
+
+        Assert.areEqual(
+            QueueableManager.MAX_RETRY_CAP,
+            job.maxRetries,
+            'A number above the cap must clamp, not stop the job from enqueueing.'
+        );
+        Assert.isTrue(
+            job.retryHistory.contains(String.valueOf(QueueableManager.MAX_RETRY_CAP)),
+            'The clamp must be recorded, but was: ' + job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldStillThrowWhenRetryIsAskedForInApexWithoutAReset() {
         try {
-            chain.addJob(new UngatedRetryJob());
-            Assert.fail('Retry configured by CMDT must be gated the same as retry().');
+            Async.queueable(new UngatedRetryJob()).retry(2).enqueue();
+            Assert.fail('Retry written in Apex is the developer own code and must still throw.');
         } catch (IllegalArgumentException ex) {
             Assert.isTrue(
                 ex.getMessage().contains('Async.Retryable'),
-                'CMDT-configured retry must reach the same gate, but was: ' + ex.getMessage()
+                'Code-triggered misconfiguration keeps the loud gate, but was: ' + ex.getMessage()
             );
         }
     }
@@ -2423,29 +2486,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
         chain.addJob(job);
 
         Assert.areEqual(5, job.maxRetries, 'Explicit fluent config must win over CMDT.');
-    }
-
-    @IsTest
-    private static void shouldRejectCmdtMaxRetriesAboveCap() {
-        QueueableJobTest1 job = new QueueableJobTest1();
-
-        QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
-                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
-                MaxRetries__c = QueueableManager.MAX_RETRY_CAP + 1
-            )
-        };
-
-        try {
-            chain.addJob(job);
-            Assert.fail('Should reject a CMDT retry count above the framework cap.');
-        } catch (Exception ex) {
-            Assert.areEqual(
-                QueueableManager.ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP,
-                ex.getMessage()
-            );
-        }
     }
 
     @IsTest
@@ -3561,30 +3601,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
-    private static void shouldFailFastOnAnUnknownBackoffStrategyInMetadata() {
-        QueueableChain chain = new QueueableChain();
-        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
-            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
-                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
-                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
-                MaxRetries__c = 2,
-                BackoffStrategy__c = 'EXPONENTAIL'
-            )
-        };
-
-        try {
-            chain.addJob(new SuccessfulQueueableTest());
-            Assert.fail('A typo in BackoffStrategy__c must not silently disable backoff.');
-        } catch (IllegalArgumentException ex) {
-            Assert.isTrue(ex.getMessage().contains('EXPONENTAIL'), 'The bad value is named.');
-            Assert.isTrue(
-                ex.getMessage().contains('EXPONENTIAL_JITTER'),
-                'The valid strategies are listed.'
-            );
-        }
-    }
-
-    @IsTest
     private static void shouldRecordWhyAFailureWasNotRetriedWhenItsTypeIsNotListed() {
         SuccessfulQueueableTest job = new SuccessfulQueueableTest();
         job.maxRetries = 2;
@@ -4108,6 +4124,14 @@ private class AsyncTest implements Database.Batchable<SObject> {
             }
         }
         return followUps;
+    }
+
+    private static QueueableChain chainWithSettings(QueueableJobSetting__mdt setting) {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            setting.QueueableJobName__c => setting
+        };
+        return chain;
     }
 
     private static QueueableChain chainRunning(QueueableJob job) {

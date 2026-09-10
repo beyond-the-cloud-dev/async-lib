@@ -43,6 +43,14 @@ public inherited sharing class QueueableManager {
         DOCS_URL_JOB_STATE;
     public static final String WARNING_UNKNOWN_BACKOFF_STRATEGY = 'QueueableJobSetting__mdt.BackoffStrategy__c is "{0}" for "{1}", which is not a known strategy, so no backoff was applied and retries run without delay. Use one of: {2}.';
     public static final String WARNING_MAX_RETRIES_EXCEEDS_CAP = 'QueueableJobSetting__mdt.MaxRetries__c is {0} for "{1}", above the framework cap of {2}, so it was clamped to {2}.';
+    public static final String DOCS_URL_LOGGING = DOCS_URL + '/explanations/logging';
+    public static final String WARNING_LOGGER_NOT_FOUND =
+        'QueueableJobSetting__mdt.LoggerClass__c names "{0}", which could not be resolved, so no events were logged. Async Lib can only reach a class declared global. Change it to "global class {0}" and make sure the name is spelled exactly as the class. See ' +
+        DOCS_URL_LOGGING;
+    public static final String WARNING_LOGGER_NOT_USABLE =
+        'QueueableJobSetting__mdt.LoggerClass__c names "{0}", which could not be constructed, so no events were logged: {1}. The class needs a public no-argument constructor. See ' +
+        DOCS_URL_LOGGING;
+    public static final String WARNING_LOGGER_THREW = 'An Async Lib event listener threw {0}: {1}. The job was not affected. {2}';
     public static final String ERROR_MESSAGE_INVALID_DEPENDENCY = 'A dependency requires a target and an outcome (e.g. Async.after(result).succeeded())';
     public static final String ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB = 'dependsOn(Async.afterPrevious()) requires a previously chained job';
     public static final String ERROR_MESSAGE_UNKNOWN_JOB = 'No job in this chain has custom job id "{0}".';
@@ -204,6 +212,16 @@ public inherited sharing class QueueableManager {
                 )
             );
         }
+    }
+
+    public static String loggerClassFor(
+        Map<String, QueueableJobSetting__mdt> settings,
+        QueueableJob job
+    ) {
+        String jobSpecific = settings.get(job.className)?.LoggerClass__c;
+        return String.isNotBlank(jobSpecific)
+            ? jobSpecific
+            : settings.get(QUEUEABLE_JOB_SETTING_ALL)?.LoggerClass__c;
     }
 
     public static Boolean declaresRetryStateHandling(QueueableJob job) {

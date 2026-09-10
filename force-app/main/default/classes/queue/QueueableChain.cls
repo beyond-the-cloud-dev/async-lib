@@ -212,10 +212,21 @@ public inherited sharing class QueueableChain {
     }
 
     private void notifyFinalFailure(QueueableJob job) {
+        if (job.skipStatus != null) {
+            return;
+        }
         if (!job.hasFailed) {
+            AsyncEventDispatcher.jobSucceeded(
+                job,
+                QueueableManager.loggerClassFor(queueableJobSettingByJobName, job)
+            );
             return;
         }
         job.safeOnFinalFailure(new Async.FailureContext(job));
+        AsyncEventDispatcher.jobFailed(
+            job,
+            QueueableManager.loggerClassFor(queueableJobSettingByJobName, job)
+        );
     }
 
     private void recordChunkRunOutcome(ChunkJob settledPage) {
@@ -266,6 +277,11 @@ public inherited sharing class QueueableChain {
 
         revertChainChangesBeforeRetry();
         jobs.add(0, retryJob);
+        AsyncEventDispatcher.retryEnqueued(
+            previousJob,
+            delayMinutes,
+            QueueableManager.loggerClassFor(queueableJobSettingByJobName, previousJob)
+        );
         enqueueNextJobIfAny();
     }
 
@@ -599,6 +615,10 @@ public inherited sharing class QueueableChain {
         job.captureEnqueuedState();
         jobs.add(job);
         jobs.sort();
+        AsyncEventDispatcher.jobEnqueued(
+            job,
+            QueueableManager.loggerClassFor(queueableJobSettingByJobName, job)
+        );
     }
 
     private void keepSlotOfChunkRunOrTakeNextOne(QueueableJob job) {

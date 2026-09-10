@@ -41,6 +41,7 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
     public Boolean retryDecision = false;
     public String retryHistory;
 
+    public Map<String, String> info;
     public String parentCustomJobId;
     public FinalizerContext finalizerCtx;
     public String mockId;
@@ -365,12 +366,6 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
             : (FailureInfo) JSON.deserialize(JSON.serialize(failure), FailureInfo.class);
     }
 
-    /**
-     * Custom Metadata is editable in production without a deploy or a test run, and the "All"
-     * record reaches every job in the org, so a typo there must never stop work. The framework
-     * degrades to the safe behaviour and records why, rather than refusing to enqueue.
-     * The debug is the only channel left when the job creates no AsyncResult__c row.
-     **/
     @SuppressWarnings('PMD.AvoidDebugStatements')
     public void recordConfigurationWarning(String warning) {
         appendRetryHistoryLine(warning);

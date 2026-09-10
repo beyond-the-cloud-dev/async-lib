@@ -96,7 +96,7 @@ Please include:
 Before submitting your PR, make sure you've:
 
 - [ ] Written clear and concise commit messages
-- [ ] Followed existing code style and naming conventions
+- [ ] Followed the [code style](docs/code-style.md), in particular: code is self-explaining and comments are a last resort
 - [ ] Added or updated relevant documentation (if applicable)
 - [ ] Added or updated unit tests (if applicable)
 - [ ] Verified that all existing tests pass (`npm test`)

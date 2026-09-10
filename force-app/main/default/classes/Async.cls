@@ -67,6 +67,22 @@ public inherited sharing class Async {
         }
     }
 
+    public interface OnJobEnqueued {
+        void onJobEnqueued(JobContext ctx);
+    }
+
+    public interface OnJobSucceeded {
+        void onJobSucceeded(JobContext ctx);
+    }
+
+    public interface OnJobFailed {
+        void onJobFailed(FailureContext ctx);
+    }
+
+    public interface OnRetryEnqueued {
+        void onRetryEnqueued(FailureContext ctx);
+    }
+
     public interface Retryable {
         void resetBeforeRetry(Integer attempt);
     }
@@ -190,6 +206,27 @@ public inherited sharing class Async {
     }
 
     @JsonAccess(serializable='always' deserializable='always')
+    public class JobContext {
+        public String customJobId;
+        public String className;
+        public Id salesforceJobId;
+        public String chainId;
+        public Integer priority;
+        public Integer retryAttempt;
+        public Map<String, String> info;
+
+        public JobContext(QueueableJob job) {
+            this.customJobId = job.customJobId;
+            this.className = job.className;
+            this.salesforceJobId = job.salesforceJobId;
+            this.chainId = job.chainId;
+            this.priority = job.priority;
+            this.retryAttempt = job.retryAttempt;
+            this.info = job.info ?? new Map<String, String>();
+        }
+    }
+
+    @JsonAccess(serializable='always' deserializable='always')
     public class FailureContext {
         public RetryOutcome retryOutcome;
         public QueueableJob.FailureInfo failure;
@@ -198,6 +235,8 @@ public inherited sharing class Async {
         public Integer retryAttempt;
         public Integer maxRetries;
         public String retryHistory;
+        public Integer nextAttemptDelayMinutes;
+        public Map<String, String> info;
 
         public FailureContext(QueueableJob job) {
             this.retryOutcome = retryOutcomeFor(job);
@@ -207,6 +246,7 @@ public inherited sharing class Async {
             this.retryAttempt = job.retryAttempt;
             this.maxRetries = job.maxRetries;
             this.retryHistory = job.retryHistory;
+            this.info = job.info ?? new Map<String, String>();
         }
 
         private Async.RetryOutcome retryOutcomeFor(QueueableJob job) {

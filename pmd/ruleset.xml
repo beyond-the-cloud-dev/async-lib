@@ -8,7 +8,7 @@
 
     <!--
       Deliberately NOT referenced (re-adding them floods the report and the gate gets ignored):
-        category/apex/documentation.xml   - ApexDoc on every class/method contradicts the repo comment policy.
+        category/apex/documentation.xml   - ApexDoc on every class/method contradicts docs/code-style.md.
         ApexUnitTestClassShouldHaveRunAs  - the library never runs as a specific user; a sharing test would be noise.
         AvoidGlobalModifier               - the released package rewrites the whole API surface to global.
     -->

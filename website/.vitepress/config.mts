@@ -157,6 +157,7 @@ export default defineConfig({
             text: 'Configuration Safety',
             link: '/explanations/configuration-safety'
           },
+          { text: 'Logging', link: '/explanations/logging' },
           { text: 'Job Cloning', link: '/explanations/job-cloning' },
           {
             text: 'Deep Clone in Packages',

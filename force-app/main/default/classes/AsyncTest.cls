@@ -17,6 +17,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static Integer chunkCalloutPages = 0;
     private static Integer chunkPageFailures = 0;
     private static List<String> chunkPagesRun = new List<String>();
+    private static List<String> loggedEvents = new List<String>();
     private static final String DUPLICATE_SIGNATURE_ERROR_MESSAGE = 'Attempt to enqueue job with duplicate queueable signature';
     private static final String TEST_SIGNATURE_NAME = 'SignatureName';
     private static final String TEST_SCHEDULABLE_JOB_NAME = 'SchedulableTestJob';
@@ -2228,6 +2229,163 @@ private class AsyncTest implements Database.Batchable<SObject> {
         );
     }
 
+    private static QueueableChain chainWithLogger(String loggerClassName) {
+        return chainWithSettings(
+            new QueueableJobSetting__mdt(
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                LoggerClass__c = loggerClassName
+            )
+        );
+    }
+
+    private static String loggerName(String simpleName) {
+        return getClassNameWithNamespaceDotPrefix('AsyncTest.' + simpleName);
+    }
+
+    @IsTest
+    private static void shouldSendEveryLifecycleEventToTheRegisteredLogger() {
+        QueueableChain chain = chainWithLogger(loggerName('RecordingLogger'));
+        QueueableManager.get().setChain(chain);
+        StateCarryingRetryJob job = new StateCarryingRetryJob();
+        job.info = new Map<String, String>{ 'team' => 'A' };
+        chain.addJob(job);
+        job.maxRetries = 1;
+        job.retryDecision = true;
+        job.continueOnJobExecuteFail = true;
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        List<String> events = new List<String>(loggedEvents);
+        Test.stopTest();
+
+        Assert.isTrue(
+            events.contains('enqueued:' + loggerName('StateCarryingRetryJob') + ':A'),
+            'The enqueue event must fire and carry info(), but was: ' + events
+        );
+        Assert.isTrue(
+            events.contains('retry:0:delay=null'),
+            'A queued retry must fire onRetryEnqueued, but was: ' + events
+        );
+        Assert.isTrue(
+            events.contains('failed:' + loggerName('StateCarryingRetryJob') + ':1'),
+            'The terminal failure must fire onJobFailed, but was: ' + events
+        );
+    }
+
+    @IsTest
+    private static void shouldLetALoggerSubscribeToOneEventOnly() {
+        QueueableChain chain = chainWithLogger(loggerName('FailureOnlyLogger'));
+        QueueableManager.get().setChain(chain);
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+        chain.addJob(job);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        List<String> events = new List<String>(loggedEvents);
+        Test.stopTest();
+
+        Assert.isTrue(events.isEmpty(), 'A logger must only receive what it implements: ' + events);
+    }
+
+    @IsTest
+    private static void shouldFireTheJobsOwnListenerAndTheGlobalLoggerTogether() {
+        QueueableChain chain = chainWithLogger(loggerName('RecordingLogger'));
+        QueueableManager.get().setChain(chain);
+        chain.addJob(new SelfLoggingJob());
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        List<String> events = new List<String>(loggedEvents);
+        Test.stopTest();
+
+        Assert.isTrue(
+            events.contains('self:' + loggerName('SelfLoggingJob')),
+            'The job own listener must fire, but was: ' + events
+        );
+        Assert.isTrue(
+            events.contains('succeeded:' + loggerName('SelfLoggingJob')),
+            'The registered logger must fire too, but was: ' + events
+        );
+    }
+
+    @IsTest
+    private static void shouldNotFailTheJobWhenTheLoggerThrows() {
+        QueueableChain chain = chainWithLogger(loggerName('ThrowingLogger'));
+        QueueableManager.get().setChain(chain);
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+        chain.addJob(job);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        Test.stopTest();
+
+        Assert.isFalse(job.hasFailed, 'A logger that throws must not fail the job it observed.');
+    }
+
+    @IsTest
+    private static void shouldRunNormallyWhenNoLoggerIsConfigured() {
+        QueueableChain chain = new QueueableChain();
+        QueueableManager.get().setChain(chain);
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+        chain.addJob(job);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(committed());
+        Test.stopTest();
+
+        Assert.isFalse(job.hasFailed, 'No logger configured must be a silent no-op.');
+        Assert.isTrue(loggedEvents.isEmpty(), 'Nothing should have been logged.');
+    }
+
+    @IsTest
+    private static void shouldWarnRatherThanHaltWhenTheLoggerClassCannotBeResolved() {
+        QueueableChain chain = chainWithLogger('NoSuchLoggerClass');
+        QueueableManager.get().setChain(chain);
+        SuccessfulQueueableTest job = new SuccessfulQueueableTest();
+
+        chain.addJob(job);
+
+        Assert.isTrue(
+            job.retryHistory.contains('NoSuchLoggerClass'),
+            'The unresolvable class must be named, but was: ' + job.retryHistory
+        );
+        Assert.isTrue(
+            job.retryHistory.contains('global'),
+            'The warning must say the class has to be global, but was: ' + job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldPreferAJobSpecificLoggerOverTheOrgWideDefault() {
+        QueueableChain chain = new QueueableChain();
+        chain.queueableJobSettingByJobName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                LoggerClass__c = loggerName('RecordingLogger')
+            ),
+            loggerName('SuccessfulQueueableTest') => new QueueableJobSetting__mdt(
+                QueueableJobName__c = loggerName('SuccessfulQueueableTest'),
+                LoggerClass__c = loggerName('FailureOnlyLogger')
+            )
+        };
+        QueueableManager.get().setChain(chain);
+
+        chain.addJob(new SuccessfulQueueableTest());
+
+        Assert.isTrue(
+            loggedEvents.isEmpty(),
+            'The job specific logger only implements OnJobFailed, so enqueue logs nothing: ' +
+            loggedEvents
+        );
+    }
+
     @IsTest
     private static void shouldNotApplyCustomMetadataRetryToAJobThatDeclaresNoReset() {
         QueueableChain chain = chainWithSettings(
@@ -4203,6 +4361,43 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
         public override QueueableJob cloneForDeepCopy() {
             throw new JSONException('forced deep clone failure');
+        }
+    }
+
+    public class RecordingLogger implements Async.OnJobEnqueued, Async.OnJobSucceeded, Async.OnJobFailed, Async.OnRetryEnqueued {
+        public void onJobEnqueued(Async.JobContext ctx) {
+            AsyncTest.loggedEvents.add('enqueued:' + ctx.className + ':' + ctx.info.get('team'));
+        }
+        public void onJobSucceeded(Async.JobContext ctx) {
+            AsyncTest.loggedEvents.add('succeeded:' + ctx.className);
+        }
+        public void onJobFailed(Async.FailureContext ctx) {
+            AsyncTest.loggedEvents.add('failed:' + ctx.className + ':' + ctx.retryAttempt);
+        }
+        public void onRetryEnqueued(Async.FailureContext ctx) {
+            AsyncTest.loggedEvents.add(
+                'retry:' + ctx.retryAttempt + ':delay=' + ctx.nextAttemptDelayMinutes
+            );
+        }
+    }
+
+    public class FailureOnlyLogger implements Async.OnJobFailed {
+        public void onJobFailed(Async.FailureContext ctx) {
+            AsyncTest.loggedEvents.add('failed-only:' + ctx.className);
+        }
+    }
+
+    public class ThrowingLogger implements Async.OnJobSucceeded {
+        public void onJobSucceeded(Async.JobContext ctx) {
+            throw new CustomException('logger exploded');
+        }
+    }
+
+    private class SelfLoggingJob extends QueueableJob implements Async.OnJobSucceeded {
+        public override void work() {
+        }
+        public void onJobSucceeded(Async.JobContext ctx) {
+            AsyncTest.loggedEvents.add('self:' + ctx.className);
         }
     }
 

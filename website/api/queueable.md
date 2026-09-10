@@ -126,6 +126,7 @@ The following are methods for using Async with Queueable jobs:
 - [`dependsOn(Async.Dependency dependency)`](#dependson)
 - [`deepClone()`](#deepclone)
 - [`restoreStateOnRetry()`](#restorestateonretry)
+- [`info(String key, String value)`](#info)
 - [`chain()`](#chain)
 - [`chain(QueueableJob job)`](#chain-next-job)
 - [`asSchedulable()`](#asschedulable)
@@ -154,6 +155,7 @@ The following are methods for using Async with Queueable jobs:
 - [`resetBeforeRetry(Integer attempt)`](#resetbeforeretry) — `Async.Retryable`
 - [`resetBeforeNextChunk(Integer pageNumber)`](#resetbeforenextchunk) — `Async.ChunkResettable`
 - [`onFinalFailure(Async.FailureContext failureCtx)`](#onfinalfailure)
+- [`onJobEnqueued` / `onJobSucceeded` / `onJobFailed` / `onRetryEnqueued`](#lifecycle-events)
 - ~~[`resetForRetry()`](#resetforretry)~~ <Badge type="danger" text="DEPRECATED - never called" />
 
 ### INIT
@@ -572,6 +574,29 @@ QueueableBuilder deepClone();
 ```apex
 Async.queueable(new MyQueueableJob())
 	.deepClone();
+```
+
+#### info
+
+Attaches arbitrary key/value metadata to the job. It arrives on every lifecycle
+context as `ctx.info`, and survives retries, chunk pages and serialization.
+
+Use it to route alerts by team, package or owner. See
+[Logging](/explanations/logging).
+
+**Signature**
+
+```apex
+QueueableBuilder info(String key, String value);
+QueueableBuilder info(Map<String, String> info);
+```
+
+**Example**
+
+```apex
+Async.queueable(new ImportJob())
+	.info('team', 'platform')
+	.enqueue();
 ```
 
 #### restoreStateOnRetry
@@ -1055,6 +1080,37 @@ public class ImportChunk extends ChunkJob implements Async.ChunkResettable {
   }
 }
 ```
+
+#### Lifecycle events {#lifecycle-events}
+
+Four capability interfaces, implement only the ones you need. They work on a job
+directly, and on a class registered once in
+`QueueableJobSetting__mdt.LoggerClass__c` to cover the whole org.
+
+| Interface | Fires | Context |
+| --------- | ----- | ------- |
+| `Async.OnJobEnqueued` | a job is added to a chain | `Async.JobContext` |
+| `Async.OnJobSucceeded` | a job finished without failing | `Async.JobContext` |
+| `Async.OnJobFailed` | a job failed with no attempts left | `Async.FailureContext` |
+| `Async.OnRetryEnqueued` | an attempt failed and another is queued | `Async.FailureContext` |
+
+**Example**
+
+```apex
+public class ImportJob extends QueueableJob implements Async.OnJobFailed {
+  public override void work() { ... }
+
+  public void onJobFailed(Async.FailureContext ctx) {
+    Logger.error(ctx.className + ' failed: ' + ctx.failure.message);
+  }
+}
+```
+
+A listener that throws never affects the job. Adding a fifth event later is a new
+interface, so existing listeners keep compiling.
+
+See [Logging](/explanations/logging) for org-wide registration, the `global`
+requirement and a Nebula adapter.
 
 #### ~~resetForRetry~~ <Badge type="danger" text="DEPRECATED" /> {#resetforretry}
 

@@ -57,7 +57,7 @@ Versioned, uninstallable, upgrades by installing the next version. Every class c
 
 ### Source deploy
 
-<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=v2.8.0">
+<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=v3.0.0">
   <img alt="Deploy to Salesforce"
        src="https://raw.githubusercontent.com/afawcett/githubsfdeploy/master/deploy.png">
 </a>

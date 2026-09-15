@@ -2,7 +2,7 @@
 outline: deep
 ---
 
-# Installation <Badge type="tip" text="v2.8.0" />
+# Installation <Badge type="tip" text="v3.0.0" />
 
 Two ways to get Async Lib into an org. Pick one, then follow its guide.
 
@@ -18,12 +18,12 @@ Two ways to get Async Lib into an org. Pick one, then follow its guide.
 
 Install the latest version of Async Lib as an unlocked package:
 
-<a href="https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000003fb0HIAQ">
+<a href="https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000003i1ujIAA">
   <img alt="Install Unlocked Package" src="https://img.shields.io/badge/Install-Unlocked%20Package-blue?style=for-the-badge&logo=salesforce">
 </a>
 
 ```
-https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000003fb0HIAQ
+https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000003i1ujIAA
 ```
 
 Then follow [Installing as a Package](/introduction/packaged-install): the prefix, the `extras`
@@ -31,7 +31,7 @@ classes, what has to be `global`, and the permission set.
 
 ## Deploy the Source
 
-<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=v2.8.0">
+<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=v3.0.0">
   <img alt="Deploy to Salesforce" src="https://raw.githubusercontent.com/afawcett/githubsfdeploy/master/deploy.png">
 </a>
 

@@ -28,11 +28,11 @@ All of it `public`, in your default namespace: `Async.queueable(...)`, `extends 
 
 ### Deploy button
 
-<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=v2.8.0">
+<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=v3.0.0">
   <img alt="Deploy to Salesforce" src="https://raw.githubusercontent.com/afawcett/githubsfdeploy/master/deploy.png">
 </a>
 
-The button deploys the latest release, `v2.8.0`, and the link is updated with every release the
+The button deploys the latest release, `v3.0.0`, and the link is updated with every release the
 same way the package link is. To deploy an older release put its tag in the URL, and for whatever
 was merged last use `ref=main`:
 
@@ -47,7 +47,7 @@ Tags are on the [releases page](https://github.com/beyond-the-cloud-dev/async-li
 ```bash
 git clone https://github.com/beyond-the-cloud-dev/async-lib.git
 cd async-lib
-git checkout v2.8.0
+git checkout v3.0.0
 sf project deploy start --source-dir force-app --target-org your-org
 ```
 

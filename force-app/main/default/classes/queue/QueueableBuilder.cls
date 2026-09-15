@@ -109,6 +109,18 @@ public inherited sharing class QueueableBuilder {
         return this;
     }
 
+    public QueueableBuilder info(String key, String value) {
+        job.info = job.info ?? new Map<String, String>();
+        job.info.put(key, value);
+        return this;
+    }
+
+    public QueueableBuilder info(Map<String, String> info) {
+        job.info = job.info ?? new Map<String, String>();
+        job.info.putAll(info);
+        return this;
+    }
+
     public QueueableBuilder mockId(String mockId) {
         job.mockId = mockId;
         return this;

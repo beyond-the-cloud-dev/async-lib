@@ -135,6 +135,18 @@ public inherited sharing class ChunkBuilder {
         return this;
     }
 
+    public ChunkBuilder info(String key, String value) {
+        job.info = job.info ?? new Map<String, String>();
+        job.info.put(key, value);
+        return this;
+    }
+
+    public ChunkBuilder info(Map<String, String> info) {
+        job.info = job.info ?? new Map<String, String>();
+        job.info.putAll(info);
+        return this;
+    }
+
     public ChunkBuilder mockId(String mockId) {
         job.mockId = mockId;
         return this;

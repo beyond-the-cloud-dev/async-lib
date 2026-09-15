@@ -96,13 +96,17 @@ Please include:
 Before submitting your PR, make sure you've:
 
 - [ ] Written clear and concise commit messages
-- [ ] Followed existing code style and naming conventions
+- [ ] Followed the [code style](docs/code-style.md), in particular: code is self-explaining and comments are a last resort
 - [ ] Added or updated relevant documentation (if applicable)
 - [ ] Added or updated unit tests (if applicable)
 - [ ] Verified that all existing tests pass (`npm test`)
 - [ ] Run linting and formatting (`npm run lint`, `npm run prettier`)
-- [ ] Updated the documentation site if needed
+- [ ] Updated the documentation site if needed, and for any public API change also `website/ai-usage.md`, the one-page contract agents read (take signatures from the code, not from memory)
+- [ ] Added a consumer-perspective test in `package-tests/consumer-app` for any new `global` surface
 - [ ] Checked [API evolution rules](docs/api-evolution.md) if you touched a `global` type or added an extension point
+- [ ] Added every new field to its page layout in `force-app/main/default/layouts` and, for `AsyncResult__c`, to `AsyncResultAccess` (a field missing from either is invisible to admins)
+- [ ] Added any new `extras/` class to `extras/README.md` and to the tables in `website/introduction/packaged-install.md`
+- [ ] Added any new website page to the sidebar in `website/.vitepress/config.mts` (`llms.txt` is generated from it)
 
 ## 📝 Types of Contributions
 

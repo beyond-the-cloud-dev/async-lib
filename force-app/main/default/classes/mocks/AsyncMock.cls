@@ -5,6 +5,14 @@ public class AsyncMock {
     private static FinalizerMockSetup defaultFinalizerSetup;
     private static QueueableMockSetup defaultQueueableSetup;
 
+    public static void jobSettings(List<QueueableJobSetting__mdt> settings) {
+        Map<String, QueueableJobSetting__mdt> settingByJobName = new Map<String, QueueableJobSetting__mdt>();
+        for (QueueableJobSetting__mdt setting : settings) {
+            settingByJobName.put(setting.QueueableJobName__c, setting);
+        }
+        QueueableChain.jobSettingByName = settingByJobName;
+    }
+
     public static FinalizerMockSetup whenFinalizer(String mockId) {
         FinalizerMockSetup setup = new FinalizerMockSetup();
         finalizerSetups.put(mockId, setup);
@@ -58,6 +66,7 @@ public class AsyncMock {
         queueableSetups.clear();
         defaultFinalizerSetup = null;
         defaultQueueableSetup = null;
+        QueueableChain.jobSettingByName = null;
     }
 
     public class FinalizerMockSetup {

@@ -43,12 +43,34 @@ Visit https://async.beyondthecloud.dev/ to view the full documentation.
 - **Custom Metadata Configuration**: Configure the QueueableJob settings using the `QueueableJobSettings__mdt` custom metadata type to enable or disable jobs, and to control the creation of Async Result records.
 - **Custom Object for Async Results**: The `AsyncResult__c` custom object is created for each processed queueable job, allowing you to track the chained job status and details.
 
-## Deploy to Salesforce
+## Installation
 
-<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=main">
+Two ways in. Pick one.
+
+### Unlocked package
+
+<a href="https://async.beyondthecloud.dev/introduction/installation">
+  <img alt="Install Unlocked Package" src="https://img.shields.io/badge/Install-Unlocked%20Package-blue?style=for-the-badge&logo=salesforce">
+</a>
+
+Versioned, uninstallable, upgrades by installing the next version. Every class carries the `btcdev.` prefix and a few features need a class copied from [`extras/`](./extras). Guide: [Installing as a Package](https://async.beyondthecloud.dev/introduction/packaged-install).
+
+### Source deploy
+
+<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=v2.8.0">
   <img alt="Deploy to Salesforce"
        src="https://raw.githubusercontent.com/afawcett/githubsfdeploy/master/deploy.png">
 </a>
+
+Or with the CLI:
+
+```bash
+git clone https://github.com/beyond-the-cloud-dev/async-lib.git
+cd async-lib
+sf project deploy start --source-dir force-app --target-org your-org
+```
+
+No namespace, nothing extra to set up, upgrades by redeploying the next tag. Guide: [Deploying the Source](https://async.beyondthecloud.dev/introduction/source-deploy).
 
 ## Contributors
 

@@ -5,6 +5,16 @@ namespace, which is exactly why they cannot ship inside the package.
 
 Copy what you need. Rename anything to suit your project.
 
+| File | Needed for |
+| ---- | ---------- |
+| `BaseQueueableJob`, `BaseChunkJob` | `deepClone()`, `restoreStateOnRetry()`, `restoreStateOnNextChunk()` |
+| `AsyncJobSerializer` | `Async.requeue()` |
+
+All of them exist for one reason: JSON cannot cross a namespace boundary, so the conversion has to
+run in your namespace. See
+[Installing as a Package](https://async.beyondthecloud.dev/introduction/packaged-install) for the
+full checklist.
+
 ## `BaseQueueableJob`
 
 Only needed when Async Lib is installed as a **namespaced package**. If you deployed the source
@@ -69,3 +79,22 @@ public class OddJob extends BaseQueueableJob {
 
 See [Deep Clone in Packages](https://async.beyondthecloud.dev/explanations/deep-clone-in-packages)
 for the full explanation and for the error messages that point back here.
+
+## `AsyncJobSerializer`
+
+Only needed when Async Lib is installed as a **namespaced package** and you use `Async.requeue()`.
+
+Requeue stores a snapshot of a job on `AsyncResult__c` and rebuilds it later. Both the store and
+the rebuild are JSON conversions, and JSON cannot cross a namespace boundary in either direction,
+so both have to run in your code. This class is that code.
+
+Register it once, on the `All` record of `QueueableJobSetting__mdt`:
+
+```
+JobSerializerClass__c = AsyncJobSerializer
+```
+
+It must stay `global`. Async Lib resolves it by name from inside its own namespace, and
+`Type.forName` reaches nothing else across the boundary. The methods stay `public`.
+
+See [Requeue](https://async.beyondthecloud.dev/explanations/requeue).

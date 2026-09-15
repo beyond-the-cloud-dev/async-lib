@@ -318,11 +318,66 @@ Async.chunk(new AccountRecalcJob(), ChunkSource.of(records))
 
 :::
 
+### Configuration
+
+#### jobSettings
+
+Injects `QueueableJobSetting__mdt` records for the duration of a test.
+
+Custom Metadata cannot be inserted in Apex, so without this there is no way to
+test behaviour that depends on it. This makes all of it testable: retry defaults,
+backoff, retryable exceptions, result creation, disabled jobs and the registered
+logger.
+
+Records are keyed by `QueueableJobName__c`, so use `All` for the org-wide default
+and a class name to override a single job, exactly as in real configuration.
+
+**Signature**
+
+```apex
+static void jobSettings(List<QueueableJobSetting__mdt> settings);
+```
+
+**Example**
+
+```apex
+@IsTest
+static void shouldRouteFailuresToOurLogger() {
+	AsyncMock.jobSettings(
+		new List<QueueableJobSetting__mdt>{
+			new QueueableJobSetting__mdt(
+				QueueableJobName__c = 'All',
+				LoggerClass__c = 'MyAsyncLogger',
+				MaxRetries__c = 2
+			)
+		}
+	);
+
+	Test.startTest();
+	Async.queueable(new ImportJob()).enqueue();
+	Test.stopTest();
+
+	// assert against whatever MyAsyncLogger recorded
+}
+```
+
+On a packaged install the type and its fields carry the namespace:
+
+```apex
+new btcdev__QueueableJobSetting__mdt(
+	btcdev__QueueableJobName__c = 'All',
+	btcdev__LoggerClass__c = 'MyAsyncLogger'
+);
+```
+
+[`reset()`](#reset) clears injected settings along with everything else.
+
 ### Utility
 
 #### reset
 
-Clears all mock setups (both specific and default mocks).
+Clears all mock setups (both specific and default mocks) and any settings
+injected with [`jobSettings`](#jobsettings).
 
 **Signature**
 

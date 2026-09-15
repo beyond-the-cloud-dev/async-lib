@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>RequeueStatus__c</fullName>
+    <description>Whether this job can be requeued, and if not, why. Blank means payload storage was off for this job. Job Payload is a Long Text Area and cannot be filtered on, so this is what Async.requeue() selects by.</description>
+    <label>Requeue Status</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Stored</fullName>
+                <default>false</default>
+                <label>Stored</label>
+            </value>
+            <value>
+                <fullName>TooLarge</fullName>
+                <default>false</default>
+                <label>Too Large</label>
+            </value>
+            <value>
+                <fullName>NotSerializable</fullName>
+                <default>false</default>
+                <label>Not Serializable</label>
+            </value>
+            <value>
+                <fullName>Requeued</fullName>
+                <default>false</default>
+                <label>Requeued</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>LoggerClass__c</fullName>
+    <description>Apex class that receives job lifecycle events for the matching job. Set it on the All record to route every job to one logger. The class must be declared global and implement at least one of Async.OnJobEnqueued, Async.OnJobSucceeded, Async.OnJobFailed, Async.OnRetryEnqueued. Blank means no logging.</description>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>Logger Class</label>
+    <required>false</required>
+    <type>Text</type>
+    <length>255</length>
+    <unique>false</unique>
+</CustomField>

@@ -126,6 +126,7 @@ The following are methods for using Async with Queueable jobs:
 - [`dependsOn(Async.Dependency dependency)`](#dependson)
 - [`deepClone()`](#deepclone)
 - [`restoreStateOnRetry()`](#restorestateonretry)
+- [`info(String key, String value)`](#info)
 - [`chain()`](#chain)
 - [`chain(QueueableJob job)`](#chain-next-job)
 - [`asSchedulable()`](#asschedulable)
@@ -154,6 +155,7 @@ The following are methods for using Async with Queueable jobs:
 - [`resetBeforeRetry(Integer attempt)`](#resetbeforeretry) — `Async.Retryable`
 - [`resetBeforeNextChunk(Integer pageNumber)`](#resetbeforenextchunk) — `Async.ChunkResettable`
 - [`onFinalFailure(Async.FailureContext failureCtx)`](#onfinalfailure)
+- [`onJobEnqueued` / `onJobSucceeded` / `onJobFailed` / `onRetryEnqueued`](#lifecycle-events)
 - ~~[`resetForRetry()`](#resetforretry)~~ <Badge type="danger" text="DEPRECATED - never called" />
 
 ### INIT
@@ -341,9 +343,11 @@ Async.queueable(new MyQueueableJob())
 Opts the job into automatic retry on execution failure. `maxRetries` is the
 number of retries **after** the first run (so `retry(3)` runs the job up to 4
 times total). Retry is **off by default**, so without this call a failed job is
-never retried. `maxRetries` must not exceed the framework safety limit of `10`;
-a higher value (whether passed to `retry(...)` or configured via
-`QueueableJobSetting__mdt`) throws an exception.
+never retried. `maxRetries` must not exceed the framework safety limit of `10`.
+Passing a higher value to `retry(...)` throws. Configuring one on
+`QueueableJobSetting__mdt` clamps to the limit and records why, because a
+Custom Metadata mistake must never stop an org's jobs from running. See
+[Configuration Safety](/explanations/configuration-safety).
 
 On each failed attempt the framework re-enqueues a fresh clone of the job with
 an incremented attempt counter. Jobs the failed attempt chained, and any
@@ -570,6 +574,29 @@ QueueableBuilder deepClone();
 ```apex
 Async.queueable(new MyQueueableJob())
 	.deepClone();
+```
+
+#### info
+
+Attaches arbitrary key/value metadata to the job. It arrives on every lifecycle
+context as `ctx.info`, and survives retries, chunk pages and serialization.
+
+Use it to route alerts by team, package or owner. See
+[Logging](/explanations/logging).
+
+**Signature**
+
+```apex
+QueueableBuilder info(String key, String value);
+QueueableBuilder info(Map<String, String> info);
+```
+
+**Example**
+
+```apex
+Async.queueable(new ImportJob())
+	.info('team', 'platform')
+	.enqueue();
 ```
 
 #### restoreStateOnRetry
@@ -931,6 +958,48 @@ void skipJob(String customJobId);
 Async.skipJob(notificationsResult.customJobId);
 ```
 
+#### requeue
+
+Rebuilds jobs from the payload stored on their `AsyncResult__c` records and runs
+them again as one chain. Needs `QueueableJobSetting__mdt.StoreJobPayload__c = Yes`
+before the original run, and a registered `Async.JobSerializer` on a packaged
+install. See [Requeue](/explanations/requeue).
+
+Every result that could not be replayed comes back with a reason. Throws when the
+call asks for more than 2,000,000 characters of payload.
+
+::: warning Requeue replays data, not intent
+
+The payload was written by the class as it was and is rebuilt by the class as it
+is now. A renamed field arrives `null`; a field that changed meaning replays the
+old data under the new meaning, silently. If the fix changed the job's own fields,
+enqueue it fresh. See
+[Requeue](/explanations/requeue#what-is-stored).
+
+:::
+
+**Signature**
+
+```apex
+RequeueSummary requeue(Id resultId);
+RequeueSummary requeue(Set<Id> resultIds);
+```
+
+| `RequeueSummary` | Holds |
+| ---------------- | ----- |
+| `List<Id> requeued` | replayed |
+| `Map<Id, String> skipReasonByResultId` | the rest, and why |
+| `Async.Result enqueueResult` | the chain they run in, `null` when nothing was replayed |
+
+**Example**
+
+```apex
+Async.RequeueSummary summary = Async.requeue(failedResultIds);
+for (Id skipped : summary.skipReasonByResultId.keySet()) {
+  System.debug(skipped + ': ' + summary.skipReasonByResultId.get(skipped));
+}
+```
+
 ### Override hooks
 
 These are `public virtual` methods you override on your own `QueueableJob`
@@ -1053,6 +1122,37 @@ public class ImportChunk extends ChunkJob implements Async.ChunkResettable {
   }
 }
 ```
+
+#### Lifecycle events {#lifecycle-events}
+
+Four capability interfaces, implement only the ones you need. They work on a job
+directly, and on a class registered once in
+`QueueableJobSetting__mdt.LoggerClass__c` to cover the whole org.
+
+| Interface | Fires | Context |
+| --------- | ----- | ------- |
+| `Async.OnJobEnqueued` | a job is added to a chain | `Async.JobContext` |
+| `Async.OnJobSucceeded` | a job finished without failing | `Async.JobContext` |
+| `Async.OnJobFailed` | a job failed with no attempts left | `Async.FailureContext` |
+| `Async.OnRetryEnqueued` | an attempt failed and another is queued | `Async.FailureContext` |
+
+**Example**
+
+```apex
+public class ImportJob extends QueueableJob implements Async.OnJobFailed {
+  public override void work() { ... }
+
+  public void onJobFailed(Async.FailureContext ctx) {
+    Logger.error(ctx.className + ' failed: ' + ctx.failure.message);
+  }
+}
+```
+
+A listener that throws never affects the job. Adding a fifth event later is a new
+interface, so existing listeners keep compiling.
+
+See [Logging](/explanations/logging) for org-wide registration, the `global`
+requirement and a Nebula adapter.
 
 #### ~~resetForRetry~~ <Badge type="danger" text="DEPRECATED" /> {#resetforretry}
 

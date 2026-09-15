@@ -2,8 +2,10 @@
  * PMD False Positives:
  * - CyclomaticComplexity / CognitiveComplexity: one guard clause per documented error message,
  *   and the most complex member scores 7
+ * - ExcessivePublicCount: most of the count is error and warning message constants, kept here so
+ *   every message the framework can raise is visible and assertable in one place
  **/
-@SuppressWarnings('PMD.CyclomaticComplexity,PMD.CognitiveComplexity')
+@SuppressWarnings('PMD.CyclomaticComplexity,PMD.CognitiveComplexity,PMD.ExcessivePublicCount')
 public inherited sharing class QueueableManager {
     public static final String QUEUEABLE_JOB_SETTING_ALL = 'All';
     public static final String STATUS_COMPLETED = 'COMPLETED';
@@ -36,6 +38,37 @@ public inherited sharing class QueueableManager {
         API_PREFIX +
         'Async.ChunkResettable and clear your own state in resetBeforeNextChunk(Integer pageNumber)\n- call restoreStateOnNextChunk() to have Async Lib replay every page from the state the job had when it was enqueued\nAn empty resetBeforeNextChunk() body is a valid answer, and keeps whatever the previous page left behind, exactly as 2.x did.\nSee ' +
         DOCS_URL_JOB_STATE;
+    public static final String WARNING_CMDT_RETRY_WITHOUT_RESET =
+        'QueueableJobSetting__mdt turns retry on for "{0}", but that job does not say what happens to its state between attempts, so retry was NOT applied and the job ran once. A retry re-runs the same object and would carry the failed attempt state forward. To enable retry for this job, implement {1}Async.Retryable or call restoreStateOnRetry(). See ' +
+        DOCS_URL_JOB_STATE;
+    public static final String WARNING_UNKNOWN_BACKOFF_STRATEGY = 'QueueableJobSetting__mdt.BackoffStrategy__c is "{0}" for "{1}", which is not a known strategy, so no backoff was applied and retries run without delay. Use one of: {2}.';
+    public static final String WARNING_MAX_RETRIES_EXCEEDS_CAP = 'QueueableJobSetting__mdt.MaxRetries__c is {0} for "{1}", above the framework cap of {2}, so it was clamped to {2}.';
+    public static final String DOCS_URL_LOGGING = DOCS_URL + '/explanations/logging';
+    public static final String WARNING_LOGGER_NOT_FOUND =
+        'QueueableJobSetting__mdt.LoggerClass__c names "{0}", which could not be resolved, so no events were logged. Async Lib can only reach a class declared global. Change it to "global class {0}" and make sure the name is spelled exactly as the class. See ' +
+        DOCS_URL_LOGGING;
+    public static final String WARNING_LOGGER_NOT_USABLE =
+        'QueueableJobSetting__mdt.LoggerClass__c names "{0}", which could not be constructed, so no events were logged: {1}. The class needs a public no-argument constructor. See ' +
+        DOCS_URL_LOGGING;
+    public static final String WARNING_LOGGER_THREW = 'An Async Lib event listener threw {0}: {1}. The job was not affected. {2}';
+    public static final String DOCS_URL_REQUEUE = DOCS_URL + '/explanations/requeue';
+    public static final String WARNING_PAYLOAD_NOT_CAPTURED =
+        'QueueableJobSetting__mdt.StoreJobPayload__c is Yes for "{0}", but the job could not be serialized, so it cannot be requeued: {1}. On a packaged install this is usually a missing JobSerializerClass__c, because JSON cannot cross a namespace boundary. Otherwise the job holds a field JSON cannot write, such as an interface or an abstract type. See ' +
+        DOCS_URL_REQUEUE;
+    public static final String ERROR_MESSAGE_SERIALIZER_NOT_USABLE =
+        'QueueableJobSetting__mdt.JobSerializerClass__c names "{0}", which is not a usable {1}Async.JobSerializer. Async Lib can only reach a class declared global, and it has to implement that interface. See ' +
+        DOCS_URL_REQUEUE;
+    public static final String ERROR_MESSAGE_REQUEUE_BUDGET_EXCEEDED = 'Requeuing these {2} results needs {0} characters of payload, above the limit of {1}. Split the ids into smaller batches. Order by PayloadSize__c to see which results are the heavy ones.';
+    public static final String REQUEUE_SKIPPED_NO_RECORD = 'No AsyncResult__c record with this id. It may have been deleted by AsyncResultCleanupBatch.';
+    public static final String REQUEUE_SKIPPED_NO_PAYLOAD =
+        'No payload was stored for this job, so there is nothing to replay. Set QueueableJobSetting__mdt.StoreJobPayload__c to Yes before the job runs. See ' +
+        DOCS_URL_REQUEUE;
+    public static final String REQUEUE_SKIPPED_ALREADY_REQUEUED = 'Already requeued. Requeue the result of the replay instead, so the trail stays readable.';
+    public static final String REQUEUE_SKIPPED_BY_STATUS = 'The payload was not stored: {0}.';
+    public static final String CAUSE_SERIALIZER_RETURNED_NULL = 'the registered JobSerializer returned null';
+    public static final String REQUEUE_SKIPPED_CLASS_NOT_FOUND =
+        'The class "{0}" could not be resolved, so the job cannot be rebuilt. It may have been renamed or deleted. On a packaged install, register a {1}Async.JobSerializer in QueueableJobSetting__mdt.JobSerializerClass__c. See ' +
+        DOCS_URL_REQUEUE;
     public static final String ERROR_MESSAGE_INVALID_DEPENDENCY = 'A dependency requires a target and an outcome (e.g. Async.after(result).succeeded())';
     public static final String ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB = 'dependsOn(Async.afterPrevious()) requires a previously chained job';
     public static final String ERROR_MESSAGE_UNKNOWN_JOB = 'No job in this chain has custom job id "{0}".';
@@ -179,8 +212,61 @@ public inherited sharing class QueueableManager {
             frameworkFailure.getStackTraceString();
     }
 
+    public static void applyBackoffDefault(QueueableJob job, QueueableJobSetting__mdt setting) {
+        if (job.backoff != null || String.isBlank(setting.BackoffStrategy__c)) {
+            return;
+        }
+        Integer baseMinutes = setting.BackoffBaseMinutes__c?.intValue() ?? 1;
+        job.backoff = Backoff.fromName(setting.BackoffStrategy__c, baseMinutes);
+        if (job.backoff == null) {
+            job.recordConfigurationWarning(
+                String.format(
+                    WARNING_UNKNOWN_BACKOFF_STRATEGY,
+                    new List<String>{
+                        setting.BackoffStrategy__c,
+                        setting.QueueableJobName__c,
+                        Backoff.KNOWN_STRATEGIES
+                    }
+                )
+            );
+        }
+    }
+
+    public static String loggerClassFor(QueueableJob job) {
+        return settingFor(job.className, QueueableJobSetting__mdt.LoggerClass__c);
+    }
+
+    public static String settingFor(String jobClassName, SObjectField field) {
+        Map<String, QueueableJobSetting__mdt> settings = QueueableChain.jobSettingByName;
+        String jobSpecific = (String) settings.get(jobClassName)?.get(field);
+        return String.isNotBlank(jobSpecific)
+            ? jobSpecific
+            : (String) settings.get(QUEUEABLE_JOB_SETTING_ALL)?.get(field);
+    }
+
+    public static Boolean declaresRetryStateHandling(QueueableJob job) {
+        return job.restoreStateOnRetry || job instanceof Async.Retryable;
+    }
+
+    public static Integer cappedRetries(QueueableJob job, Integer requested) {
+        if (requested <= MAX_RETRY_CAP) {
+            return requested;
+        }
+        job.recordConfigurationWarning(
+            String.format(
+                WARNING_MAX_RETRIES_EXCEEDS_CAP,
+                new List<String>{
+                    String.valueOf(requested),
+                    job.className,
+                    String.valueOf(MAX_RETRY_CAP)
+                }
+            )
+        );
+        return MAX_RETRY_CAP;
+    }
+
     public static void assertStateHandlingDeclared(QueueableJob job) {
-        if (job.maxRetries > 0 && !job.restoreStateOnRetry && !(job instanceof Async.Retryable)) {
+        if (job.maxRetries > 0 && !declaresRetryStateHandling(job)) {
             throw new IllegalArgumentException(
                 String.format(ERROR_MESSAGE_RETRY_WITHOUT_RESET, new List<String>{ job.className })
             );

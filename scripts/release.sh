@@ -36,6 +36,14 @@ psed() {
 
 SFDX_PROJECT="$PROJECT_ROOT/sfdx-project.json"
 INSTALL_PAGE="$PROJECT_ROOT/website/introduction/installation.md"
+# Every file that carries the "Deploy to Salesforce" button or a `git checkout vX.Y.Z` line.
+# The button takes a git ref, so pinning it to the release tag keeps it in step with the
+# package link instead of deploying whatever is on main.
+DEPLOY_REF_PAGES=(
+    "$PROJECT_ROOT/README.md"
+    "$PROJECT_ROOT/website/introduction/installation.md"
+    "$PROJECT_ROOT/website/introduction/source-deploy.md"
+)
 
 CURRENT_VERSION=$(jq -r '.packageDirectories[0].versionNumber' "$SFDX_PROJECT" | sed 's/\.NEXT$//')
 PACKAGE_NAME=$(jq -r '.packageDirectories[0].package' "$SFDX_PROJECT")
@@ -204,6 +212,17 @@ ok "Updated installation page"
 echo "  Old package ID: $OLD_PKG_ID"
 echo "  New package ID: $SUBSCRIBER_PKG_VERSION_ID"
 echo "  Badge version: v$NEW_VERSION"
+
+for page in "${DEPLOY_REF_PAGES[@]}"; do
+    if ! grep -q 'ref=v[0-9]*\.[0-9]*\.[0-9]*' "$page"; then
+        fail "Could not find a pinned deploy ref in $page"
+    fi
+    psed "s/ref=v[0-9]*\.[0-9]*\.[0-9]*/ref=v$NEW_VERSION/g" "$page"
+    psed "s/git checkout v[0-9]*\.[0-9]*\.[0-9]*/git checkout v$NEW_VERSION/g" "$page"
+    psed "s/latest release, \`v[0-9]*\.[0-9]*\.[0-9]*\`/latest release, \`v$NEW_VERSION\`/g" "$page"
+done
+
+ok "Pinned deploy button and checkout lines to v$NEW_VERSION in ${#DEPLOY_REF_PAGES[@]} pages"
 
 # ─────────────────────────────────────────────────
 # Step 5: Generate release notes

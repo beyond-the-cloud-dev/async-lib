@@ -58,6 +58,14 @@ public inherited sharing class Async {
         QueueableManager.get().skipJob(customJobId);
     }
 
+    public static RequeueSummary requeue(Id resultId) {
+        return AsyncRequeue.run(new Set<Id>{ resultId });
+    }
+
+    public static RequeueSummary requeue(Set<Id> resultIds) {
+        return AsyncRequeue.run(resultIds);
+    }
+
     // Inside a QueueableJob subclass the inherited `backoff` field shadows the Backoff type, so a
     // bare `Backoff.exponential(1)` will not compile there. Reaching the factories through Async
     // is collision-free in both packaged and source deployments.
@@ -65,6 +73,27 @@ public inherited sharing class Async {
         get {
             return new BackoffFactory();
         }
+    }
+
+    public interface OnJobEnqueued {
+        void onJobEnqueued(JobContext ctx);
+    }
+
+    public interface OnJobSucceeded {
+        void onJobSucceeded(JobContext ctx);
+    }
+
+    public interface OnJobFailed {
+        void onJobFailed(FailureContext ctx);
+    }
+
+    public interface OnRetryEnqueued {
+        void onRetryEnqueued(FailureContext ctx);
+    }
+
+    public interface JobSerializer {
+        String serialize(QueueableJob job);
+        QueueableJob deserialize(String className, String payload);
     }
 
     public interface Retryable {
@@ -171,6 +200,13 @@ public inherited sharing class Async {
         }
     }
 
+    @JsonAccess(serializable='always' deserializable='always')
+    public class RequeueSummary {
+        public List<Id> requeued = new List<Id>();
+        public Map<Id, String> skipReasonByResultId = new Map<Id, String>();
+        public Result enqueueResult;
+    }
+
     public enum AsyncType {
         QUEUEABLE,
         BATCHABLE,
@@ -190,6 +226,27 @@ public inherited sharing class Async {
     }
 
     @JsonAccess(serializable='always' deserializable='always')
+    public class JobContext {
+        public String customJobId;
+        public String className;
+        public Id salesforceJobId;
+        public String chainId;
+        public Integer priority;
+        public Integer retryAttempt;
+        public Map<String, String> info;
+
+        public JobContext(QueueableJob job) {
+            this.customJobId = job.customJobId;
+            this.className = job.className;
+            this.salesforceJobId = job.salesforceJobId;
+            this.chainId = job.chainId;
+            this.priority = job.priority;
+            this.retryAttempt = job.retryAttempt;
+            this.info = job.info ?? new Map<String, String>();
+        }
+    }
+
+    @JsonAccess(serializable='always' deserializable='always')
     public class FailureContext {
         public RetryOutcome retryOutcome;
         public QueueableJob.FailureInfo failure;
@@ -198,6 +255,8 @@ public inherited sharing class Async {
         public Integer retryAttempt;
         public Integer maxRetries;
         public String retryHistory;
+        public Integer nextAttemptDelayMinutes;
+        public Map<String, String> info;
 
         public FailureContext(QueueableJob job) {
             this.retryOutcome = retryOutcomeFor(job);
@@ -207,6 +266,7 @@ public inherited sharing class Async {
             this.retryAttempt = job.retryAttempt;
             this.maxRetries = job.maxRetries;
             this.retryHistory = job.retryHistory;
+            this.info = job.info ?? new Map<String, String>();
         }
 
         private Async.RetryOutcome retryOutcomeFor(QueueableJob job) {

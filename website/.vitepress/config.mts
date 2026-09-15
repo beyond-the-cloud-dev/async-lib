@@ -70,7 +70,13 @@ export default defineConfig({
     hostname: siteUrl
   },
   vite: {
-    plugins: [llmstxt({ domain: siteUrl })]
+    plugins: [
+      llmstxt({
+        domain: siteUrl,
+        details:
+          'Agents: start with /ai-usage.md, the whole public API on one page with recipes and gotchas. Every other page is depth on one topic.'
+      })
+    ]
   },
   transformPageData(pageData) {
     const canonicalUrl = `${siteUrl}/${pageData.relativePath}`
@@ -123,11 +129,20 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: 'Getting Started', link: '/getting-started' },
+          { text: 'For AI Agents', link: '/ai-usage' },
           {
             text: 'Standard Apex vs Async Lib',
             link: '/introduction/standard-apex-vs-async-lib'
           },
-          { text: 'Installation', link: '/introduction/installation' }
+          { text: 'Installation', link: '/introduction/installation' },
+          {
+            text: 'Installing as a Package',
+            link: '/introduction/packaged-install'
+          },
+          {
+            text: 'Deploying the Source',
+            link: '/introduction/source-deploy'
+          }
         ]
       },
       {
@@ -153,6 +168,12 @@ export default defineConfig({
             text: 'Job State Between Runs',
             link: '/explanations/job-state-between-runs'
           },
+          {
+            text: 'Configuration Safety',
+            link: '/explanations/configuration-safety'
+          },
+          { text: 'Logging', link: '/explanations/logging' },
+          { text: 'Requeue', link: '/explanations/requeue' },
           { text: 'Job Cloning', link: '/explanations/job-cloning' },
           {
             text: 'Deep Clone in Packages',

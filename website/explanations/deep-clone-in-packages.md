@@ -74,6 +74,9 @@ ready to copy. Rename them to suit your project.
 If you deploy Async Lib **without a namespace** (Deploy button, `sf project deploy`), skip all of
 this. Everything already works.
 
+Everything else a packaged install needs is on one page:
+[Installing as a Package](/introduction/packaged-install).
+
 ## Per-Job Override
 
 `cloneForDeepCopy()` on the base class is left `virtual`, so a job with unusual needs can still

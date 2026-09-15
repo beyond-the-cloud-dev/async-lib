@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>JobSerializerClass__c</fullName>
+    <description>Apex class that converts a job to and from its stored payload. Required on a packaged install, because JSON cannot cross a namespace boundary in either direction, so both halves have to run in your own code. The class must be declared global and implement Async.JobSerializer. Blank means Async Lib serializes directly, which is what a source deployment wants.</description>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>Job Serializer Class</label>
+    <required>false</required>
+    <type>Text</type>
+    <length>255</length>
+    <unique>false</unique>
+</CustomField>

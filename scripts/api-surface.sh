@@ -73,6 +73,22 @@ revert_internal_wiring() {
         "force-app/main/default/classes/queue/QueueableJob.cls"
     api_surface_sed 's/global QueueableJob restoreEnqueuedState(/public QueueableJob restoreEnqueuedState(/g' \
         "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global void recordConfigurationWarning(/public void recordConfigurationWarning(/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global QueueableJob copyWithoutRuntimeState(/public QueueableJob copyWithoutRuntimeState(/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+
+    # Requeue bookkeeping. AsyncRequeue and QueueableChain write these across class boundaries, but
+    # a subscriber reads them from AsyncResult__c instead, and a global field can never be withdrawn.
+    api_surface_sed 's/global String requeuePayload;/public String requeuePayload;/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global String requeueStatus;/public String requeueStatus;/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global Integer requeuePayloadSize;/public Integer requeuePayloadSize;/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global Id requeuedFromResultId;/public Id requeuedFromResultId;/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+
 
     api_surface_sed 's/global ChunkRun getRun(/public ChunkRun getRun(/g' \
         "force-app/main/default/classes/queue/ChunkJob.cls"

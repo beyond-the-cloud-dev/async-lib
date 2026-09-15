@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>RequeuedFrom__c</fullName>
+    <description>The result this job was requeued from. A requeued job runs in a new chain, so this is the only link back to the failure it replays.</description>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <label>Requeued From</label>
+    <referenceTo>AsyncResult__c</referenceTo>
+    <relationshipLabel>Requeue Attempts</relationshipLabel>
+    <relationshipName>RequeueAttempts</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

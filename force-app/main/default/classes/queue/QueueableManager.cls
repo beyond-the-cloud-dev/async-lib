@@ -51,6 +51,24 @@ public inherited sharing class QueueableManager {
         'QueueableJobSetting__mdt.LoggerClass__c names "{0}", which could not be constructed, so no events were logged: {1}. The class needs a public no-argument constructor. See ' +
         DOCS_URL_LOGGING;
     public static final String WARNING_LOGGER_THREW = 'An Async Lib event listener threw {0}: {1}. The job was not affected. {2}';
+    public static final String DOCS_URL_REQUEUE = DOCS_URL + '/explanations/requeue';
+    public static final String WARNING_PAYLOAD_NOT_CAPTURED =
+        'QueueableJobSetting__mdt.StoreJobPayload__c is Yes for "{0}", but the job could not be serialized, so it cannot be requeued: {1}. On a packaged install this is usually a missing JobSerializerClass__c, because JSON cannot cross a namespace boundary. Otherwise the job holds a field JSON cannot write, such as an interface or an abstract type. See ' +
+        DOCS_URL_REQUEUE;
+    public static final String ERROR_MESSAGE_SERIALIZER_NOT_USABLE =
+        'QueueableJobSetting__mdt.JobSerializerClass__c names "{0}", which is not a usable {1}Async.JobSerializer. Async Lib can only reach a class declared global, and it has to implement that interface. See ' +
+        DOCS_URL_REQUEUE;
+    public static final String ERROR_MESSAGE_REQUEUE_BUDGET_EXCEEDED = 'Requeuing these {2} results needs {0} characters of payload, above the limit of {1}. Split the ids into smaller batches. Order by PayloadSize__c to see which results are the heavy ones.';
+    public static final String REQUEUE_SKIPPED_NO_RECORD = 'No AsyncResult__c record with this id. It may have been deleted by AsyncResultCleanupBatch.';
+    public static final String REQUEUE_SKIPPED_NO_PAYLOAD =
+        'No payload was stored for this job, so there is nothing to replay. Set QueueableJobSetting__mdt.StoreJobPayload__c to Yes before the job runs. See ' +
+        DOCS_URL_REQUEUE;
+    public static final String REQUEUE_SKIPPED_ALREADY_REQUEUED = 'Already requeued. Requeue the result of the replay instead, so the trail stays readable.';
+    public static final String REQUEUE_SKIPPED_BY_STATUS = 'The payload was not stored: {0}.';
+    public static final String CAUSE_SERIALIZER_RETURNED_NULL = 'the registered JobSerializer returned null';
+    public static final String REQUEUE_SKIPPED_CLASS_NOT_FOUND =
+        'The class "{0}" could not be resolved, so the job cannot be rebuilt. It may have been renamed or deleted. On a packaged install, register a {1}Async.JobSerializer in QueueableJobSetting__mdt.JobSerializerClass__c. See ' +
+        DOCS_URL_REQUEUE;
     public static final String ERROR_MESSAGE_INVALID_DEPENDENCY = 'A dependency requires a target and an outcome (e.g. Async.after(result).succeeded())';
     public static final String ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB = 'dependsOn(Async.afterPrevious()) requires a previously chained job';
     public static final String ERROR_MESSAGE_UNKNOWN_JOB = 'No job in this chain has custom job id "{0}".';
@@ -215,11 +233,15 @@ public inherited sharing class QueueableManager {
     }
 
     public static String loggerClassFor(QueueableJob job) {
+        return settingFor(job.className, QueueableJobSetting__mdt.LoggerClass__c);
+    }
+
+    public static String settingFor(String jobClassName, SObjectField field) {
         Map<String, QueueableJobSetting__mdt> settings = QueueableChain.jobSettingByName;
-        String jobSpecific = settings.get(job.className)?.LoggerClass__c;
+        String jobSpecific = (String) settings.get(jobClassName)?.get(field);
         return String.isNotBlank(jobSpecific)
             ? jobSpecific
-            : settings.get(QUEUEABLE_JOB_SETTING_ALL)?.LoggerClass__c;
+            : (String) settings.get(QUEUEABLE_JOB_SETTING_ALL)?.get(field);
     }
 
     public static Boolean declaresRetryStateHandling(QueueableJob job) {

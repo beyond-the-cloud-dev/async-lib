@@ -4,6 +4,16 @@ outline: deep
 
 # Installation <Badge type="tip" text="v2.8.0" />
 
+Two ways to get Async Lib into an org. Pick one, then follow its guide.
+
+| | Unlocked package | Source deploy |
+| --- | --- | --- |
+| How | one install link | deploy button, `sf` CLI, or copy the source |
+| Namespace | `btcdev.` on every class, `btcdev__` on every field | none |
+| Upgrade | install the next version | redeploy from the next tag |
+| Extra setup | a few `extras` classes for features that copy or store a job | none |
+| Pick it when | you want a versioned, uninstallable unit and an upgrade path you do not maintain | you want to read, vendor or patch the code, or you cannot install packages |
+
 ## Install as Unlocked Package
 
 Install the latest version of Async Lib as an unlocked package:
@@ -16,24 +26,22 @@ Install the latest version of Async Lib as an unlocked package:
 https://login.salesforce.com/packaging/installPackage.apexp?p0=04tP6000003fb0HIAQ
 ```
 
-::: tip
-When installed as a package, all classes use the `btcdev` namespace prefix (e.g., `btcdev.QueueableJob`, `btcdev.Async`). If you use [`.deepClone()`](/api/queueable#deepclone), see [Deep Clone in Packages](/explanations/deep-clone-in-packages) for a required override.
-:::
+Then follow [Installing as a Package](/introduction/packaged-install): the prefix, the `extras`
+classes, what has to be `global`, and the permission set.
 
-## Deploy via Button
+## Deploy the Source
 
-Deploy to your Salesforce org using the deploy button:
-
-<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=main">
+<a href="https://githubsfdeploy.herokuapp.com?owner=beyond-the-cloud-dev&repo=async-lib&ref=v2.8.0">
   <img alt="Deploy to Salesforce" src="https://raw.githubusercontent.com/afawcett/githubsfdeploy/master/deploy.png">
 </a>
 
-## Copy and Deploy
-
-Or clone the repository and deploy using SFDX:
+Or with the Salesforce CLI:
 
 ```bash
 git clone https://github.com/beyond-the-cloud-dev/async-lib.git
 cd async-lib
-sf project deploy start -p force-app -u your-org-alias
+sf project deploy start --source-dir force-app --target-org your-org
 ```
+
+Then follow [Deploying the Source](/introduction/source-deploy): deploying a tag rather than
+`main`, production test levels, vendoring, and what a redeploy does to your `All` record.

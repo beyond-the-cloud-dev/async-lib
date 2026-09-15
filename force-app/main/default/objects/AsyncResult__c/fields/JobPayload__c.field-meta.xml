@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>JobPayload__c</fullName>
+    <description>Serialized snapshot of the job taken when it was enqueued, before it ran. Async.requeue() rebuilds the job from this. Written only when QueueableJobSetting__mdt.StoreJobPayload__c is Yes, because it holds whatever data the job carried.</description>
+    <externalId>false</externalId>
+    <label>Job Payload</label>
+    <length>131072</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>LongTextArea</type>
+    <visibleLines>10</visibleLines>
+</CustomField>

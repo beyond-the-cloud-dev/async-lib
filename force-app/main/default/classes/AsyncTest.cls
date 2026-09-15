@@ -2229,19 +2229,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
         );
     }
 
-    private static QueueableChain chainWithLogger(String loggerClassName) {
-        return chainWithSettings(
-            new QueueableJobSetting__mdt(
-                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
-                LoggerClass__c = loggerClassName
-            )
-        );
-    }
-
-    private static String loggerName(String simpleName) {
-        return getClassNameWithNamespaceDotPrefix('AsyncTest.' + simpleName);
-    }
-
     @IsTest
     private static void shouldRouteToALoggerRegisteredThroughAsyncMock() {
         AsyncMock.jobSettings(
@@ -2770,13 +2757,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
         );
     }
 
-    private static Async.Dependency dependencyOn(String customJobId, Async.Outcome outcome) {
-        Async.Dependency dependency = new Async.Dependency();
-        dependency.resolvedTargetCustomJobId = customJobId;
-        dependency.requiredOutcome = outcome;
-        return dependency;
-    }
-
     @IsTest
     private static void shouldRunDependentJobWhenRequiredOutcomeMatches() {
         SuccessfulQueueableTest jobA = new SuccessfulQueueableTest();
@@ -3073,15 +3053,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
         );
     }
 
-    private static Map<String, QueueableJobSetting__mdt> resultsEnabledForAll() {
-        return new Map<String, QueueableJobSetting__mdt>{
-            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
-                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
-                CreateResult__c = true
-            )
-        };
-    }
-
     @IsTest
     private static void shouldCreateCompletedResultWithIdentityFields() {
         SuccessfulQueueableTest job = new SuccessfulQueueableTest();
@@ -3190,17 +3161,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
         ];
         Assert.areEqual(QueueableManager.STATUS_SKIPPED_DISABLED, result.Status__c);
         Assert.isNotNull(result.SkipReason__c);
-    }
-
-    private static MarkerJob markerJob(String tag, Boolean shouldFail) {
-        MarkerJob job = new MarkerJob();
-        job.tag = tag;
-        job.shouldFail = shouldFail;
-        return job;
-    }
-
-    private static Integer accountCount(String name) {
-        return [SELECT COUNT() FROM Account WHERE Name = :name];
     }
 
     @IsTest
@@ -3969,37 +3929,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
         Assert.areEqual(2, accountCount('HOOK'), 'Each failed page is its own final failure.');
     }
 
-    private static Account hookRecord() {
-        return [SELECT Description FROM Account WHERE Name = 'HOOK' LIMIT 1];
-    }
-
-    private static String getClassNameWithNamespaceDotPrefix(String className) {
-        return getNamespaceDotPrefix() + className;
-    }
-
-    private static String getNamespaceDotPrefix() {
-        String className = AsyncTest.class.getName();
-        return className.contains('.') ? className.substringBefore('.') + '.' : '';
-    }
-
-    public Iterable<Account> start(Database.BatchableContext bc) {
-        // This is just a placeholder to start the batch.
-        return new List<Account>{ new Account() };
-    }
-
-    public void execute(Database.BatchableContext ctx, List<Account> scope) {
-        for (Account acc : scope) {
-            acc.Description = 'Processed by: ' + ctx.getJobId();
-        }
-        if (!scope.isEmpty() && scope[0].Id != null) {
-            update scope;
-        }
-    }
-
-    public void finish(Database.BatchableContext bc) {
-        insert new Account(Name = 'Batch Complete', Description = 'Job: ' + bc.getJobId());
-    }
-
     @IsTest
     private static void shouldOrderFinalizerBeforeRegularJob() {
         QueueableJobTest1 finalizerJob = new QueueableJobTest1();
@@ -4331,569 +4260,6 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 AsyncResultCleanupBatch.ERROR_MESSAGE_INVALID_RETENTION_DAYS,
                 ex.getMessage()
             );
-        }
-    }
-
-    private static AsyncResult__c insertAsyncResultWithAge(String status, Integer ageDays) {
-        AsyncResult__c result = new AsyncResult__c(Status__c = status);
-        insert result;
-        Test.setCreatedDate(result.Id, System.now().addDays(-ageDays));
-        return result;
-    }
-
-    private static Integer followUpsLeftIn(QueueableChain chain) {
-        Integer followUps = 0;
-        for (QueueableJob job : chain.jobs) {
-            if (job instanceof MarkerJob) {
-                followUps++;
-            }
-        }
-        return followUps;
-    }
-
-    private static QueueableChain chainWithSettings(QueueableJobSetting__mdt setting) {
-        QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
-            setting.QueueableJobName__c => setting
-        };
-        return chain;
-    }
-
-    private static QueueableChain chainRunning(QueueableJob job) {
-        QueueableChain chain = new QueueableChain();
-        chain.addJob(job);
-        QueueableManager.get().setChain(chain);
-        return chain;
-    }
-
-    private static QueueableChain chainWithEnqueuedJob(QueueableJob job) {
-        QueueableChain chain = chainRunning(job);
-        job.chain = chain;
-        return chain;
-    }
-
-    private static AsyncMock.MockFinalizerContext rolledBack() {
-        return new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION);
-    }
-
-    private static AsyncMock.MockFinalizerContext committed() {
-        return new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS);
-    }
-
-    private class DeepCloneFailJob extends QueueableJob {
-        public override void work() {
-        }
-        public override QueueableJob cloneForDeepCopy() {
-            throw new JSONException('forced deep clone failure');
-        }
-    }
-
-    public class SelfReferencingJob extends QueueableJob {
-        public SelfReferencingJob self;
-        public override void work() {
-        }
-    }
-
-    public class AbstractFieldHoldingJob extends QueueableJob {
-        public Comparable held;
-        public override void work() {
-        }
-    }
-
-    public class AsyncLibTypeHoldingJob extends QueueableJob {
-        public Async.Result heldResult;
-        public Backoff heldBackoff;
-        public Async.Dependency heldDependency;
-        public override void work() {
-        }
-    }
-
-    public class DeepCloneRetryJob extends QueueableJob implements Async.Retryable {
-        public List<String> attempts = new List<String>();
-        public override void work() {
-            attempts.add('attempt' + retryAttempt);
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-
-        public void resetBeforeRetry(Integer attempt) {
-        }
-    }
-
-    public class DeepCloneFailRetryJob extends QueueableJob implements Async.Retryable {
-        public void resetBeforeRetry(Integer attempt) {
-        }
-
-        public override void work() {
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-        public override QueueableJob cloneForDeepCopy() {
-            throw new JSONException('forced deep clone failure');
-        }
-    }
-
-    public class RecordingLogger implements Async.OnJobEnqueued, Async.OnJobSucceeded, Async.OnJobFailed, Async.OnRetryEnqueued {
-        public void onJobEnqueued(Async.JobContext ctx) {
-            AsyncTest.loggedEvents.add('enqueued:' + ctx.className + ':' + ctx.info.get('team'));
-        }
-        public void onJobSucceeded(Async.JobContext ctx) {
-            AsyncTest.loggedEvents.add('succeeded:' + ctx.className);
-        }
-        public void onJobFailed(Async.FailureContext ctx) {
-            AsyncTest.loggedEvents.add('failed:' + ctx.className + ':' + ctx.retryAttempt);
-        }
-        public void onRetryEnqueued(Async.FailureContext ctx) {
-            AsyncTest.loggedEvents.add(
-                'retry:' + ctx.retryAttempt + ':delay=' + ctx.nextAttemptDelayMinutes
-            );
-        }
-    }
-
-    public class FailureOnlyLogger implements Async.OnJobFailed {
-        public void onJobFailed(Async.FailureContext ctx) {
-            AsyncTest.loggedEvents.add('failed-only:' + ctx.className);
-        }
-    }
-
-    public class ThrowingLogger implements Async.OnJobSucceeded {
-        public void onJobSucceeded(Async.JobContext ctx) {
-            throw new CustomException('logger exploded');
-        }
-    }
-
-    private class SelfLoggingJob extends QueueableJob implements Async.OnJobSucceeded {
-        public override void work() {
-        }
-        public void onJobSucceeded(Async.JobContext ctx) {
-            AsyncTest.loggedEvents.add('self:' + ctx.className);
-        }
-    }
-
-    private class SuccessfulQueueableTest extends QueueableJob {
-        public override void work() {
-            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
-        }
-    }
-
-    private class FailureQueueableTest extends QueueableJob.AllowsCallouts implements Async.Retryable {
-        public void resetBeforeRetry(Integer attempt) {
-        }
-
-        public override void work() {
-            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-    }
-
-    private class SelfConfiguringRetryJob extends QueueableJob implements Async.Retryable {
-        public void resetBeforeRetry(Integer attempt) {
-        }
-
-        private SelfConfiguringRetryJob() {
-            this.maxRetries = 2;
-            this.backoff = Async.Backoff.fixed(4);
-            this.continueOnJobExecuteFail = true;
-        }
-
-        public override void work() {
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-    }
-
-    private class ChainStoppingJob extends QueueableJob {
-        public override void work() {
-            Async.queueable(new StopChainFinalizer()).attachFinalizer();
-        }
-    }
-
-    private class MarkerJob extends QueueableJob implements Async.Retryable {
-        public String tag;
-        public Boolean shouldFail = false;
-        public override void work() {
-            insert new Account(Name = tag);
-            if (shouldFail) {
-                throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-            }
-        }
-
-        public void resetBeforeRetry(Integer attempt) {
-        }
-    }
-
-    private class StopChainFinalizer extends QueueableJob.Finalizer {
-        public override void work() {
-            Async.stopChain();
-        }
-    }
-
-    private class FinalizerAttachingRetryJob extends QueueableJob implements Async.Retryable {
-        public void resetBeforeRetry(Integer attempt) {
-        }
-
-        public override void work() {
-            insert new Account(Name = 'RETRY-PARENT');
-            Async.queueable(new MarkerFinalizer()).attachFinalizer();
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-    }
-
-    private class MarkerFinalizer extends QueueableJob.Finalizer {
-        public override void work() {
-            insert new Account(Name = 'RETRY-FINALIZER');
-        }
-    }
-
-    private abstract class HookRecordingJob extends QueueableJob implements Async.Retryable {
-        public void resetBeforeRetry(Integer attempt) {
-        }
-
-        public override void onFinalFailure(Async.FailureContext failureCtx) {
-            insert new Account(
-                Name = 'HOOK',
-                Description = failureCtx.retryOutcome.name() +
-                    '|' +
-                    (String.isBlank(failureCtx.failure?.stackTrace) ? 'NO-TRACE' : 'HAS-TRACE') +
-                    '|' +
-                    failureCtx.retryAttempt +
-                    '/' +
-                    failureCtx.maxRetries
-            );
-        }
-    }
-
-    private class FailureHookJob extends HookRecordingJob {
-        public override void work() {
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-    }
-
-    private class SucceedingHookJob extends HookRecordingJob {
-        public override void work() {
-            insert new Account(Name = 'SUCCEEDED');
-        }
-    }
-
-    private class ExplodingHookJob extends QueueableJob {
-        public override void work() {
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-
-        public override void onFinalFailure(Async.FailureContext failureCtx) {
-            throw new CustomException('hook exploded');
-        }
-    }
-
-    private class FailingChunkHookJob extends ChunkJob implements Async.ChunkResettable {
-        public void resetBeforeNextChunk(Integer pageNumber) {
-        }
-
-        public override void work(List<SObject> chunk) {
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-
-        public override void onFinalFailure(Async.FailureContext failureCtx) {
-            insert new Account(Name = 'HOOK', Description = failureCtx.retryOutcome.name());
-        }
-    }
-
-    private class JobChainingRetryJob extends QueueableJob implements Async.Retryable {
-        public void resetBeforeRetry(Integer attempt) {
-        }
-
-        public override void work() {
-            insert new Account(Name = 'CHAIN-PARENT');
-            Async.queueable(markerJob('CHAIN-FOLLOWUP', false)).chain();
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-    }
-
-    private class ChainingFailureJob extends QueueableJob {
-        public override void work() {
-            Async.queueable(markerJob('ROLLED-BACK-FOLLOWUP', false)).chain();
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-    }
-
-    private class FinalizerAndJobChainingFailureJob extends QueueableJob {
-        public override void work() {
-            Async.queueable(new MarkerFinalizer()).attachFinalizer();
-            Async.queueable(markerJob('ROLLED-BACK-FOLLOWUP', false)).chain();
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-    }
-
-    private class ChainStoppingFailureJob extends QueueableJob implements Async.Retryable {
-        public void resetBeforeRetry(Integer attempt) {
-        }
-
-        public override void work() {
-            Async.stopChain();
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-    }
-
-    private class JobSkippingFailureJob extends QueueableJob {
-        public String targetCustomJobId;
-        public override void work() {
-            Async.skipJob(targetCustomJobId);
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-    }
-
-    private class NonRetryableJob extends QueueableJob {
-        public override void work() {
-        }
-        public override Boolean isRetryable(Exception ex) {
-            return false;
-        }
-    }
-
-    private class MessageVetoJob extends QueueableJob {
-        public override void work() {
-        }
-        public override Boolean isRetryable(Exception ex) {
-            return !ex.getMessage().containsIgnoreCase('permanent');
-        }
-    }
-
-    private class ThrowingClassifierJob extends QueueableJob {
-        public override void work() {
-        }
-        public override Boolean isRetryable(Exception ex) {
-            throw new CustomException('classifier blew up');
-        }
-    }
-
-    private class ResettableRetryJob extends QueueableJob implements Async.Retryable {
-        public Boolean wasReset = false;
-        public Integer resetAttempt;
-        public override void work() {
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-        public void resetBeforeRetry(Integer attempt) {
-            this.wasReset = true;
-            this.resetAttempt = attempt;
-        }
-    }
-
-    private class UngatedRetryJob extends QueueableJob {
-        public override void work() {
-        }
-    }
-
-    public class RetryingChunkJob extends ChunkJob implements Async.Retryable, Async.ChunkResettable {
-        public List<String> touched = new List<String>();
-
-        public override void work(List<SObject> chunk) {
-            String firstOfPage = (String) chunk[0].get('Name');
-            AsyncTest.chunkPagesRun.add(firstOfPage + ':' + touched.size());
-            touched.add('page');
-            if (firstOfPage == 'P3' && AsyncTest.chunkPageFailures == 0) {
-                AsyncTest.chunkPageFailures++;
-                throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-            }
-        }
-
-        public void resetBeforeRetry(Integer attempt) {
-        }
-
-        public void resetBeforeNextChunk(Integer pageNumber) {
-        }
-    }
-
-    private class GateTrippingParentJob extends QueueableJob {
-        public override void work() {
-            insert new Account(Name = 'GATE-PARENT-RAN');
-            Async.queueable(new UngatedRetryJob()).retry(2).chain();
-        }
-    }
-
-    public class UngatedChunkJob extends ChunkJob {
-        public override void work(List<SObject> chunk) {
-        }
-    }
-
-    private class OkCalloutMock implements HttpCalloutMock {
-        public HttpResponse respond(HttpRequest request) {
-            HttpResponse response = new HttpResponse();
-            response.setStatusCode(200);
-            return response;
-        }
-    }
-
-    public class MarkerCalloutChunkJob extends ChunkJob implements Database.AllowsCallouts, Async.ChunkResettable {
-        public override void work(List<SObject> chunk) {
-            HttpRequest request = new HttpRequest();
-            request.setEndpoint('https://example.com');
-            request.setMethod('GET');
-            AsyncTest.chunkCalloutStatus = new Http().send(request).getStatusCode();
-            AsyncTest.chunkCalloutPages++;
-        }
-
-        public void resetBeforeNextChunk(Integer pageNumber) {
-        }
-    }
-
-    public class StateCarryingRetryJob extends QueueableJob implements Async.Retryable {
-        public List<String> seen = new List<String>();
-
-        public override void work() {
-            insert new Account(Name = 'RETRY-SIZE-' + seen.size());
-            seen.add('attempt');
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-
-        public void resetBeforeRetry(Integer attempt) {
-        }
-    }
-
-    public class StateCarryingChunkJob extends ChunkJob implements Async.ChunkResettable {
-        public List<String> seen = new List<String>();
-        public List<Integer> pagesReset = new List<Integer>();
-
-        public override void work(List<SObject> chunk) {
-            insert new Account(Name = 'CHUNK-SIZE-' + seen.size());
-            seen.add('page');
-        }
-
-        public void resetBeforeNextChunk(Integer pageNumber) {
-            pagesReset.add(pageNumber);
-        }
-    }
-
-    private class LegacyResetForRetryJob extends QueueableJob implements Async.Retryable {
-        public Boolean legacyHookRan = false;
-        public override void work() {
-            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
-        }
-        public override void resetForRetry() {
-            this.legacyHookRan = true;
-        }
-        public void resetBeforeRetry(Integer attempt) {
-        }
-    }
-
-    private class QueueableTestFinalizer extends QueueableJob.Finalizer {
-        public override void work() {
-            FinalizerContext finalizerCtx = Async.getQueueableJobContext()?.finalizerCtx;
-            insert new Account(
-                Name = Async.getQueueableJobContext()?.currentJob?.uniqueName,
-                Description = finalizerCtx?.getResult() == ParentJobResult.SUCCESS
-                    ? 'Success'
-                    : finalizerCtx?.getException()?.getMessage()
-            );
-        }
-    }
-
-    private class FinalizerErrorQueueableTest extends QueueableJob {
-        public override void work() {
-            Async.queueable(new SuccessfulQueueableTest()).attachFinalizer();
-        }
-    }
-
-    private class ChainedQueueableJob extends QueueableJob {
-        private Integer chainDepthLimit = 1;
-        private Integer currentChainDepth = 0;
-
-        public ChainedQueueableJob(Integer chainDepthLimit) {
-            this.chainDepthLimit = chainDepthLimit;
-        }
-
-        public override void work() {
-            currentChainDepth++;
-            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
-            if (currentChainDepth < chainDepthLimit) {
-                Async.queueable(this).enqueue();
-            }
-        }
-    }
-
-    public class QueueableJobTest1 extends QueueableJob implements Async.Retryable {
-        public QueueableJobTest2 complexMember = new QueueableJobTest2();
-        public override void work() {
-        }
-
-        public void resetBeforeRetry(Integer attempt) {
-        }
-    }
-
-    private class QueueableJobTest2 extends QueueableJob {
-        public String primitiveMember = PRIMITIVE_VALUE_INITIAL;
-        public override void work() {
-        }
-    }
-
-    private class QueueableJobTest3 extends QueueableJob {
-        public override void work() {
-        }
-    }
-
-    private class QueueableJobTest4 extends QueueableJob {
-        public override void work() {
-        }
-    }
-
-    private class QueueableJobTest5 extends QueueableJob {
-        public override void work() {
-        }
-    }
-
-    private class QueueableJobTest6 extends QueueableJob {
-        public override void work() {
-        }
-    }
-
-    private class QueueableJobTest7 extends QueueableJob {
-        public override void work() {
-        }
-    }
-
-    private class QueueableJobTest8 extends QueueableJob {
-        public override void work() {
-        }
-    }
-
-    private class SchedulableTest implements Schedulable {
-        public void execute(SchedulableContext ctx) {
-        }
-    }
-
-    private class CustomException extends Exception {
-    }
-
-    public class ParentJobWithFinalizer extends QueueableJob {
-        private String mockId;
-
-        public ParentJobWithFinalizer(String mockId) {
-            this.mockId = mockId;
-        }
-
-        public override void work() {
-            Async.queueable(new ErrorHandlerFinalizer()).mockId(mockId).attachFinalizer();
-        }
-    }
-
-    public class ErrorHandlerFinalizer extends QueueableJob.Finalizer {
-        public override void work() {
-            FinalizerContext ctx = this.finalizerCtx;
-            if (ctx?.getResult() == ParentJobResult.UNHANDLED_EXCEPTION) {
-                insert new Account(
-                    Name = 'Error Log',
-                    Description = ctx.getException()?.getMessage()
-                );
-            }
-        }
-    }
-
-    public class AccountCreatorJob extends QueueableJob {
-        private String accountName;
-
-        public AccountCreatorJob(String accountName) {
-            this.accountName = accountName;
-        }
-
-        public override void work() {
-            Id jobId = this.queueableCtx?.getJobId();
-            insert new Account(Name = accountName, Description = 'Job: ' + jobId);
         }
     }
 
@@ -5990,6 +5356,719 @@ private class AsyncTest implements Database.Batchable<SObject> {
         );
     }
 
+    @IsTest
+    private static void shouldStoreAPayloadWhenCustomMetadataTurnsItOn() {
+        RequeueableJob job = new RequeueableJob('STORED');
+
+        chainStoringPayloads().addJob(job);
+
+        Assert.areEqual(AsyncRequeue.STATUS_STORED, job.requeueStatus);
+        Assert.isTrue(
+            job.requeuePayload.contains('STORED'),
+            'The payload must carry the state the job was enqueued with: ' + job.requeuePayload
+        );
+        Assert.areEqual(job.requeuePayload.length(), job.requeuePayloadSize);
+    }
+
+    @IsTest
+    private static void shouldNotTouchTheJobWhenPayloadStorageIsOff() {
+        RequeueableJob job = new RequeueableJob('NOT-STORED');
+
+        new QueueableChain().addJob(job);
+
+        Assert.isNull(job.requeueStatus, 'Storing payloads has to be opted into.');
+        Assert.isNull(job.requeuePayload);
+    }
+
+    @IsTest
+    private static void shouldLetAJobRecordOptOutOfOrgWidePayloadStorage() {
+        RequeueableJob job = new RequeueableJob('SENSITIVE');
+        QueueableChain chain = new QueueableChain();
+        QueueableChain.jobSettingByName = payloadStorageOn();
+        QueueableChain.jobSettingByName.put(
+            job.className,
+            new QueueableJobSetting__mdt(
+                QueueableJobName__c = job.className,
+                StoreJobPayload__c = 'No'
+            )
+        );
+
+        chain.addJob(job);
+
+        Assert.isNull(
+            job.requeueStatus,
+            'A job carrying sensitive data must be able to opt out of an org-wide Yes.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotStoreAPayloadForChunkJobs() {
+        QueueableChain.jobSettingByName = payloadStorageOn();
+
+        Async.Result chunked = Async.chunk(
+                new StateCarryingChunkJob(),
+                ChunkSource.of(new List<Account>{ new Account(Name = 'PAGE') })
+            )
+            .chain();
+
+        Assert.areEqual(
+            AsyncRequeue.STATUS_NOT_SERIALIZABLE,
+            chunked.job.requeueStatus,
+            'A chunk run holds a source that cannot be stored, and a half-read cursor is not ' +
+            'a meaningful thing to replay.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRecordTooLargeRatherThanBreakTheInsert() {
+        BulkyRequeueableJob job = new BulkyRequeueableJob();
+        for (Integer i = 0; i < 70; i++) {
+            job.payloadParts.add('x'.repeat(2000));
+        }
+
+        chainStoringPayloads().addJob(job);
+
+        Assert.areEqual(AsyncRequeue.STATUS_TOO_LARGE, job.requeueStatus);
+        Assert.isNull(
+            job.requeuePayload,
+            'An oversized payload would fail the insert and lose the failure record with it.'
+        );
+        Assert.isTrue(
+            job.requeuePayloadSize > JobPayload.MAX_CHARS,
+            'The size is recorded even when the payload is not, so it can be reported on.'
+        );
+    }
+
+    @IsTest
+    private static void shouldWriteAFailureRowEvenWhenResultCreationIsOff() {
+        FailingRequeueableJob job = new FailingRequeueableJob();
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainStoringPayloads();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT Status__c, RequeueStatus__c, JobPayload__c
+            FROM AsyncResult__c
+            WHERE CustomJobId__c = :job.customJobId
+        ];
+        Assert.areEqual(QueueableManager.STATUS_FAILED, result.Status__c);
+        Assert.areEqual(
+            AsyncRequeue.STATUS_STORED,
+            result.RequeueStatus__c,
+            'A payload with no row to sit on could never be replayed.'
+        );
+        Assert.isNotNull(result.JobPayload__c);
+    }
+
+    @IsTest
+    private static void shouldNotWriteASuccessRowWhenOnlyPayloadStorageIsOn() {
+        RequeueableJob job = new RequeueableJob('SUCCEEDS');
+        QueueableChain chain = chainStoringPayloads();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM AsyncResult__c],
+            'Jobs that succeeded still obey CreateResult__c, so the added volume stays bounded ' +
+            'by the failure rate.'
+        );
+    }
+
+    @IsTest
+    private static void shouldWriteASkippedRowSoAChainWideReplayStaysPossible() {
+        FailureQueueableTest blocker = new FailureQueueableTest();
+        blocker.continueOnJobExecuteFail = true;
+        RequeueableJob blocked = new RequeueableJob('NEVER-RAN');
+        QueueableChain chain = chainStoringPayloads();
+        chain.addJob(blocker);
+        blocked.dependencies = new List<Async.Dependency>{
+            dependencyOn(blocker.customJobId, Async.Outcome.SUCCESS)
+        };
+        chain.addJob(blocked);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        AsyncResult__c skipped = [
+            SELECT Status__c, RequeueStatus__c
+            FROM AsyncResult__c
+            WHERE CustomJobId__c = :blocked.customJobId
+        ];
+        Assert.areEqual(QueueableManager.STATUS_SKIPPED_DEPENDENCY, skipped.Status__c);
+        Assert.areEqual(
+            AsyncRequeue.STATUS_STORED,
+            skipped.RequeueStatus__c,
+            'A job blocked by a dependency never failed, and it is exactly the one a chain-wide ' +
+            'replay has to rebuild.'
+        );
+    }
+
+    @IsTest
+    private static void shouldDropThePayloadFromTheJobOnceItIsOnTheRecord() {
+        FailingRequeueableJob job = new FailingRequeueableJob();
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainStoringPayloads();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        Assert.isNull(
+            job.requeuePayload,
+            'The payload rides the serialized job into every later context, so keeping it would ' +
+            'carry the job size twice for the rest of the chain.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRequeueAStoredJobAndLinkItBackToTheOriginal() {
+        RequeueableJob job = new RequeueableJob('REPLAYED');
+        chainStoringPayloads().addJob(job);
+        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+            .CreateResult__c = true;
+        AsyncResult__c original = storedResultFor(job);
+
+        Test.startTest();
+        Async.RequeueSummary summary = Async.requeue(new Set<Id>{ original.Id });
+        Test.stopTest();
+
+        Assert.areEqual(new List<Id>{ original.Id }, summary.requeued);
+        Assert.isNotNull(
+            summary.enqueueResult?.salesforceJobId,
+            'A requeue is an enqueue, so the caller gets the same handle on the chain.'
+        );
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM Account WHERE Name = 'REPLAYED'],
+            'The rebuilt job has to run with the state it was enqueued with.'
+        );
+        Assert.areEqual(
+            AsyncRequeue.STATUS_REQUEUED,
+            [SELECT RequeueStatus__c FROM AsyncResult__c WHERE Id = :original.Id].RequeueStatus__c,
+            'Marking the source is what stops a scheduled replay picking it up again.'
+        );
+        Assert.areEqual(
+            original.Id,
+            [
+                SELECT RequeuedFrom__c
+                FROM AsyncResult__c
+                WHERE Id != :original.Id
+                LIMIT 1
+            ]
+            .RequeuedFrom__c,
+            'A replay runs in a new chain, so this lookup is the only link back.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRequeueTwoHundredResultsAsOneChainInOneCall() {
+        RequeueableJob job = new RequeueableJob('BULK');
+        chainStoringPayloads().addJob(job);
+        List<AsyncResult__c> stored = new List<AsyncResult__c>();
+        for (Integer i = 0; i < 200; i++) {
+            stored.add(
+                new AsyncResult__c(
+                    ClassName__c = job.className,
+                    Status__c = QueueableManager.STATUS_FAILED,
+                    JobPayload__c = job.requeuePayload,
+                    PayloadSize__c = job.requeuePayloadSize,
+                    RequeueStatus__c = AsyncRequeue.STATUS_STORED
+                )
+            );
+        }
+        insert stored;
+        Map<Id, AsyncResult__c> storedById = new Map<Id, AsyncResult__c>(stored);
+
+        Async.RequeueSummary summary = Async.requeue(storedById.keySet());
+
+        Assert.areEqual(200, summary.requeued.size());
+        Assert.isTrue(summary.skipReasonByResultId.isEmpty(), '' + summary.skipReasonByResultId);
+        Assert.areEqual(
+            200,
+            summary.enqueueResult.queueableChainState.jobs.size(),
+            'Every replay has to land in the one chain, not in 200 separate enqueues.'
+        );
+        Assert.areEqual(
+            200,
+            [
+                SELECT COUNT()
+                FROM AsyncResult__c
+                WHERE
+                    Id IN :storedById.keySet()
+                    AND RequeueStatus__c = :AsyncRequeue.STATUS_REQUEUED
+            ],
+            'Every source row has to be marked in the same call.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotStoreAPayloadOnTheRowOfAJobThatSucceeded() {
+        RequeueableJob job = new RequeueableJob('SUCCEEDED');
+        QueueableChain chain = chainStoringPayloads();
+        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+            .CreateResult__c = true;
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT Status__c, RequeueStatus__c, JobPayload__c
+            FROM AsyncResult__c
+            WHERE CustomJobId__c = :job.customJobId
+        ];
+        Assert.areEqual(QueueableManager.STATUS_COMPLETED, result.Status__c);
+        Assert.isNull(
+            result.RequeueStatus__c,
+            'There is nothing to replay about a job that worked, and a Stored status here would ' +
+            'let a bulk replay re-run it.'
+        );
+        Assert.isNull(result.JobPayload__c);
+    }
+
+    @IsTest
+    private static void shouldKeepThePayloadThroughARetryThatRestoresEnqueuedState() {
+        QueueableChain.jobSettingByName = payloadStorageOn();
+
+        Test.startTest();
+        Async.queueable(new FailingRequeueableJob())
+            .retry(1)
+            .restoreStateOnRetry()
+            .continueOnJobExecuteFail()
+            .enqueue();
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT RetryAttempts__c, RequeueStatus__c, JobPayload__c
+            FROM AsyncResult__c
+            LIMIT 1
+        ];
+        Assert.areEqual(1, result.RetryAttempts__c, 'The retry has to have run.');
+        Assert.areEqual(
+            AsyncRequeue.STATUS_STORED,
+            result.RequeueStatus__c,
+            'A job that exhausted its retries after an outage is the one requeue exists for.'
+        );
+        Assert.isNotNull(result.JobPayload__c);
+    }
+
+    @IsTest
+    private static void shouldKeepThePayloadThroughADeepClonedRetry() {
+        QueueableChain.jobSettingByName = payloadStorageOn();
+
+        Test.startTest();
+        Async.queueable(new FailingRequeueableJob())
+            .deepClone()
+            .retry(1)
+            .continueOnJobExecuteFail()
+            .enqueue();
+        Test.stopTest();
+
+        AsyncResult__c result = [
+            SELECT RetryAttempts__c, RequeueStatus__c, JobPayload__c
+            FROM AsyncResult__c
+            LIMIT 1
+        ];
+        Assert.areEqual(1, result.RetryAttempts__c, 'The retry has to have run.');
+        Assert.areEqual(AsyncRequeue.STATUS_STORED, result.RequeueStatus__c);
+        Assert.isNotNull(
+            result.JobPayload__c,
+            'The deep copy strips the payload out of the JSON it makes; the copy still has to get it back.'
+        );
+    }
+
+    @IsTest
+    private static void shouldDropThePayloadFromASupersededAttempt() {
+        FailureQueueableTest job = new FailureQueueableTest();
+        job.maxRetries = 1;
+        job.continueOnJobExecuteFail = true;
+        QueueableChain chain = chainStoringPayloads();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+        String payload = job.requeuePayload;
+
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+
+        Assert.isNull(
+            job.requeuePayload,
+            'The failed attempt stays in the chain; it must not carry the payload too.'
+        );
+        Assert.areEqual(
+            payload,
+            chain.jobs[0].requeuePayload,
+            'The retry attempt is the one that will produce the row, so it carries the payload.'
+        );
+    }
+
+    @IsTest
+    private static void shouldDegradeWhenTheRegisteredSerializerReturnsNull() {
+        QueueableChain chain = chainStoringPayloads();
+        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+            .JobSerializerClass__c = loggerName('NullReturningJobSerializer');
+        RequeueableJob job = new RequeueableJob('NULL-SERIALIZER');
+
+        chain.addJob(job);
+
+        Assert.areEqual(AsyncRequeue.STATUS_NOT_SERIALIZABLE, job.requeueStatus);
+        Assert.isTrue(
+            job.retryHistory.contains(QueueableManager.CAUSE_SERIALIZER_RETURNED_NULL),
+            'A registered class is configuration, and configuration mistakes degrade with a ' +
+                'reason rather than stopping every enqueue: ' +
+                job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldCaptureTheJobBeforeAnyChainBookkeepingLandsOnIt() {
+        RequeueableJob job = new RequeueableJob('PRISTINE');
+        QueueableChain.jobSettingByName = payloadStorageOn();
+        QueueableChain.jobSettingByName.put(
+            job.className,
+            new QueueableJobSetting__mdt(QueueableJobName__c = job.className, MaxRetries__c = 3)
+        );
+
+        Async.queueable(job).chain();
+
+        RequeueableJob rebuilt = (RequeueableJob) JSON.deserialize(
+            QueueableManager.get().getChain().getJobs()[0].requeuePayload,
+            RequeueableJob.class
+        );
+        Assert.isNull(rebuilt.customJobId, 'The replay gets a fresh id.');
+        Assert.isNull(rebuilt.chainSequence, 'The replay takes its place in its own chain.');
+        Assert.areEqual(
+            0,
+            rebuilt.maxRetries,
+            'Custom Metadata defaults are applied again at replay, from the metadata of that day.'
+        );
+    }
+
+    @IsTest
+    private static void shouldSkipAJobWhoseClassNoLongerDeclaresHowItsStateResets() {
+        RequeueableJob job = new RequeueableJob('CHANGED-CLASS');
+        chainStoringPayloads().addJob(job);
+        job.requeuePayload = job.requeuePayload.replace('"maxRetries":0', '"maxRetries":2');
+        AsyncResult__c stored = storedResultFor(job);
+
+        Async.RequeueSummary summary = Async.requeue(new Set<Id>{ stored.Id });
+
+        Assert.isTrue(summary.requeued.isEmpty(), 'The gate has to hold on replay too.');
+        Assert.isTrue(
+            summary.skipReasonByResultId.get(stored.Id).contains('Async.Retryable'),
+            'One bad class is one skipped row with the gate message, not an abandoned batch: ' +
+            summary.skipReasonByResultId.get(stored.Id)
+        );
+    }
+
+    @IsTest
+    private static void shouldStillWriteTheReplayRowWhenTheSourceWasDeletedMeanwhile() {
+        FailingRequeueableJob job = new FailingRequeueableJob();
+        job.continueOnJobExecuteFail = true;
+        chainStoringPayloads().addJob(job);
+        AsyncResult__c original = storedResultFor(job);
+
+        Test.startTest();
+        Async.requeue(new Set<Id>{ original.Id });
+        delete original;
+        Test.stopTest();
+
+        AsyncResult__c replay = [
+            SELECT Status__c, RequeuedFrom__c
+            FROM AsyncResult__c
+            LIMIT 1
+        ];
+        Assert.areEqual(QueueableManager.STATUS_FAILED, replay.Status__c);
+        Assert.isNull(
+            replay.RequeuedFrom__c,
+            'A lookup to a row the cleanup batch removed would fail the insert and lose the row.'
+        );
+    }
+
+    @IsTest
+    private static void shouldExplainEveryResultItRefusedToRequeue() {
+        AsyncResult__c noPayload = new AsyncResult__c(Status__c = QueueableManager.STATUS_FAILED);
+        AsyncResult__c alreadyRequeued = new AsyncResult__c(
+            Status__c = QueueableManager.STATUS_FAILED,
+            RequeueStatus__c = AsyncRequeue.STATUS_REQUEUED
+        );
+        AsyncResult__c tooLarge = new AsyncResult__c(
+            Status__c = QueueableManager.STATUS_FAILED,
+            RequeueStatus__c = AsyncRequeue.STATUS_TOO_LARGE
+        );
+        insert new List<AsyncResult__c>{ noPayload, alreadyRequeued, tooLarge };
+        AsyncResult__c deleted = new AsyncResult__c(Status__c = QueueableManager.STATUS_FAILED);
+        insert deleted;
+        Id deletedId = deleted.Id;
+        delete deleted;
+
+        Test.startTest();
+        Async.RequeueSummary summary = Async.requeue(
+            new Set<Id>{ noPayload.Id, alreadyRequeued.Id, tooLarge.Id, deletedId }
+        );
+        Test.stopTest();
+
+        Assert.isTrue(summary.requeued.isEmpty(), 'None of these can be replayed.');
+        Assert.areEqual(
+            QueueableManager.REQUEUE_SKIPPED_NO_PAYLOAD,
+            summary.skipReasonByResultId.get(noPayload.Id)
+        );
+        Assert.areEqual(
+            QueueableManager.REQUEUE_SKIPPED_ALREADY_REQUEUED,
+            summary.skipReasonByResultId.get(alreadyRequeued.Id)
+        );
+        Assert.isTrue(
+            summary.skipReasonByResultId.get(tooLarge.Id).contains(AsyncRequeue.STATUS_TOO_LARGE),
+            'The reason has to name the status, but was: ' +
+            summary.skipReasonByResultId.get(tooLarge.Id)
+        );
+        Assert.areEqual(
+            QueueableManager.REQUEUE_SKIPPED_NO_RECORD,
+            summary.skipReasonByResultId.get(deletedId)
+        );
+    }
+
+    @IsTest
+    private static void shouldRefuseToRequeueMoreCharactersThanItCanHold() {
+        List<AsyncResult__c> heavy = new List<AsyncResult__c>();
+        for (Integer i = 0; i < 20; i++) {
+            heavy.add(
+                new AsyncResult__c(
+                    Status__c = QueueableManager.STATUS_FAILED,
+                    RequeueStatus__c = AsyncRequeue.STATUS_STORED,
+                    PayloadSize__c = JobPayload.MAX_CHARS
+                )
+            );
+        }
+        insert heavy;
+        Map<Id, AsyncResult__c> heavyById = new Map<Id, AsyncResult__c>(heavy);
+
+        try {
+            Async.requeue(heavyById.keySet());
+            Assert.fail('Deserializing this many payloads at once would blow the heap.');
+        } catch (Async.IllegalArgumentException expected) {
+            Assert.isTrue(
+                expected.getMessage().contains(String.valueOf(AsyncRequeue.MAX_CHARS_PER_REQUEUE)),
+                'The caller has to be told the limit, but was: ' + expected.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRouteBothHalvesThroughARegisteredSerializer() {
+        QueueableChain chain = chainStoringPayloads();
+        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+            .JobSerializerClass__c = loggerName('RecordingJobSerializer');
+        RequeueableJob job = new RequeueableJob('VIA-SERIALIZER');
+        chain.addJob(job);
+        AsyncResult__c original = storedResultFor(job);
+
+        Test.startTest();
+        Async.requeue(new Set<Id>{ original.Id });
+        Test.stopTest();
+
+        Assert.isTrue(
+            loggedEvents.contains('serialize:' + job.className),
+            'Capture has to run in the consumer namespace too: ' + loggedEvents
+        );
+        Assert.isTrue(
+            loggedEvents.contains('deserialize:' + job.className),
+            'Rebuild has to run in the consumer namespace: ' + loggedEvents
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectARegisteredClassThatIsNotASerializer() {
+        QueueableChain chain = chainStoringPayloads();
+        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+            .JobSerializerClass__c = loggerName('RecordingLogger');
+        RequeueableJob job = new RequeueableJob('NOT-A-SERIALIZER');
+
+        chain.addJob(job);
+
+        Assert.areEqual(AsyncRequeue.STATUS_NOT_SERIALIZABLE, job.requeueStatus);
+        Assert.isTrue(
+            job.retryHistory.contains('JobSerializerClass__c'),
+            'The misconfigured field has to be named, but was: ' + job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldReportWhenTheStoredClassNoLongerExists() {
+        AsyncResult__c orphan = new AsyncResult__c(
+            ClassName__c = 'NoSuchJobClass',
+            Status__c = QueueableManager.STATUS_FAILED,
+            JobPayload__c = '{}',
+            PayloadSize__c = 2,
+            RequeueStatus__c = AsyncRequeue.STATUS_STORED
+        );
+        insert orphan;
+
+        Test.startTest();
+        Async.RequeueSummary summary = Async.requeue(new Set<Id>{ orphan.Id });
+        Test.stopTest();
+
+        Assert.isTrue(
+            summary.skipReasonByResultId.get(orphan.Id).contains('NoSuchJobClass'),
+            'A renamed or deleted class must be named, but was: ' +
+            summary.skipReasonByResultId.get(orphan.Id)
+        );
+        Assert.areEqual(
+            AsyncRequeue.STATUS_STORED,
+            [SELECT RequeueStatus__c FROM AsyncResult__c WHERE Id = :orphan.Id].RequeueStatus__c,
+            'A row that could not be replayed must stay replayable once the class is back.'
+        );
+    }
+
+    private static QueueableChain chainWithLogger(String loggerClassName) {
+        return chainWithSettings(
+            new QueueableJobSetting__mdt(
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                LoggerClass__c = loggerClassName
+            )
+        );
+    }
+
+    private static String loggerName(String simpleName) {
+        return getClassNameWithNamespaceDotPrefix('AsyncTest.' + simpleName);
+    }
+
+    private static Async.Dependency dependencyOn(String customJobId, Async.Outcome outcome) {
+        Async.Dependency dependency = new Async.Dependency();
+        dependency.resolvedTargetCustomJobId = customJobId;
+        dependency.requiredOutcome = outcome;
+        return dependency;
+    }
+
+    private static Map<String, QueueableJobSetting__mdt> resultsEnabledForAll() {
+        return new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                CreateResult__c = true
+            )
+        };
+    }
+
+    private static MarkerJob markerJob(String tag, Boolean shouldFail) {
+        MarkerJob job = new MarkerJob();
+        job.tag = tag;
+        job.shouldFail = shouldFail;
+        return job;
+    }
+
+    private static Integer accountCount(String name) {
+        return [SELECT COUNT() FROM Account WHERE Name = :name];
+    }
+
+    private static Account hookRecord() {
+        return [SELECT Description FROM Account WHERE Name = 'HOOK' LIMIT 1];
+    }
+
+    private static String getClassNameWithNamespaceDotPrefix(String className) {
+        return getNamespaceDotPrefix() + className;
+    }
+
+    private static String getNamespaceDotPrefix() {
+        String className = AsyncTest.class.getName();
+        return className.contains('.') ? className.substringBefore('.') + '.' : '';
+    }
+
+    public Iterable<Account> start(Database.BatchableContext bc) {
+        // This is just a placeholder to start the batch.
+        return new List<Account>{ new Account() };
+    }
+
+    public void execute(Database.BatchableContext ctx, List<Account> scope) {
+        for (Account acc : scope) {
+            acc.Description = 'Processed by: ' + ctx.getJobId();
+        }
+        if (!scope.isEmpty() && scope[0].Id != null) {
+            update scope;
+        }
+    }
+
+    public void finish(Database.BatchableContext bc) {
+        insert new Account(Name = 'Batch Complete', Description = 'Job: ' + bc.getJobId());
+    }
+
+    private static AsyncResult__c insertAsyncResultWithAge(String status, Integer ageDays) {
+        AsyncResult__c result = new AsyncResult__c(Status__c = status);
+        insert result;
+        Test.setCreatedDate(result.Id, System.now().addDays(-ageDays));
+        return result;
+    }
+
+    private static Integer followUpsLeftIn(QueueableChain chain) {
+        Integer followUps = 0;
+        for (QueueableJob job : chain.jobs) {
+            if (job instanceof MarkerJob) {
+                followUps++;
+            }
+        }
+        return followUps;
+    }
+
+    private static QueueableChain chainWithSettings(QueueableJobSetting__mdt setting) {
+        QueueableChain chain = new QueueableChain();
+        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+            setting.QueueableJobName__c => setting
+        };
+        return chain;
+    }
+
+    private static QueueableChain chainRunning(QueueableJob job) {
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+        return chain;
+    }
+
+    private static QueueableChain chainWithEnqueuedJob(QueueableJob job) {
+        QueueableChain chain = chainRunning(job);
+        job.chain = chain;
+        return chain;
+    }
+
+    private static AsyncMock.MockFinalizerContext rolledBack() {
+        return new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION);
+    }
+
+    private static AsyncMock.MockFinalizerContext committed() {
+        return new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS);
+    }
+
     private static String processedCountSeenBy(String tag) {
         return [SELECT Site FROM Account WHERE Name = :tag LIMIT 1].Site;
     }
@@ -6026,6 +6105,551 @@ private class AsyncTest implements Database.Batchable<SObject> {
             toUpdate.add(new Account(Id = record.Id, Site = marker));
         }
         update toUpdate;
+    }
+
+    private static Map<String, QueueableJobSetting__mdt> payloadStorageOn() {
+        return new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                StoreJobPayload__c = 'Yes'
+            )
+        };
+    }
+
+    private static QueueableChain chainStoringPayloads() {
+        QueueableChain chain = new QueueableChain();
+        QueueableChain.jobSettingByName = payloadStorageOn();
+        return chain;
+    }
+
+    private static AsyncResult__c storedResultFor(QueueableJob capturedJob) {
+        AsyncResult__c stored = new AsyncResult__c(
+            ClassName__c = capturedJob.className,
+            CustomJobId__c = capturedJob.customJobId,
+            Status__c = QueueableManager.STATUS_FAILED,
+            JobPayload__c = capturedJob.requeuePayload,
+            PayloadSize__c = capturedJob.requeuePayloadSize,
+            RequeueStatus__c = AsyncRequeue.STATUS_STORED
+        );
+        insert stored;
+        return stored;
+    }
+
+    private class DeepCloneFailJob extends QueueableJob {
+        public override void work() {
+        }
+        public override QueueableJob cloneForDeepCopy() {
+            throw new JSONException('forced deep clone failure');
+        }
+    }
+
+    public class SelfReferencingJob extends QueueableJob {
+        public SelfReferencingJob self;
+        public override void work() {
+        }
+    }
+
+    public class AbstractFieldHoldingJob extends QueueableJob {
+        public Comparable held;
+        public override void work() {
+        }
+    }
+
+    public class AsyncLibTypeHoldingJob extends QueueableJob {
+        public Async.Result heldResult;
+        public Backoff heldBackoff;
+        public Async.Dependency heldDependency;
+        public override void work() {
+        }
+    }
+
+    public class DeepCloneRetryJob extends QueueableJob implements Async.Retryable {
+        public List<String> attempts = new List<String>();
+        public override void work() {
+            attempts.add('attempt' + retryAttempt);
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
+    }
+
+    public class DeepCloneFailRetryJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+        public override QueueableJob cloneForDeepCopy() {
+            throw new JSONException('forced deep clone failure');
+        }
+    }
+
+    public class RecordingLogger implements Async.OnJobEnqueued, Async.OnJobSucceeded, Async.OnJobFailed, Async.OnRetryEnqueued {
+        public void onJobEnqueued(Async.JobContext ctx) {
+            AsyncTest.loggedEvents.add('enqueued:' + ctx.className + ':' + ctx.info.get('team'));
+        }
+        public void onJobSucceeded(Async.JobContext ctx) {
+            AsyncTest.loggedEvents.add('succeeded:' + ctx.className);
+        }
+        public void onJobFailed(Async.FailureContext ctx) {
+            AsyncTest.loggedEvents.add('failed:' + ctx.className + ':' + ctx.retryAttempt);
+        }
+        public void onRetryEnqueued(Async.FailureContext ctx) {
+            AsyncTest.loggedEvents.add(
+                'retry:' + ctx.retryAttempt + ':delay=' + ctx.nextAttemptDelayMinutes
+            );
+        }
+    }
+
+    public class FailureOnlyLogger implements Async.OnJobFailed {
+        public void onJobFailed(Async.FailureContext ctx) {
+            AsyncTest.loggedEvents.add('failed-only:' + ctx.className);
+        }
+    }
+
+    public class ThrowingLogger implements Async.OnJobSucceeded {
+        public void onJobSucceeded(Async.JobContext ctx) {
+            throw new CustomException('logger exploded');
+        }
+    }
+
+    private class SelfLoggingJob extends QueueableJob implements Async.OnJobSucceeded {
+        public override void work() {
+        }
+        public void onJobSucceeded(Async.JobContext ctx) {
+            AsyncTest.loggedEvents.add('self:' + ctx.className);
+        }
+    }
+
+    private class SuccessfulQueueableTest extends QueueableJob {
+        public override void work() {
+            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
+        }
+    }
+
+    private class FailureQueueableTest extends QueueableJob.AllowsCallouts implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        public override void work() {
+            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class SelfConfiguringRetryJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        private SelfConfiguringRetryJob() {
+            this.maxRetries = 2;
+            this.backoff = Async.Backoff.fixed(4);
+            this.continueOnJobExecuteFail = true;
+        }
+
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class ChainStoppingJob extends QueueableJob {
+        public override void work() {
+            Async.queueable(new StopChainFinalizer()).attachFinalizer();
+        }
+    }
+
+    private class MarkerJob extends QueueableJob implements Async.Retryable {
+        public String tag;
+        public Boolean shouldFail = false;
+        public override void work() {
+            insert new Account(Name = tag);
+            if (shouldFail) {
+                throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+            }
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
+    }
+
+    private class StopChainFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            Async.stopChain();
+        }
+    }
+
+    private class FinalizerAttachingRetryJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        public override void work() {
+            insert new Account(Name = 'RETRY-PARENT');
+            Async.queueable(new MarkerFinalizer()).attachFinalizer();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class MarkerFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            insert new Account(Name = 'RETRY-FINALIZER');
+        }
+    }
+
+    private abstract class HookRecordingJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        public override void onFinalFailure(Async.FailureContext failureCtx) {
+            insert new Account(
+                Name = 'HOOK',
+                Description = failureCtx.retryOutcome.name() +
+                    '|' +
+                    (String.isBlank(failureCtx.failure?.stackTrace) ? 'NO-TRACE' : 'HAS-TRACE') +
+                    '|' +
+                    failureCtx.retryAttempt +
+                    '/' +
+                    failureCtx.maxRetries
+            );
+        }
+    }
+
+    private class FailureHookJob extends HookRecordingJob {
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class SucceedingHookJob extends HookRecordingJob {
+        public override void work() {
+            insert new Account(Name = 'SUCCEEDED');
+        }
+    }
+
+    private class ExplodingHookJob extends QueueableJob {
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public override void onFinalFailure(Async.FailureContext failureCtx) {
+            throw new CustomException('hook exploded');
+        }
+    }
+
+    private class FailingChunkHookJob extends ChunkJob implements Async.ChunkResettable {
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+
+        public override void work(List<SObject> chunk) {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public override void onFinalFailure(Async.FailureContext failureCtx) {
+            insert new Account(Name = 'HOOK', Description = failureCtx.retryOutcome.name());
+        }
+    }
+
+    private class JobChainingRetryJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        public override void work() {
+            insert new Account(Name = 'CHAIN-PARENT');
+            Async.queueable(markerJob('CHAIN-FOLLOWUP', false)).chain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class ChainingFailureJob extends QueueableJob {
+        public override void work() {
+            Async.queueable(markerJob('ROLLED-BACK-FOLLOWUP', false)).chain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class FinalizerAndJobChainingFailureJob extends QueueableJob {
+        public override void work() {
+            Async.queueable(new MarkerFinalizer()).attachFinalizer();
+            Async.queueable(markerJob('ROLLED-BACK-FOLLOWUP', false)).chain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class ChainStoppingFailureJob extends QueueableJob implements Async.Retryable {
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        public override void work() {
+            Async.stopChain();
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class JobSkippingFailureJob extends QueueableJob {
+        public String targetCustomJobId;
+        public override void work() {
+            Async.skipJob(targetCustomJobId);
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+    }
+
+    private class NonRetryableJob extends QueueableJob {
+        public override void work() {
+        }
+        public override Boolean isRetryable(Exception ex) {
+            return false;
+        }
+    }
+
+    private class MessageVetoJob extends QueueableJob {
+        public override void work() {
+        }
+        public override Boolean isRetryable(Exception ex) {
+            return !ex.getMessage().containsIgnoreCase('permanent');
+        }
+    }
+
+    private class ThrowingClassifierJob extends QueueableJob {
+        public override void work() {
+        }
+        public override Boolean isRetryable(Exception ex) {
+            throw new CustomException('classifier blew up');
+        }
+    }
+
+    private class ResettableRetryJob extends QueueableJob implements Async.Retryable {
+        public Boolean wasReset = false;
+        public Integer resetAttempt;
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+        public void resetBeforeRetry(Integer attempt) {
+            this.wasReset = true;
+            this.resetAttempt = attempt;
+        }
+    }
+
+    private class UngatedRetryJob extends QueueableJob {
+        public override void work() {
+        }
+    }
+
+    public class RetryingChunkJob extends ChunkJob implements Async.Retryable, Async.ChunkResettable {
+        public List<String> touched = new List<String>();
+
+        public override void work(List<SObject> chunk) {
+            String firstOfPage = (String) chunk[0].get('Name');
+            AsyncTest.chunkPagesRun.add(firstOfPage + ':' + touched.size());
+            touched.add('page');
+            if (firstOfPage == 'P3' && AsyncTest.chunkPageFailures == 0) {
+                AsyncTest.chunkPageFailures++;
+                throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+            }
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+    }
+
+    private class GateTrippingParentJob extends QueueableJob {
+        public override void work() {
+            insert new Account(Name = 'GATE-PARENT-RAN');
+            Async.queueable(new UngatedRetryJob()).retry(2).chain();
+        }
+    }
+
+    public class UngatedChunkJob extends ChunkJob {
+        public override void work(List<SObject> chunk) {
+        }
+    }
+
+    private class OkCalloutMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest request) {
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(200);
+            return response;
+        }
+    }
+
+    public class MarkerCalloutChunkJob extends ChunkJob implements Database.AllowsCallouts, Async.ChunkResettable {
+        public override void work(List<SObject> chunk) {
+            HttpRequest request = new HttpRequest();
+            request.setEndpoint('https://example.com');
+            request.setMethod('GET');
+            AsyncTest.chunkCalloutStatus = new Http().send(request).getStatusCode();
+            AsyncTest.chunkCalloutPages++;
+        }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+    }
+
+    public class StateCarryingRetryJob extends QueueableJob implements Async.Retryable {
+        public List<String> seen = new List<String>();
+
+        public override void work() {
+            insert new Account(Name = 'RETRY-SIZE-' + seen.size());
+            seen.add('attempt');
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
+    }
+
+    public class StateCarryingChunkJob extends ChunkJob implements Async.ChunkResettable {
+        public List<String> seen = new List<String>();
+        public List<Integer> pagesReset = new List<Integer>();
+
+        public override void work(List<SObject> chunk) {
+            insert new Account(Name = 'CHUNK-SIZE-' + seen.size());
+            seen.add('page');
+        }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+            pagesReset.add(pageNumber);
+        }
+    }
+
+    private class LegacyResetForRetryJob extends QueueableJob implements Async.Retryable {
+        public Boolean legacyHookRan = false;
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+        public override void resetForRetry() {
+            this.legacyHookRan = true;
+        }
+        public void resetBeforeRetry(Integer attempt) {
+        }
+    }
+
+    private class QueueableTestFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            FinalizerContext finalizerCtx = Async.getQueueableJobContext()?.finalizerCtx;
+            insert new Account(
+                Name = Async.getQueueableJobContext()?.currentJob?.uniqueName,
+                Description = finalizerCtx?.getResult() == ParentJobResult.SUCCESS
+                    ? 'Success'
+                    : finalizerCtx?.getException()?.getMessage()
+            );
+        }
+    }
+
+    private class FinalizerErrorQueueableTest extends QueueableJob {
+        public override void work() {
+            Async.queueable(new SuccessfulQueueableTest()).attachFinalizer();
+        }
+    }
+
+    private class ChainedQueueableJob extends QueueableJob {
+        private Integer chainDepthLimit = 1;
+        private Integer currentChainDepth = 0;
+
+        public ChainedQueueableJob(Integer chainDepthLimit) {
+            this.chainDepthLimit = chainDepthLimit;
+        }
+
+        public override void work() {
+            currentChainDepth++;
+            insert new Account(Name = Async.getQueueableJobContext()?.currentJob?.uniqueName);
+            if (currentChainDepth < chainDepthLimit) {
+                Async.queueable(this).enqueue();
+            }
+        }
+    }
+
+    public class QueueableJobTest1 extends QueueableJob implements Async.Retryable {
+        public QueueableJobTest2 complexMember = new QueueableJobTest2();
+        public override void work() {
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
+    }
+
+    private class QueueableJobTest2 extends QueueableJob {
+        public String primitiveMember = PRIMITIVE_VALUE_INITIAL;
+        public override void work() {
+        }
+    }
+
+    private class QueueableJobTest3 extends QueueableJob {
+        public override void work() {
+        }
+    }
+
+    private class QueueableJobTest4 extends QueueableJob {
+        public override void work() {
+        }
+    }
+
+    private class QueueableJobTest5 extends QueueableJob {
+        public override void work() {
+        }
+    }
+
+    private class QueueableJobTest6 extends QueueableJob {
+        public override void work() {
+        }
+    }
+
+    private class QueueableJobTest7 extends QueueableJob {
+        public override void work() {
+        }
+    }
+
+    private class QueueableJobTest8 extends QueueableJob {
+        public override void work() {
+        }
+    }
+
+    private class SchedulableTest implements Schedulable {
+        public void execute(SchedulableContext ctx) {
+        }
+    }
+
+    private class CustomException extends Exception {
+    }
+
+    public class ParentJobWithFinalizer extends QueueableJob {
+        private String mockId;
+
+        public ParentJobWithFinalizer(String mockId) {
+            this.mockId = mockId;
+        }
+
+        public override void work() {
+            Async.queueable(new ErrorHandlerFinalizer()).mockId(mockId).attachFinalizer();
+        }
+    }
+
+    public class ErrorHandlerFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            FinalizerContext ctx = this.finalizerCtx;
+            if (ctx?.getResult() == ParentJobResult.UNHANDLED_EXCEPTION) {
+                insert new Account(
+                    Name = 'Error Log',
+                    Description = ctx.getException()?.getMessage()
+                );
+            }
+        }
+    }
+
+    public class AccountCreatorJob extends QueueableJob {
+        private String accountName;
+
+        public AccountCreatorJob(String accountName) {
+            this.accountName = accountName;
+        }
+
+        public override void work() {
+            Id jobId = this.queueableCtx?.getJobId();
+            insert new Account(Name = accountName, Description = 'Job: ' + jobId);
+        }
     }
 
     private class MarkingChunkJob extends ChunkJob implements Async.ChunkResettable, Async.Retryable {
@@ -6190,6 +6814,60 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 Name = tag,
                 Site = String.valueOf([SELECT COUNT() FROM Account WHERE Site = :CHUNK_PROCESSED])
             );
+        }
+    }
+
+    // Type.forName cannot reach a private inner class, and requeue rebuilds jobs by name.
+    public class RequeueableJob extends QueueableJob {
+        public String tag;
+
+        public RequeueableJob() {
+        }
+
+        public RequeueableJob(String tag) {
+            this.tag = tag;
+        }
+
+        public override void work() {
+            insert new Account(Name = tag);
+        }
+    }
+
+    public class FailingRequeueableJob extends QueueableJob implements Async.Retryable {
+        public override void work() {
+            throw new CustomException(AsyncTest.CUSTOM_ERROR_MESSAGE);
+        }
+
+        public void resetBeforeRetry(Integer attempt) {
+        }
+    }
+
+    public class BulkyRequeueableJob extends QueueableJob {
+        public List<String> payloadParts = new List<String>();
+
+        public override void work() {
+        }
+    }
+
+    public class NullReturningJobSerializer implements Async.JobSerializer {
+        public String serialize(QueueableJob job) {
+            return null;
+        }
+
+        public QueueableJob deserialize(String className, String payload) {
+            return null;
+        }
+    }
+
+    public class RecordingJobSerializer implements Async.JobSerializer {
+        public String serialize(QueueableJob job) {
+            AsyncTest.loggedEvents.add('serialize:' + job.className);
+            return JSON.serialize(job);
+        }
+
+        public QueueableJob deserialize(String className, String payload) {
+            AsyncTest.loggedEvents.add('deserialize:' + className);
+            return (QueueableJob) JSON.deserialize(payload, Type.forName(className));
         }
     }
 }

@@ -35,6 +35,7 @@ Nothing is thrown and the job runs.
 | `BackoffStrategy__c` is not a known strategy | no backoff, retries run without delay |
 | `MaxRetries__c` above the framework cap | clamped to the cap |
 | `LoggerClass__c` cannot be resolved | no logger, jobs run normally |
+| `JobSerializerClass__c` cannot be resolved, or is not an `Async.JobSerializer` | no payload stored, the result records `NotSerializable`, job runs normally |
 
 Every fallback degrades toward doing **less**, never toward doing something the developer did not
 ask for. Skipping retry is safe, because the job then runs exactly once, which is what its code
@@ -53,6 +54,7 @@ Anything a developer wrote, because it cannot escape their own test run:
 - `retry(-1)`, or a retry count above the cap passed in Apex
 - `delay()` combined with `asyncOptions()`
 - `dependsOn(Async.afterPrevious())` with no previous job
+- `Async.requeue(...)` asked for more payload than it can hold in one call
 
 These throw at `.enqueue()` or `.chain()`, synchronously, in the caller's transaction.
 

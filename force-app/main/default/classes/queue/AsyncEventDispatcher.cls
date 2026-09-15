@@ -13,7 +13,7 @@ public inherited sharing class AsyncEventDispatcher {
         RETRY_ENQUEUED
     }
 
-    private static Map<String, Object> loggerCacheForThisTransaction = new Map<String, Object>();
+    private static Set<String> alreadyWarnedClassNames = new Set<String>();
 
     public static void jobEnqueued(QueueableJob job, String loggerClassName) {
         dispatch(job, loggerClassName, Event.ENQUEUED, new Async.JobContext(job), null);
@@ -41,7 +41,7 @@ public inherited sharing class AsyncEventDispatcher {
         Async.FailureContext failureCtx
     ) {
         notifyListener(job, firedEvent, jobCtx, failureCtx);
-        Object registeredLogger = resolveLogger(job, loggerClassName);
+        Object registeredLogger = newLogger(job, loggerClassName);
         if (registeredLogger != null) {
             notifyListener(registeredLogger, firedEvent, jobCtx, failureCtx);
         }
@@ -95,40 +95,33 @@ public inherited sharing class AsyncEventDispatcher {
         );
     }
 
-    private static Object resolveLogger(QueueableJob job, String loggerClassName) {
-        if (String.isBlank(loggerClassName)) {
+    private static Object newLogger(QueueableJob job, String loggerClassName) {
+        Object logger;
+        try {
+            logger = GlobalClassFactory.newInstance(loggerClassName);
+        } catch (Exception instantiationFailure) {
+            if (alreadyWarnedClassNames.add(loggerClassName)) {
+                job.recordConfigurationWarning(
+                    String.format(
+                        QueueableManager.WARNING_LOGGER_NOT_USABLE,
+                        new List<String>{ loggerClassName, instantiationFailure.getMessage() }
+                    )
+                );
+            }
             return null;
         }
-        if (!loggerCacheForThisTransaction.containsKey(loggerClassName)) {
-            loggerCacheForThisTransaction.put(
-                loggerClassName,
-                newInstanceOfGlobalClass(job, loggerClassName)
-            );
-        }
-        return loggerCacheForThisTransaction.get(loggerClassName);
-    }
-
-    private static Object newInstanceOfGlobalClass(QueueableJob job, String loggerClassName) {
-        try {
-            Type globalClass = Type.forName(loggerClassName);
-            if (globalClass != null) {
-                return globalClass.newInstance();
-            }
-        } catch (Exception instantiationFailure) {
+        if (
+            logger == null &&
+            String.isNotBlank(loggerClassName) &&
+            alreadyWarnedClassNames.add(loggerClassName)
+        ) {
             job.recordConfigurationWarning(
                 String.format(
-                    QueueableManager.WARNING_LOGGER_NOT_USABLE,
-                    new List<String>{ loggerClassName, instantiationFailure.getMessage() }
+                    QueueableManager.WARNING_LOGGER_NOT_FOUND,
+                    new List<String>{ loggerClassName, QueueableManager.API_PREFIX }
                 )
             );
-            return null;
         }
-        job.recordConfigurationWarning(
-            String.format(
-                QueueableManager.WARNING_LOGGER_NOT_FOUND,
-                new List<String>{ loggerClassName, QueueableManager.API_PREFIX }
-            )
-        );
-        return null;
+        return logger;
     }
 }

@@ -958,6 +958,48 @@ void skipJob(String customJobId);
 Async.skipJob(notificationsResult.customJobId);
 ```
 
+#### requeue
+
+Rebuilds jobs from the payload stored on their `AsyncResult__c` records and runs
+them again as one chain. Needs `QueueableJobSetting__mdt.StoreJobPayload__c = Yes`
+before the original run, and a registered `Async.JobSerializer` on a packaged
+install. See [Requeue](/explanations/requeue).
+
+Every result that could not be replayed comes back with a reason. Throws when the
+call asks for more than 2,000,000 characters of payload.
+
+::: warning Requeue replays data, not intent
+
+The payload was written by the class as it was and is rebuilt by the class as it
+is now. A renamed field arrives `null`; a field that changed meaning replays the
+old data under the new meaning, silently. If the fix changed the job's own fields,
+enqueue it fresh. See
+[Requeue](/explanations/requeue#what-is-stored).
+
+:::
+
+**Signature**
+
+```apex
+RequeueSummary requeue(Id resultId);
+RequeueSummary requeue(Set<Id> resultIds);
+```
+
+| `RequeueSummary` | Holds |
+| ---------------- | ----- |
+| `List<Id> requeued` | replayed |
+| `Map<Id, String> skipReasonByResultId` | the rest, and why |
+| `Async.Result enqueueResult` | the chain they run in, `null` when nothing was replayed |
+
+**Example**
+
+```apex
+Async.RequeueSummary summary = Async.requeue(failedResultIds);
+for (Id skipped : summary.skipReasonByResultId.keySet()) {
+  System.debug(skipped + ': ' + summary.skipReasonByResultId.get(skipped));
+}
+```
+
 ### Override hooks
 
 These are `public virtual` methods you override on your own `QueueableJob`

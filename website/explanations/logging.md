@@ -28,8 +28,11 @@ logged.
 
 Only the **class** needs `global`. The methods stay `public`.
 
-Declare it `global` even when you deploy the source rather than installing the package. It is
-harmless there, and it means the same class keeps working if you ever switch.
+On a source deploy there is no boundary, so keep the class `public` like any other. Add `global`
+if you later switch to the package; it is on the
+[switching list](/introduction/source-deploy#switching-to-the-package-later).
+
+The full packaged-install checklist is at [Installing as a Package](/introduction/packaged-install).
 
 :::
 

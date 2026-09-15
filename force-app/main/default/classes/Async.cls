@@ -58,6 +58,14 @@ public inherited sharing class Async {
         QueueableManager.get().skipJob(customJobId);
     }
 
+    public static RequeueSummary requeue(Id resultId) {
+        return AsyncRequeue.run(new Set<Id>{ resultId });
+    }
+
+    public static RequeueSummary requeue(Set<Id> resultIds) {
+        return AsyncRequeue.run(resultIds);
+    }
+
     // Inside a QueueableJob subclass the inherited `backoff` field shadows the Backoff type, so a
     // bare `Backoff.exponential(1)` will not compile there. Reaching the factories through Async
     // is collision-free in both packaged and source deployments.
@@ -81,6 +89,11 @@ public inherited sharing class Async {
 
     public interface OnRetryEnqueued {
         void onRetryEnqueued(FailureContext ctx);
+    }
+
+    public interface JobSerializer {
+        String serialize(QueueableJob job);
+        QueueableJob deserialize(String className, String payload);
     }
 
     public interface Retryable {
@@ -185,6 +198,13 @@ public inherited sharing class Async {
             this.enqueueType = enqueueType;
             return this;
         }
+    }
+
+    @JsonAccess(serializable='always' deserializable='always')
+    public class RequeueSummary {
+        public List<Id> requeued = new List<Id>();
+        public Map<Id, String> skipReasonByResultId = new Map<Id, String>();
+        public Result enqueueResult;
     }
 
     public enum AsyncType {

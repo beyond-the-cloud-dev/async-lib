@@ -127,7 +127,15 @@ export default defineConfig({
             text: 'Standard Apex vs Async Lib',
             link: '/introduction/standard-apex-vs-async-lib'
           },
-          { text: 'Installation', link: '/introduction/installation' }
+          { text: 'Installation', link: '/introduction/installation' },
+          {
+            text: 'Installing as a Package',
+            link: '/introduction/packaged-install'
+          },
+          {
+            text: 'Deploying the Source',
+            link: '/introduction/source-deploy'
+          }
         ]
       },
       {
@@ -158,6 +166,7 @@ export default defineConfig({
             link: '/explanations/configuration-safety'
           },
           { text: 'Logging', link: '/explanations/logging' },
+          { text: 'Requeue', link: '/explanations/requeue' },
           { text: 'Job Cloning', link: '/explanations/job-cloning' },
           {
             text: 'Deep Clone in Packages',

@@ -41,6 +41,11 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
     public Boolean retryDecision = false;
     public String retryHistory;
 
+    public String requeuePayload;
+    public String requeueStatus;
+    public Integer requeuePayloadSize;
+    public Id requeuedFromResultId;
+
     public Map<String, String> info;
     public String parentCustomJobId;
     public FinalizerContext finalizerCtx;
@@ -51,7 +56,7 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
     @TestVisible
     private QueueableJob enqueuedState;
 
-    public transient String className {
+    public String className {
         get {
             if (className == null) {
                 className = getFullClassName(this);
@@ -104,17 +109,10 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
     }
 
     public virtual QueueableJob cloneForDeepCopy() {
-        String fullName = this.className;
-        Type resolvedType = Type.forName(fullName);
-
-        if (resolvedType == null && fullName.contains('.')) {
-            resolvedType = Type.forName(
-                fullName.substringBefore('.'),
-                fullName.substringAfter('.')
-            );
-        }
-
-        return (QueueableJob) JSON.deserialize(JSON.serialize(this), resolvedType);
+        return (QueueableJob) JSON.deserialize(
+            JSON.serialize(this),
+            JobPayload.resolveType(className)
+        );
     }
 
     public void execute(QueueableContext ctx) {
@@ -297,15 +295,16 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
     }
 
     /**
-     * JSON cannot round-trip a live job, for three unrelated reasons:
+     * JSON cannot round-trip a live job, for unrelated reasons:
      * - `chain` points back at this job: "Cycle detected"
      * - `queueableCtx` / `finalizerCtx` are platform interfaces: "Cannot deserialize JSON as
      *   abstract type"
      * - `backoff` / `dependencies` / `failure` are Async Lib types, and JSON.serialize refuses any
      *   graph crossing a namespace, so a subscriber's override hits "Type cannot be serialized"
+     * - `requeuePayload` would otherwise nest the previous payload inside every new one
      * Stripping a shallow copy rather than this job also covers subclass overrides.
      **/
-    private QueueableJob deepCloneWithoutRuntimeState() {
+    public QueueableJob copyWithoutRuntimeState() {
         QueueableJob stripped = this.clone();
         stripped.chain = null;
         stripped.queueableCtx = null;
@@ -314,9 +313,13 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         stripped.dependencies = null;
         stripped.failure = null;
         stripped.enqueuedState = null;
+        stripped.requeuePayload = null;
         stripped.clearFrameworkStateForCopy();
+        return stripped;
+    }
 
-        QueueableJob copy = stripped.cloneForDeepCopy();
+    private QueueableJob deepCloneWithoutRuntimeState() {
+        QueueableJob copy = copyWithoutRuntimeState().cloneForDeepCopy();
         // Backoff is immutable so sharing is safe. The other two are not, and sharing them
         // would defeat the isolation deepClone() exists to provide.
         copy.backoff = this.backoff;

@@ -23,6 +23,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static final String TEST_SCHEDULABLE_JOB_NAME = 'SchedulableTestJob';
     private static final String PRIMITIVE_VALUE_INITIAL = 'INITIAL_VALUE';
     private static final String CHUNK_PROCESSED = 'CHUNK_PROCESSED';
+    private static final String LOGGER_CONSTRUCTOR_FAILURE = 'the logger needs a setting that is not there';
 
     @IsTest
     private static void shouldEnqueue60QueueablesSuccessfully() {
@@ -2300,9 +2301,12 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldSendEveryLifecycleEventToTheRegisteredLogger() {
         QueueableChain chain = chainWithLogger(loggerName('RecordingLogger'));
         QueueableManager.get().setChain(chain);
-        StateCarryingRetryJob job = new StateCarryingRetryJob();
-        job.info = new Map<String, String>{ 'team' => 'A' };
-        chain.addJob(job);
+        StateCarryingRetryJob job = (StateCarryingRetryJob) Async.queueable(
+                new StateCarryingRetryJob()
+            )
+            .info('team', 'A')
+            .chain()
+            .job;
         job.maxRetries = 1;
         job.retryDecision = true;
         job.continueOnJobExecuteFail = true;
@@ -5555,7 +5559,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         AsyncResult__c original = storedResultFor(job);
 
         Test.startTest();
-        Async.RequeueSummary summary = Async.requeue(new Set<Id>{ original.Id });
+        Async.RequeueSummary summary = Async.requeue(original.Id);
         Test.stopTest();
 
         Assert.areEqual(new List<Id>{ original.Id }, summary.requeued);
@@ -5818,6 +5822,64 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    private static void shouldDoNothingWhenAskedToRequeueNothing() {
+        Async.RequeueSummary summary = Async.requeue(new Set<Id>());
+
+        Assert.isTrue(summary.requeued.isEmpty());
+        Assert.isTrue(summary.skipReasonByResultId.isEmpty());
+        Assert.isNull(summary.enqueueResult, 'Nothing was replayed, so there is no chain.');
+    }
+
+    @IsTest
+    private static void shouldMergeInfoMapsOnBothBuilders() {
+        Async.Result queued = Async.queueable(new SuccessfulQueueableTest())
+            .info('team', 'platform')
+            .info(new Map<String, String>{ 'package' => 'billing', 'team' => 'billing' })
+            .chain();
+        Async.Result chunked = Async.chunk(
+                new StateCarryingChunkJob(),
+                ChunkSource.of(new List<Account>{ new Account(Name = 'PAGE') })
+            )
+            .info('team', 'platform')
+            .info(new Map<String, String>{ 'package' => 'billing' })
+            .chain();
+
+        Assert.areEqual(
+            new Map<String, String>{ 'team' => 'billing', 'package' => 'billing' },
+            queued.job.info,
+            'A later info() call adds keys and overwrites the ones it repeats.'
+        );
+        Assert.areEqual(
+            new Map<String, String>{ 'team' => 'platform', 'package' => 'billing' },
+            chunked.job.info
+        );
+    }
+
+    @IsTest
+    private static void shouldWarnOnceWhenTheLoggerConstructorThrows() {
+        QueueableChain chain = chainWithLogger(loggerName('UnconstructableLogger'));
+        QueueableManager.get().setChain(chain);
+        SuccessfulQueueableTest first = new SuccessfulQueueableTest();
+        SuccessfulQueueableTest second = new SuccessfulQueueableTest();
+
+        chain.addJob(first);
+        chain.addJob(second);
+
+        Assert.isTrue(
+            first.retryHistory.contains('could not be constructed'),
+            'The warning has to say the class was found but not built: ' + first.retryHistory
+        );
+        Assert.isTrue(
+            first.retryHistory.contains(LOGGER_CONSTRUCTOR_FAILURE),
+            'The constructor message has to reach the job: ' + first.retryHistory
+        );
+        Assert.isNull(
+            second.retryHistory,
+            'The same broken class is reported once per transaction, not once per job.'
+        );
+    }
+
+    @IsTest
     private static void shouldExplainEveryResultItRefusedToRequeue() {
         AsyncResult__c noPayload = new AsyncResult__c(Status__c = QueueableManager.STATUS_FAILED);
         AsyncResult__c alreadyRequeued = new AsyncResult__c(
@@ -5927,27 +5989,31 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     private static void shouldReportWhenTheStoredClassNoLongerExists() {
-        AsyncResult__c orphan = new AsyncResult__c(
-            ClassName__c = 'NoSuchJobClass',
-            Status__c = QueueableManager.STATUS_FAILED,
-            JobPayload__c = '{}',
-            PayloadSize__c = 2,
-            RequeueStatus__c = AsyncRequeue.STATUS_STORED
-        );
-        insert orphan;
+        AsyncResult__c topLevel = orphanResultFor('NoSuchJobClass');
+        AsyncResult__c nested = orphanResultFor('NoSuch.JobClass');
+        insert new List<AsyncResult__c>{ topLevel, nested };
 
         Test.startTest();
-        Async.RequeueSummary summary = Async.requeue(new Set<Id>{ orphan.Id });
+        Async.RequeueSummary summary = Async.requeue(new Set<Id>{ topLevel.Id, nested.Id });
         Test.stopTest();
 
         Assert.isTrue(
-            summary.skipReasonByResultId.get(orphan.Id).contains('NoSuchJobClass'),
+            summary.skipReasonByResultId.get(topLevel.Id).contains('NoSuchJobClass'),
             'A renamed or deleted class must be named, but was: ' +
-            summary.skipReasonByResultId.get(orphan.Id)
+            summary.skipReasonByResultId.get(topLevel.Id)
+        );
+        Assert.isTrue(
+            summary.skipReasonByResultId.get(nested.Id).contains('NoSuch.JobClass'),
+            'An inner class name goes through the two-argument lookup too: ' +
+            summary.skipReasonByResultId.get(nested.Id)
         );
         Assert.areEqual(
-            AsyncRequeue.STATUS_STORED,
-            [SELECT RequeueStatus__c FROM AsyncResult__c WHERE Id = :orphan.Id].RequeueStatus__c,
+            2,
+            [
+                SELECT COUNT()
+                FROM AsyncResult__c
+                WHERE RequeueStatus__c = :AsyncRequeue.STATUS_STORED
+            ],
             'A row that could not be replayed must stay replayable once the class is back.'
         );
     }
@@ -6122,6 +6188,16 @@ private class AsyncTest implements Database.Batchable<SObject> {
         return chain;
     }
 
+    private static AsyncResult__c orphanResultFor(String missingClassName) {
+        return new AsyncResult__c(
+            ClassName__c = missingClassName,
+            Status__c = QueueableManager.STATUS_FAILED,
+            JobPayload__c = '{}',
+            PayloadSize__c = 2,
+            RequeueStatus__c = AsyncRequeue.STATUS_STORED
+        );
+    }
+
     private static AsyncResult__c storedResultFor(QueueableJob capturedJob) {
         AsyncResult__c stored = new AsyncResult__c(
             ClassName__c = capturedJob.className,
@@ -6200,6 +6276,15 @@ private class AsyncTest implements Database.Batchable<SObject> {
             AsyncTest.loggedEvents.add(
                 'retry:' + ctx.retryAttempt + ':delay=' + ctx.nextAttemptDelayMinutes
             );
+        }
+    }
+
+    public class UnconstructableLogger implements Async.OnJobFailed {
+        public UnconstructableLogger() {
+            throw new CustomException(LOGGER_CONSTRUCTOR_FAILURE);
+        }
+
+        public void onJobFailed(Async.FailureContext ctx) {
         }
     }
 

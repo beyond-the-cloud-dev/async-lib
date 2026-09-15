@@ -53,7 +53,7 @@ public inherited sharing class AsyncRequeue {
         List<AsyncResult__c> replayable = replayableOrExplained(resultIds, summary);
         assertPayloadsWillFitInHeap(replayable);
 
-        QueueableBuilder replay = chainRebuilt(lockRowsAndReadPayloads(replayable), summary);
+        QueueableBuilder replay = chainRebuilt(readPayloads(replayable), summary);
         if (summary.requeued.isEmpty()) {
             return summary;
         }
@@ -67,7 +67,7 @@ public inherited sharing class AsyncRequeue {
         Async.RequeueSummary summary
     ) {
         List<AsyncResult__c> replayable = new List<AsyncResult__c>();
-        for (AsyncResult__c row : readWithoutPayloads(resultIds)) {
+        for (AsyncResult__c row : lockRowsWithoutPayloads(resultIds)) {
             String blocker = reasonItCannotBeRequeued(row);
             if (blocker == null) {
                 replayable.add(row);
@@ -87,13 +87,6 @@ public inherited sharing class AsyncRequeue {
     ) {
         QueueableBuilder replay = Async.queueable();
         for (AsyncResult__c row : lockedRows) {
-            if (wasRequeuedWhileWaitingForTheLock(row)) {
-                summary.skipReasonByResultId.put(
-                    row.Id,
-                    QueueableManager.REQUEUE_SKIPPED_ALREADY_REQUEUED
-                );
-                continue;
-            }
             QueueableJob job = rebuildOrExplain(row, summary);
             if (job == null) {
                 continue;
@@ -115,22 +108,22 @@ public inherited sharing class AsyncRequeue {
         );
     }
 
-    private static List<AsyncResult__c> readWithoutPayloads(Set<Id> resultIds) {
+    private static List<AsyncResult__c> lockRowsWithoutPayloads(Set<Id> resultIds) {
         return [
             SELECT Id, ClassName__c, PayloadSize__c, RequeueStatus__c
             FROM AsyncResult__c
             WHERE Id IN :resultIds
             WITH SYSTEM_MODE
+            FOR UPDATE
         ];
     }
 
-    private static List<AsyncResult__c> lockRowsAndReadPayloads(List<AsyncResult__c> rows) {
+    private static List<AsyncResult__c> readPayloads(List<AsyncResult__c> lockedRows) {
         return [
-            SELECT Id, ClassName__c, JobPayload__c, RequeueStatus__c
+            SELECT Id, ClassName__c, JobPayload__c
             FROM AsyncResult__c
-            WHERE Id IN :rows
+            WHERE Id IN :lockedRows
             WITH SYSTEM_MODE
-            FOR UPDATE
         ];
     }
 
@@ -178,10 +171,6 @@ public inherited sharing class AsyncRequeue {
                 )
             );
         }
-    }
-
-    private static Boolean wasRequeuedWhileWaitingForTheLock(AsyncResult__c lockedRow) {
-        return lockedRow.RequeueStatus__c != STATUS_STORED;
     }
 
     private static QueueableJob rebuildOrExplain(AsyncResult__c row, Async.RequeueSummary summary) {

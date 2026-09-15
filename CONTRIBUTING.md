@@ -103,6 +103,7 @@ Before submitting your PR, make sure you've:
 - [ ] Run linting and formatting (`npm run lint`, `npm run prettier`)
 - [ ] Updated the documentation site if needed
 - [ ] Checked [API evolution rules](docs/api-evolution.md) if you touched a `global` type or added an extension point
+- [ ] Added every new field to its page layout in `force-app/main/default/layouts` and, for `AsyncResult__c`, to `AsyncResultAccess` (a field missing from either is invisible to admins)
 
 ## 📝 Types of Contributions
 

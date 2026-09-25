@@ -27,8 +27,7 @@ export const footerData = {
             { id: 'test-lib', label: 'Test Lib', href: 'https://testlib.beyondthecloud.dev', logo: '/images/libs/test-lib.png' },
             { id: 'trigger-lib', label: 'Trigger Lib', href: 'https://trigger.beyondthecloud.dev', logo: '/images/libs/trigger-lib.png' },
             { id: 'callout-lib', label: 'Callout Lib', href: 'https://callout.beyondthecloud.dev', logo: '/images/libs/callout-lib.png' }
-        ],
-        more: { label: 'More on GitHub', href: 'https://github.com/beyond-the-cloud-dev' }
+        ]
     },
     products: [
         { label: 'ISV Analytics', href: 'https://isvanalytics.beyondthecloud.dev' },

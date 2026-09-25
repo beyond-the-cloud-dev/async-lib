@@ -8,7 +8,6 @@
             <img :src="data.openSource.parent.logo" alt="" class="btc-footer__parent-logo" />
             <span>{{ data.openSource.parent.label }}</span>
           </a>
-          <a :href="data.openSource.more.href" class="btc-footer__more" target="_blank" rel="noopener noreferrer">{{ data.openSource.more.label }} ↗</a>
         </div>
         <div class="btc-footer__tiles">
           <a
@@ -183,18 +182,6 @@ const icons = {
   object-fit: contain;
   display: block;
   filter: var(--f-logo-fx);
-}
-.btc-footer__more {
-  display: inline-block;
-  margin-top: 10px;
-  font-size: 13px;
-  line-height: 20px;
-  font-weight: 600;
-  color: var(--f-link);
-}
-.btc-footer__more:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 .btc-footer__tiles {
   min-width: 0;
@@ -404,9 +391,6 @@ const icons = {
   .btc-footer__tiles {
     order: 3;
   }
-  .btc-footer__more {
-    order: 4;
-  }
   .btc-footer__parent {
     min-height: 44px;
   }
@@ -430,14 +414,6 @@ const icons = {
   .btc-footer__tile-logo {
     width: 20px;
     height: 20px;
-  }
-  .btc-footer__more {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
-    margin-top: 8px;
-    font-size: 14px;
   }
   .btc-footer__body,
   .btc-footer__body:has(.btc-footer__col--site) {

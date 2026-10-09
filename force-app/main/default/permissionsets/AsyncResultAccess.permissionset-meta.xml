@@ -18,6 +18,21 @@
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
+        <field>AsyncResult__c.BatchPhase__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>AsyncResult__c.BatchScope__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>AsyncResult__c.BatchScopeTruncated__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
         <field>AsyncResult__c.ChainId__c</field>
         <readable>true</readable>
         <editable>false</editable>

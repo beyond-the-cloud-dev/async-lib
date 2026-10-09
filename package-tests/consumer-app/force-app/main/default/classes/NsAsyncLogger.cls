@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ **/
 global class NsAsyncLogger implements btcdev.Async.OnJobEnqueued, btcdev.Async.OnJobSucceeded, btcdev.Async.OnJobFailed, btcdev.Async.OnRetryEnqueued {
     public void onJobEnqueued(btcdev.Async.JobContext ctx) {
         record('ENQUEUED', ctx.className, ctx.info.get('team'));

@@ -1,4 +1,9 @@
 /**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ *
  * PMD False Positives:
  * - CognitiveComplexity: This was intended to have all the logic in one class
  * - OperationWithLimitsInLoop: This schedules up to 60 jobs in case "every minute" was used in CronBuilder.buildForEveryXMinutes(). It is intended.

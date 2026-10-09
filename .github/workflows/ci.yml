@@ -9,7 +9,7 @@ on:
 
 jobs:
   static-analysis:
-    name: Prettier / ESLint / PMD
+    name: Prettier / ESLint / PMD / Headers
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +44,8 @@ jobs:
           fi
 
       - run: npm run pmd:verify
+
+      - run: npm run headers:verify
 
   salesforce-ci:
     uses: beyond-the-cloud-dev/cicd-template/.github/workflows/salesforce-ci.yml@main

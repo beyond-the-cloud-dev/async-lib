@@ -175,6 +175,12 @@ export default defineConfig({
           },
           { text: 'Logging', link: '/explanations/logging' },
           { text: 'Requeue', link: '/explanations/requeue' },
+          {
+            text: 'Chaining Across Services',
+            link: '/explanations/chaining-across-services'
+          },
+          { text: 'Batch or Chunk?', link: '/explanations/batch-or-chunk' },
+          { text: 'Batch Failures', link: '/explanations/batch-failures' },
           { text: 'Job Cloning', link: '/explanations/job-cloning' },
           {
             text: 'Deep Clone in Packages',

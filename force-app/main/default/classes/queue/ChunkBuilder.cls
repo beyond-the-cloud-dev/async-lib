@@ -1,4 +1,9 @@
 /**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ *
  * PMD False Positives:
  * - CyclomaticComplexity: every fluent method validates its own argument
  * - ExcessivePublicCount: one fluent method per chunk option
@@ -153,13 +158,15 @@ public inherited sharing class ChunkBuilder {
     }
 
     public QueueableBuilder chain(QueueableJob nextJob) {
-        Async.Result runResult = chainRun();
-        return new QueueableBuilder(nextJob, runResult?.customJobId);
+        return new QueueableBuilder(nextJob, customJobIdOfRunOrJobBeforeIt(chainRun()));
     }
 
     public ChunkBuilder chunk(ChunkJob nextChunkJob, ChunkSource nextSource) {
-        Async.Result runResult = chainRun();
-        return new ChunkBuilder(nextChunkJob, nextSource, runResult?.customJobId);
+        return new ChunkBuilder(
+            nextChunkJob,
+            nextSource,
+            customJobIdOfRunOrJobBeforeIt(chainRun())
+        );
     }
 
     public Async.Result chain() {
@@ -176,6 +183,10 @@ public inherited sharing class ChunkBuilder {
         return alreadyChainedJobs.isEmpty()
             ? emptyRunResult()
             : QueueableManager.get().enqueue(alreadyChainedJobs[0]);
+    }
+
+    private String customJobIdOfRunOrJobBeforeIt(Async.Result runResult) {
+        return runResult?.customJobId ?? lastChainedCustomJobId;
     }
 
     private Async.Result chainRun() {

@@ -41,6 +41,14 @@ Async.Result result = Async.batchable(new AccountCleanupBatch())
 System.debug('Batch job enqueued: ' + result.salesforceJobId);
 ```
 
+::: tip New work over many records?
+
+A [`ChunkJob`](/api/chunk) gets retry, backoff, a finalizer and a place in the chain. A batch gets
+none of those, by design. [Batch or Chunk?](/explanations/batch-or-chunk) explains the choice and
+when a batch is still the right tool.
+
+:::
+
 ::: tip Ready-made cleanup batch
 
 Async Lib ships `AsyncResultCleanupBatch` for deleting old `AsyncResult__c`
@@ -66,6 +74,10 @@ The following are methods for using Async with Batchable jobs:
 [**Execute**](#execute)
 
 - [`execute()`](#execute-1)
+
+[**Failures**](#failures)
+
+- [`requeueBatchFailures(batch, batchJobId, fieldsToReload)`](#requeuebatchfailures)
 
 ### INIT
 
@@ -160,3 +172,63 @@ Async.Result result = Async.batchable(new MyBatchJob())
 ```
 
 Returns `result.salesforceJobId` containing the Salesforce Job Id.
+
+
+### Failures
+
+A batch that implements `Database.RaisesPlatformEvents` has every failed scope recorded on
+`AsyncResult__c` and reported to your logger, governor limit errors included. The full story is on
+[Batch Failures](/explanations/batch-failures).
+
+```apex
+public class MyBatchJob implements Database.Batchable<SObject>, Database.RaisesPlatformEvents {
+  // start, execute, finish
+}
+```
+
+#### requeueBatchFailures
+
+Runs the failed scopes of a batch job again, through the batch's own `execute()`, as a batch. It
+needs `CreateResult__c` on for the batch, because the failed record ids are read from the
+`AsyncResult__c` rows.
+
+**Signature**
+
+```apex
+Async.RequeueSummary requeueBatchFailures(Object batch, Id batchJobId, List<SObjectField> fieldsToReload);
+Async.RequeueSummary requeueBatchFailures(Object batch, Id batchJobId, List<String> fieldsToReload);
+Async.RequeueSummary requeueBatchFailures(Object batch, Id batchJobId, Async.BatchRecordLoader loader);
+```
+
+| Argument | What it is |
+| -------- | ---------- |
+| `batch` | an instance of the batch class that failed |
+| `batchJobId` | the id `Database.executeBatch` or `Async.batchable(...).execute()` returned |
+| `fieldsToReload` | the fields `execute()` reads. Use strings for parent paths such as `Owner.Email`. An empty list means `Id` only |
+| `loader` | your own reload, for anything a field list cannot express |
+
+**Example**
+
+```apex
+Async.RequeueSummary summary = Async.requeueBatchFailures(
+	new MyBatchJob(),
+	failedBatchJobId,
+	new List<SObjectField>{ Account.Name, Account.Industry }
+);
+
+System.debug('Scopes running again: ' + summary.requeued.size());
+System.debug('Skipped: ' + summary.skipReasonByResultId);
+```
+
+```apex
+public class AccountLoader implements Async.BatchRecordLoader {
+  public List<SObject> load(Set<Id> failedRecordIds) {
+    return [SELECT Id, Name, Owner.Email FROM Account WHERE Id IN :failedRecordIds];
+  }
+}
+
+Async.requeueBatchFailures(new MyBatchJob(), failedBatchJobId, new AccountLoader());
+```
+
+A scope that fails again stays open and can be requeued again. Failures in `start` or `finish`
+have no records and are reported in `skipReasonByResultId`.

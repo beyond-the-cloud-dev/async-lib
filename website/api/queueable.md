@@ -180,8 +180,13 @@ Async.queueable(new MyQueueableJob());
 
 Constructs an empty QueueableBuilder so jobs can be added incrementally via
 `chain(QueueableJob)`. Useful when the number of jobs to enqueue depends on
-runtime conditions — calling `enqueue()` on a builder with zero jobs is a safe
-no-op.
+runtime conditions.
+
+`enqueue()` on an empty builder starts whatever was chained earlier in the
+transaction, by this builder or by any other code. If nothing is waiting it does
+nothing. That makes `Async.queueable().enqueue()` a safe last line for an entry
+point whose services each call `chain()`. See
+[Chaining Across Services](/explanations/chaining-across-services).
 
 **Signature**
 
@@ -202,7 +207,7 @@ if (needsJob2) {
 if (needsJob3) {
 	builder.chain(new Job3());
 }
-// Enqueues whatever was added; does nothing if none were.
+// Starts everything chained in this transaction; does nothing if there is nothing.
 builder.enqueue();
 ```
 
@@ -402,6 +407,10 @@ Async.queueable(new MyQueueableJob())
 	.retry(3)
 	.enqueue();
 ```
+
+This enqueues only if `MyQueueableJob` implements `Async.Retryable`, or the call
+adds `.restoreStateOnRetry()`. With neither, `enqueue()` throws. The same holds
+for every `retry(...)` example on this page.
 
 #### backoff
 
@@ -641,6 +650,10 @@ Async.queueable(new MyQueueableJob())
 
 Adds the Queueable Job to the chain without enqueing it. All jobs in chain will
 be enqueued once `enqueue()` method is invoked.
+
+Jobs chained and not yet enqueued wait in one open chain shared by all code in
+the transaction, so jobs chained from different services end up together. See
+[Chaining Across Services](/explanations/chaining-across-services).
 
 **Signature**
 
@@ -1231,6 +1244,9 @@ public virtual void onFinalFailure(Async.FailureContext failureCtx);
 | `retryAttempt` | `Integer`                 | Attempts already made, `0` when the first run was the only one.          |
 | `maxRetries`   | `Integer`                 | The configured cap, `0` when no retry policy applied.                    |
 | `retryHistory` | `String`                  | One line per attempt with its exception type and message.                |
+| `asyncType`    | `Async.AsyncType`         | `QUEUEABLE` here. `BATCHABLE` when a logger receives a batch failure.    |
+| `salesforceJobId` | `Id`                   | The `AsyncApexJob` id of the job that failed.                            |
+| `batchPhase`, `batchScope`, `batchScopeTruncated` | `String`, `String`, `Boolean` | Filled for a batch failure only. See [Batch Failures](/explanations/batch-failures#logging). |
 
 **`Async.RetryOutcome`**
 

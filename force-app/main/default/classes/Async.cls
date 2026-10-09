@@ -1,4 +1,9 @@
 /**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ *
  * PMD False Positives:
  * - CognitiveComplexity: a facade over the whole API, and the most complex member scores 1
  * - PropertyNamingConventions: `Async.Backoff` is the Apex Fluently accessor idiom, matching
@@ -66,6 +71,38 @@ public inherited sharing class Async {
         return AsyncRequeue.run(resultIds);
     }
 
+    public static RequeueSummary requeueBatchFailures(
+        Object batch,
+        Id batchJobId,
+        List<SObjectField> fieldsToReload
+    ) {
+        return BatchFailureRequeue.run(
+            batch,
+            batchJobId,
+            BatchFailureRequeue.reloading(fieldsToReload)
+        );
+    }
+
+    public static RequeueSummary requeueBatchFailures(
+        Object batch,
+        Id batchJobId,
+        List<String> fieldsToReload
+    ) {
+        return BatchFailureRequeue.run(
+            batch,
+            batchJobId,
+            BatchFailureRequeue.reloading(fieldsToReload)
+        );
+    }
+
+    public static RequeueSummary requeueBatchFailures(
+        Object batch,
+        Id batchJobId,
+        BatchRecordLoader loader
+    ) {
+        return BatchFailureRequeue.run(batch, batchJobId, loader);
+    }
+
     // Inside a QueueableJob subclass the inherited `backoff` field shadows the Backoff type, so a
     // bare `Backoff.exponential(1)` will not compile there. Reaching the factories through Async
     // is collision-free in both packaged and source deployments.
@@ -94,6 +131,10 @@ public inherited sharing class Async {
     public interface JobSerializer {
         String serialize(QueueableJob job);
         QueueableJob deserialize(String className, String payload);
+    }
+
+    public interface BatchRecordLoader {
+        List<SObject> load(Set<Id> failedRecordIds);
     }
 
     public interface Retryable {
@@ -257,8 +298,32 @@ public inherited sharing class Async {
         public String retryHistory;
         public Integer nextAttemptDelayMinutes;
         public Map<String, String> info;
+        public AsyncType asyncType;
+        public Id salesforceJobId;
+        public String batchPhase;
+        public String batchScope;
+        public Boolean batchScopeTruncated = false;
+
+        public FailureContext(AsyncResult__c batchFailure) {
+            this.asyncType = Async.AsyncType.BATCHABLE;
+            this.retryOutcome = Async.RetryOutcome.NOT_CONFIGURED;
+            this.failure = new QueueableJob.FailureInfo(
+                batchFailure.ExceptionType__c,
+                batchFailure.ExceptionMessage__c
+            );
+            this.className = batchFailure.ClassName__c;
+            this.salesforceJobId = batchFailure.SalesforceJobId__c;
+            this.retryAttempt = 0;
+            this.maxRetries = 0;
+            this.info = new Map<String, String>();
+            this.batchPhase = batchFailure.BatchPhase__c;
+            this.batchScope = batchFailure.BatchScope__c;
+            this.batchScopeTruncated = batchFailure.BatchScopeTruncated__c == true;
+        }
 
         public FailureContext(QueueableJob job) {
+            this.asyncType = Async.AsyncType.QUEUEABLE;
+            this.salesforceJobId = job.salesforceJobId;
             this.retryOutcome = retryOutcomeFor(job);
             this.failure = job.failure;
             this.customJobId = job.customJobId;

@@ -102,6 +102,7 @@ What each feature needs on a packaged install, and nothing more.
 | `restoreStateOnNextChunk()` | `BaseChunkJob` |
 | `LoggerClass__c` | your logger class, declared `global` |
 | `Async.requeue()` | `AsyncJobSerializer`, copied and registered |
+| batch failure records, `Async.requeueBatchFailures()`, `Async.BatchRecordLoader` | the prefix |
 
 ## Writing tests against the package
 

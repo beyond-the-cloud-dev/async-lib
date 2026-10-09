@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ **/
 public inherited sharing abstract class ChunkSource {
     public static final String ERROR_MESSAGE_NULL_CURSOR = 'Database.Cursor cannot be null';
     public static final String ERROR_MESSAGE_BLANK_QUERY = 'SOQL query cannot be blank';

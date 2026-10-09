@@ -191,6 +191,8 @@ controller before you call it.
 ## Limits
 
 - Requeue replays one job, not its chain. The rest of the chain is not rebuilt.
+- A batch failure has no payload. Run its failed records again with
+  [`Async.requeueBatchFailures`](/explanations/batch-failures#running-the-failed-records-again).
 - `AsyncResultCleanupBatch` deletes old records, so a replay is bounded by your retention window.
 - `AsyncResultAccess` grants read on `JobPayload__c`. Review who holds that permission set before
   you turn storage on.

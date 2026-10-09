@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ **/
 public inherited sharing class AsyncRequeue {
     public static final String STATUS_STORED = 'Stored';
     public static final String STATUS_TOO_LARGE = 'TooLarge';
@@ -110,7 +116,7 @@ public inherited sharing class AsyncRequeue {
 
     private static List<AsyncResult__c> lockRowsWithoutPayloads(Set<Id> resultIds) {
         return [
-            SELECT Id, ClassName__c, PayloadSize__c, RequeueStatus__c
+            SELECT Id, ClassName__c, PayloadSize__c, RequeueStatus__c, BatchPhase__c
             FROM AsyncResult__c
             WHERE Id IN :resultIds
             WITH SYSTEM_MODE
@@ -139,6 +145,12 @@ public inherited sharing class AsyncRequeue {
     }
 
     private static String reasonItCannotBeRequeued(AsyncResult__c row) {
+        if (String.isNotBlank(row.BatchPhase__c)) {
+            return String.format(
+                QueueableManager.REQUEUE_SKIPPED_BATCH_FAILURE,
+                new List<String>{ QueueableManager.API_PREFIX }
+            );
+        }
         if (row.RequeueStatus__c == STATUS_STORED) {
             return null;
         }

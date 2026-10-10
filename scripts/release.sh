@@ -217,6 +217,25 @@ if ! bash "$PROJECT_ROOT/scripts/verify-package-install.sh" "$SUBSCRIBER_PKG_VER
 fi
 ok "Package verified against a subscriber org"
 
+echo ""
+echo "Promoting makes v$NEW_VERSION installable in production orgs. It cannot be undone: a promoted"
+echo "version can never be changed or deleted."
+read -p "Promote v$NEW_VERSION ($SUBSCRIBER_PKG_VERSION_ID)? [y/N]: " PROMOTE_CONFIRM
+if [ "$PROMOTE_CONFIRM" != "y" ] && [ "$PROMOTE_CONFIRM" != "Y" ]; then
+    fail "Not promoted. Promote later with: sf package version promote --package $SUBSCRIBER_PKG_VERSION_ID, then finish the release by hand."
+fi
+
+PROMOTE_OUTPUT=$(sf package version promote \
+    --package "$SUBSCRIBER_PKG_VERSION_ID" \
+    --no-prompt \
+    "${devhub_arg[@]}" \
+    --json 2>&1)
+if [ "$(echo "$PROMOTE_OUTPUT" | jq -r '.status')" != "0" ]; then
+    echo "$PROMOTE_OUTPUT" | jq -r '.message // "Unknown error"'
+    fail "Promotion failed. The version is built and verified, but production orgs cannot install it yet."
+fi
+ok "Promoted v$NEW_VERSION"
+
 # Add the clean alias (e.g. "Async Lib@2.7.0") and drop the build-numbered one
 # (e.g. "Async Lib@2.7.0-2") that `sf package version create` writes itself.
 # The regex sweep also removes any build-numbered aliases left by earlier runs,

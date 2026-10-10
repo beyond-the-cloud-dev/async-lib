@@ -37,21 +37,7 @@ public inherited sharing class BatchRequeueGuard {
     }
 
     public static void assertLoaderOutlivesThisTransaction(Async.BatchRecordLoader loader) {
-        String loaderClassName = runtimeClassNameOf(loader);
-        Integer savedClasses = [
-            SELECT COUNT()
-            FROM ApexClass
-            WHERE Name IN :loaderClassName.split('\\.')
-            WITH SYSTEM_MODE
-        ];
-        if (savedClasses == 0) {
-            throw new Async.IllegalArgumentException(
-                String.format(
-                    QueueableManager.ERROR_MESSAGE_LOADER_NOT_A_SAVED_CLASS,
-                    new List<String>{ loaderClassName }
-                )
-            );
-        }
+        assertIsSavedClass(runtimeClassNameOf(loader));
     }
 
     public static void assertTheJobReallyHadNoFailures(Id batchJobId) {
@@ -94,15 +80,34 @@ public inherited sharing class BatchRequeueGuard {
         );
     }
 
+    @TestVisible
+    private static void assertIsSavedClass(String className) {
+        Integer savedClasses = [
+            SELECT COUNT()
+            FROM ApexClass
+            WHERE Name IN :className.split('\\.')
+            WITH SYSTEM_MODE
+        ];
+        if (savedClasses == 0) {
+            throw new Async.IllegalArgumentException(
+                String.format(
+                    QueueableManager.ERROR_MESSAGE_LOADER_NOT_A_SAVED_CLASS,
+                    new List<String>{ className }
+                )
+            );
+        }
+    }
+
     private static String runtimeClassNameOf(Object instance) {
+        String runtimeClassName;
         try {
             // A failed cast is the only way to read the runtime type with its namespace.
             String.valueOf((Datetime) instance);
         } catch (TypeException expectedTypeException) {
-            return expectedTypeException.getMessage()
+            runtimeClassName = expectedTypeException.getMessage()
                 .substringAfter('Invalid conversion from runtime type ')
                 .substringBefore(' to Datetime');
         }
-        return null;
+        return runtimeClassName;
     }
 }

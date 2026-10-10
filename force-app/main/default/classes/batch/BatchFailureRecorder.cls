@@ -96,6 +96,7 @@ public inherited sharing class BatchFailureRecorder {
         return reportedJob?.ParentJobId ?? (Id) event.AsyncApexJobId;
     }
 
+    @TestVisible
     private static String classNameOf(AsyncApexJob job) {
         if (job?.ApexClass == null) {
             return null;

@@ -6562,6 +6562,110 @@ private class AsyncTest implements Database.Batchable<SObject> {
         );
     }
 
+    @IsTest
+    private static void shouldRecordAFailureWhoseBatchJobCanNoLongerBeFound() {
+        resultsAndLoggerForBatches(null);
+
+        BatchFailureRecorder.record(
+            new List<BatchApexErrorEvent>{ batchFailureEvent('System.DmlException') }
+        );
+
+        AsyncResult__c failure = [
+            SELECT SalesforceJobId__c, ClassName__c, BatchPhase__c, ExceptionType__c
+            FROM AsyncResult__c
+        ];
+        Assert.areEqual(
+            (String) FAILED_BATCH_JOB_ID,
+            failure.SalesforceJobId__c,
+            'With no job to resolve, the id the event reported is the best there is.'
+        );
+        Assert.isNull(failure.ClassName__c, 'The class is unknown without the job.');
+        Assert.areEqual(BatchFailureRecorder.PHASE_EXECUTE, failure.BatchPhase__c);
+        Assert.areEqual('System.DmlException', failure.ExceptionType__c);
+    }
+
+    @IsTest
+    private static void shouldNameABatchClassWithItsNamespace() {
+        AsyncApexJob packagedBatchJob = (AsyncApexJob) JSON.deserialize(
+            '{"attributes":{"type":"AsyncApexJob"},"ApexClass":{"attributes":{"type":"ApexClass"},"Name":"InvoiceBatch","NamespacePrefix":"acme"}}',
+            AsyncApexJob.class
+        );
+
+        Assert.areEqual(
+            'acme.InvoiceBatch',
+            BatchFailureRecorder.classNameOf(packagedBatchJob),
+            'requeueBatchFailures compares this name with the runtime type, which carries the namespace.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotThrowFromTheTriggerWhenAFailureCannotBeRecorded() {
+        resultsAndLoggerForBatches(null);
+        String tooLongForExceptionType = 'X'.repeat(256);
+
+        BatchFailureRecorder.record(
+            new List<BatchApexErrorEvent>{ batchFailureEvent(tooLongForExceptionType) }
+        );
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM AsyncResult__c],
+            'The insert failed, and the trigger swallowed it instead of failing the whole delivery.'
+        );
+    }
+
+    @IsTest
+    private static void shouldStillRecordTheBatchFailureWhenTheLoggerCannotBeConstructed() {
+        resultsAndLoggerForBatches(loggerName('UnconstructableLogger'));
+
+        BatchFailureRecorder.record(
+            new List<BatchApexErrorEvent>{ batchFailureEvent('System.DmlException') }
+        );
+
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM AsyncResult__c],
+            'A logger that cannot be built must not cost the failure record.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectALoaderClassThatIsNotSavedInTheOrg() {
+        try {
+            BatchRequeueGuard.assertIsSavedClass('LoaderDeclaredInAnonymousApex');
+            Assert.fail('The requeue batch could never rebuild this loader.');
+        } catch (Async.IllegalArgumentException expected) {
+            Assert.areEqual(
+                String.format(
+                    QueueableManager.ERROR_MESSAGE_LOADER_NOT_A_SAVED_CLASS,
+                    new List<String>{ 'LoaderDeclaredInAnonymousApex' }
+                ),
+                expected.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRefuseToReloadAScopeThatMixesObjects() {
+        Account account = batchAccounts(1)[0];
+        Contact contact = new Contact(LastName = 'Mixed', AccountId = account.Id);
+        insert contact;
+
+        try {
+            new BatchFieldReload(new List<String>{ 'Name' })
+                .load(new Set<Id>{ account.Id, contact.Id });
+            Assert.fail('One field list cannot describe two objects.');
+        } catch (Async.IllegalArgumentException expected) {
+            Assert.areEqual(
+                String.format(
+                    QueueableManager.ERROR_MESSAGE_RELOAD_MIXED_TYPES,
+                    new List<String>{ QueueableManager.API_PREFIX }
+                ),
+                expected.getMessage()
+            );
+        }
+    }
+
     private static String rejectionOf(Object batch, Id batchJobId, List<String> fields) {
         try {
             Async.requeueBatchFailures(batch, batchJobId, fields);
@@ -6628,6 +6732,22 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static String requeueStatusOf(AsyncResult__c failure) {
         return [SELECT RequeueStatus__c FROM AsyncResult__c WHERE Id = :failure.Id]
         .RequeueStatus__c;
+    }
+
+    private static BatchApexErrorEvent batchFailureEvent(String exceptionType) {
+        return (BatchApexErrorEvent) JSON.deserialize(
+            JSON.serialize(
+                new Map<String, Object>{
+                    'attributes' => new Map<String, String>{ 'type' => 'BatchApexErrorEvent' },
+                    'AsyncApexJobId' => FAILED_BATCH_JOB_ID,
+                    'Phase' => BatchFailureRecorder.PHASE_EXECUTE,
+                    'ExceptionType' => exceptionType,
+                    'Message' => AsyncTestBatch.FAILURE_MESSAGE,
+                    'DoesExceedJobScopeMaxLength' => false
+                }
+            ),
+            BatchApexErrorEvent.class
+        );
     }
 
     private static String batchClassName() {

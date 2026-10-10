@@ -415,10 +415,16 @@ The finalizer story carries over too. Attach a finalizer inside `work(chunk)` an
 you can tell it its page blew up, without engineering a page that actually fails:
 
 ```apex
-public class AccountRecalcJob extends ChunkJob {
+public class AccountRecalcJob extends ChunkJob implements Async.ChunkResettable, Async.Retryable {
     public override void work(List<SObject> chunk) {
         Async.queueable(new ErrorHandlerFinalizer()).mockId('page-error-handler').attachFinalizer();
         // ... work on chunk ...
+    }
+
+    public void resetBeforeNextChunk(Integer pageNumber) {
+    }
+
+    public void resetBeforeRetry(Integer attempt) {
     }
 }
 ```
@@ -477,9 +483,12 @@ get wrong silently. Configure the retry policy three different ways and the same
 job produces three different outcomes.
 
 ```apex
-private class FailingJob extends QueueableJob {
+private class FailingJob extends QueueableJob implements Async.Retryable {
     public override void work() {
         throw new CalloutException('service down');
+    }
+
+    public void resetBeforeRetry(Integer attempt) {
     }
 
     public override void onFinalFailure(Async.FailureContext failureCtx) {

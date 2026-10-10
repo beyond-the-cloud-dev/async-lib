@@ -34,6 +34,28 @@ psed() {
     sed "$script" "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
 }
 
+# Release notes written on a feature branch do not know the package id yet. Everything from
+# "## Install" down to the gh-release-end marker is replaced, or added when the heading is missing.
+write_install_section() {
+    local file="$1" package_id="$2"
+    awk -v id="$package_id" '
+        function install_section() {
+            print "## Install"
+            print ""
+            print "```"
+            print "https://login.salesforce.com/packaging/installPackage.apexp?p0=" id
+            print "```"
+            print ""
+            print "Or deploy the source: [Installation](https://async.beyondthecloud.dev/introduction/installation)."
+            print ""
+        }
+        /^## Install[[:space:]]*$/ { skipping = 1; next }
+        /^<!-- gh-release-end -->/ { install_section(); skipping = 0; written = 1 }
+        !skipping { print }
+        END { if (!written) { print ""; install_section() } }
+    ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+}
+
 SFDX_PROJECT="$PROJECT_ROOT/sfdx-project.json"
 INSTALL_PAGE="$PROJECT_ROOT/website/introduction/installation.md"
 # Every file that carries the "Deploy to Salesforce" button or a `git checkout vX.Y.Z` line.
@@ -123,6 +145,10 @@ jq --arg vn "$NEW_VERSION" --arg vnName "Async Lib $NEW_VERSION" \
 
 ok "sfdx-project.json updated to $NEW_VERSION.NEXT"
 
+"$PROJECT_ROOT/scripts/apex-headers.sh" bump "$NEW_VERSION"
+"$PROJECT_ROOT/scripts/apex-headers.sh" check || fail "Apex headers are missing or stale"
+ok "Apex headers bumped to v$NEW_VERSION"
+
 # ─────────────────────────────────────────────────
 # Step 3: Create package version
 # ─────────────────────────────────────────────────
@@ -131,13 +157,22 @@ echo "This may take several minutes..."
 
 source "$PROJECT_ROOT/scripts/api-surface.sh"
 
+# Restored from a copy, not `git checkout`: the files already carry the uncommitted
+# header version bump, which a checkout would throw away.
+PRE_GLOBALIZE_DIR="$(mktemp -d)"
+while IFS= read -r f; do
+    mkdir -p "$PRE_GLOBALIZE_DIR/$(dirname "$f")"
+    cp "$f" "$PRE_GLOBALIZE_DIR/$f"
+done < <(api_surface_files)
+
 REVERT_APEX_ON_EXIT=0
 revert_apex_surface() {
     if [ "$REVERT_APEX_ON_EXIT" = "1" ]; then
         echo "Reverting public→global edits on Apex source files..."
         while IFS= read -r f; do
-            git checkout -- "$f" 2>/dev/null || true
+            cp "$PRE_GLOBALIZE_DIR/$f" "$f"
         done < <(api_surface_files)
+        rm -rf "$PRE_GLOBALIZE_DIR"
     fi
 }
 trap revert_apex_surface EXIT
@@ -235,6 +270,10 @@ RELEASE_DIR="$PROJECT_ROOT/release-notes"
 mkdir -p "$RELEASE_DIR"
 RELEASE_FILE="$RELEASE_DIR/v$NEW_VERSION.md"
 
+if [ -f "$RELEASE_FILE" ]; then
+    write_install_section "$RELEASE_FILE" "$SUBSCRIBER_PKG_VERSION_ID"
+    ok "Kept the existing release notes and set their Install section to $SUBSCRIBER_PKG_VERSION_ID"
+else
 cat > "$RELEASE_FILE" << RELEASE_EOF
 # v$NEW_VERSION
 
@@ -267,8 +306,9 @@ https://login.salesforce.com/packaging/installPackage.apexp?p0=$SUBSCRIBER_PKG_V
 <!-- gh-release-end -->
 
 RELEASE_EOF
+fi
 
-ok "Release notes template created at:"
+ok "Release notes at:"
 echo "  $RELEASE_FILE"
 echo ""
 echo "Commits since ${LAST_TAG:-the beginning}, to categorise into the sections above:"

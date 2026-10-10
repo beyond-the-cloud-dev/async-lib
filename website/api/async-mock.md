@@ -33,6 +33,10 @@ static void shouldMockJobFailure() {
 }
 ```
 
+`retry(1)` needs `SyncAccountsJob` to implement `Async.Retryable`, or the call to
+add `.restoreStateOnRetry()`. With neither, `enqueue()` throws before the mock is
+ever reached.
+
 **Common Finalizer mocking example:**
 
 ```apex

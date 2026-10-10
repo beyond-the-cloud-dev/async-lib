@@ -1,4 +1,9 @@
 /**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ *
  * PMD False Positives:
  * - ApexAssertionsShouldIncludeMessage: IMO not all assertions need a message
  * - EmptyStatementBlock: It is test class, some methods are just to create jobs placeholders
@@ -18,6 +23,9 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static Integer chunkPageFailures = 0;
     private static List<String> chunkPagesRun = new List<String>();
     private static List<String> loggedEvents = new List<String>();
+    private static Integer jobsReportedByEmptyEnqueueInsideJob;
+    private static Async.FailureContext loggedBatchFailure;
+    private static final Id FAILED_BATCH_JOB_ID = fakeAsyncApexJobId();
     private static final String DUPLICATE_SIGNATURE_ERROR_MESSAGE = 'Attempt to enqueue job with duplicate queueable signature';
     private static final String TEST_SIGNATURE_NAME = 'SignatureName';
     private static final String TEST_SCHEDULABLE_JOB_NAME = 'SchedulableTestJob';
@@ -1033,6 +1041,64 @@ private class AsyncTest implements Database.Batchable<SObject> {
             0,
             result.queueableChainState.jobs.size(),
             'Chain state should report zero jobs.'
+        );
+    }
+
+    @IsTest
+    static void shouldEnqueueJobsOtherCallersChainedFromEmptyBuilder() {
+        Async.queueable(new QueueableJobTest1()).chain();
+        Async.queueable(new QueueableJobTest3()).chain();
+
+        Test.startTest();
+        Async.Result result = Async.queueable().enqueue();
+        Integer stillWaiting = Async.getCurrentQueueableChainState().jobs.size();
+        Test.stopTest();
+
+        Assert.isNotNull(
+            result.salesforceJobId,
+            'Jobs that services chained earlier must start, not be dropped.'
+        );
+        Assert.areEqual(2, result.queueableChainState.jobs.size(), 'Both chained jobs run.');
+        Assert.areEqual(
+            QueueableManager.EnqueueType.NEW_CHAIN,
+            result.queueableChainState.enqueueType,
+            'An empty builder starts the chain the same way a builder with a job does.'
+        );
+        Assert.areEqual(0, stillWaiting, 'Nothing is left waiting once the chain has started.');
+    }
+
+    @IsTest
+    static void shouldStartNothingWhenEmptyBuilderIsEnqueuedASecondTime() {
+        Async.queueable(new QueueableJobTest1()).chain();
+
+        Test.startTest();
+        Async.Result first = Async.queueable().enqueue();
+        Async.Result second = Async.queueable().enqueue();
+        Test.stopTest();
+
+        Assert.isNotNull(first.salesforceJobId, 'The first call starts the chain.');
+        Assert.isNull(second.salesforceJobId, 'There is nothing left for the second call.');
+        Assert.areEqual(0, second.queueableChainState.jobs.size(), 'No jobs, no chain.');
+    }
+
+    @IsTest
+    static void shouldLeaveTheRunningChainAloneWhenEmptyBuilderIsEnqueuedInsideAJob() {
+        MarkerJob after = new MarkerJob();
+        after.tag = 'AFTER-EMPTY-ENQUEUE';
+
+        Test.startTest();
+        Async.queueable(new EmptyBuilderEnqueuingJob()).chain(after).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            0,
+            jobsReportedByEmptyEnqueueInsideJob,
+            'Inside a running job the chain already carries everything, so there is nothing to start.'
+        );
+        Assert.areEqual(
+            1,
+            accountCount('AFTER-EMPTY-ENQUEUE'),
+            'The rest of the chain still runs.'
         );
     }
 
@@ -4625,6 +4691,60 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    private static void shouldKeepThePreviousJobForAfterPreviousAcrossAnEmptyRun() {
+        MarkerJob first = new MarkerJob();
+        first.tag = 'BEFORE-EMPTY-RUN';
+        MarkerJob dependent = new MarkerJob();
+        dependent.tag = 'AFTER-EMPTY-RUN';
+
+        Test.startTest();
+        Async.queueable(first)
+            .chunk(new MarkingChunkJob(), ChunkSource.of(new List<Account>()))
+            .chain(dependent)
+            .dependsOn(Async.afterPrevious().succeeded())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            accountCount('AFTER-EMPTY-RUN'),
+            'afterPrevious() must resolve to the job before the empty run, and that job succeeded.'
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepThePreviousJobForAfterPreviousAcrossTwoEmptyRuns() {
+        MarkerJob first = new MarkerJob();
+        first.tag = 'BEFORE-TWO-EMPTY-RUNS';
+
+        Async.queueable(first)
+            .chunk(new MarkingChunkJob(), ChunkSource.of(new List<Account>()))
+            .chunk(new MarkingChunkJob(), ChunkSource.of(new List<Account>()))
+            .dependsOn(Async.afterPrevious().succeeded());
+
+        Assert.areEqual(
+            1,
+            QueueableManager.get().getChain().getJobs().size(),
+            'Only the first job is chained; both empty runs vanished without dropping its id.'
+        );
+    }
+
+    @IsTest
+    private static void shouldStillRejectAfterPreviousWhenNothingPrecededTheEmptyRun() {
+        try {
+            Async.chunk(new MarkingChunkJob(), ChunkSource.of(new List<Account>()))
+                .chain(new MarkerJob())
+                .dependsOn(Async.afterPrevious().succeeded());
+            Assert.fail('There is no previous job, chained or vanished.');
+        } catch (IllegalArgumentException expected) {
+            Assert.areEqual(
+                QueueableManager.ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB,
+                expected.getMessage()
+            );
+        }
+    }
+
+    @IsTest
     private static void shouldRejectInvalidChunkSize() {
         ChunkBuilder builder = Async.chunk(
             new MarkingChunkJob(),
@@ -6027,6 +6147,613 @@ private class AsyncTest implements Database.Batchable<SObject> {
         );
     }
 
+    @IsTest
+    private static void shouldRecordAFailedBatchScopeWithItsRecordIds() {
+        resultsAndLoggerForBatches(null);
+        List<Account> accounts = batchAccounts(3);
+        AsyncTestBatch.executeFails = true;
+
+        Id batchJobId = runBatchAndDeliverFailures(new AsyncTestBatch());
+
+        AsyncResult__c failure = [
+            SELECT
+                Status__c,
+                Result__c,
+                ClassName__c,
+                SalesforceJobId__c,
+                ExceptionType__c,
+                ExceptionMessage__c,
+                BatchPhase__c,
+                BatchScope__c,
+                BatchScopeTruncated__c,
+                RequeueStatus__c
+            FROM AsyncResult__c
+        ];
+        Assert.areEqual(QueueableManager.STATUS_FAILED, failure.Status__c);
+        Assert.areEqual('UNHANDLED_EXCEPTION', failure.Result__c);
+        Assert.areEqual(batchClassName(), failure.ClassName__c);
+        Assert.areEqual(
+            (String) batchJobId,
+            failure.SalesforceJobId__c,
+            'The id Database.executeBatch returned, not the worker job the event reports.'
+        );
+        Assert.isTrue(
+            failure.ExceptionType__c.contains('BatchFailedException'),
+            failure.ExceptionType__c
+        );
+        Assert.areEqual(AsyncTestBatch.FAILURE_MESSAGE, failure.ExceptionMessage__c);
+        Assert.areEqual(BatchFailureRecorder.PHASE_EXECUTE, failure.BatchPhase__c);
+        Assert.isFalse(failure.BatchScopeTruncated__c);
+        Assert.isNull(failure.RequeueStatus__c, 'Open until it is requeued.');
+        for (Account account : accounts) {
+            Assert.isTrue(
+                failure.BatchScope__c.contains(account.Id),
+                'Every record of the failed scope is listed: ' + failure.BatchScope__c
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRecordABatchThatFailedInStartWithoutAScope() {
+        resultsAndLoggerForBatches(null);
+        AsyncTestBatch.startFails = true;
+
+        runBatchAndDeliverFailures(new AsyncTestBatch());
+
+        AsyncResult__c failure = [SELECT BatchPhase__c, BatchScope__c FROM AsyncResult__c];
+        Assert.areEqual('START', failure.BatchPhase__c);
+        Assert.isNull(failure.BatchScope__c, 'start() has no records yet.');
+    }
+
+    @IsTest
+    private static void shouldNotRecordABatchFailureWhenResultsAreOff() {
+        batchAccounts(1);
+        AsyncTestBatch.executeFails = true;
+
+        runBatchAndDeliverFailures(new AsyncTestBatch());
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM AsyncResult__c],
+            'CreateResult__c gates batch failures the same way it gates queueable results.'
+        );
+    }
+
+    @IsTest
+    private static void shouldTellTheLoggerAboutABatchFailure() {
+        AsyncMock.jobSettings(
+            new List<QueueableJobSetting__mdt>{
+                new QueueableJobSetting__mdt(
+                    QueueableJobName__c = batchClassName(),
+                    LoggerClass__c = loggerName('BatchFailureLogger')
+                )
+            }
+        );
+        List<Account> accounts = batchAccounts(2);
+        AsyncTestBatch.executeFails = true;
+
+        Id batchJobId = runBatchAndDeliverFailures(new AsyncTestBatch());
+
+        Assert.isNotNull(loggedBatchFailure, 'The registered logger hears about batch failures.');
+        Assert.areEqual(Async.AsyncType.BATCHABLE, loggedBatchFailure.asyncType);
+        Assert.areEqual(batchJobId, loggedBatchFailure.salesforceJobId);
+        Assert.areEqual(batchClassName(), loggedBatchFailure.className);
+        Assert.areEqual(BatchFailureRecorder.PHASE_EXECUTE, loggedBatchFailure.batchPhase);
+        Assert.isTrue(loggedBatchFailure.batchScope.contains(accounts[0].Id));
+        Assert.isFalse(loggedBatchFailure.batchScopeTruncated);
+        Assert.areEqual(AsyncTestBatch.FAILURE_MESSAGE, loggedBatchFailure.failure.message);
+        Assert.areEqual(Async.RetryOutcome.NOT_CONFIGURED, loggedBatchFailure.retryOutcome);
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM AsyncResult__c],
+            'A logger works without CreateResult__c.'
+        );
+    }
+
+    @IsTest
+    private static void shouldStillRecordTheBatchFailureWhenTheLoggerThrows() {
+        resultsAndLoggerForBatches(loggerName('ThrowingBatchFailureLogger'));
+        batchAccounts(1);
+        AsyncTestBatch.executeFails = true;
+
+        runBatchAndDeliverFailures(new AsyncTestBatch());
+
+        Assert.areEqual(1, [SELECT COUNT() FROM AsyncResult__c], 'A broken logger loses nothing.');
+    }
+
+    @IsTest
+    private static void shouldTellQueueableContextsWhichJobFailed() {
+        QueueableChain chain = chainWithLogger(loggerName('BatchFailureLogger'));
+        QueueableManager.get().setChain(chain);
+        chain.addJob(new SuccessfulQueueableTest());
+
+        Test.startTest();
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.UNHANDLED_EXCEPTION)
+        );
+        Test.stopTest();
+
+        Assert.areEqual(Async.AsyncType.QUEUEABLE, loggedBatchFailure.asyncType);
+        Assert.isNull(loggedBatchFailure.batchPhase, 'Batch fields stay empty for a queueable.');
+    }
+
+    @IsTest
+    private static void shouldRequeueAFailedScopeThroughTheBatchWithTheFieldsItReads() {
+        List<Account> accounts = batchAccounts(3);
+        AsyncResult__c failure = failedScope(accounts);
+
+        Test.startTest();
+        Async.RequeueSummary summary = Async.requeueBatchFailures(
+            new AsyncTestBatch(),
+            FAILED_BATCH_JOB_ID,
+            new List<SObjectField>{ Account.Name }
+        );
+        Test.stopTest();
+
+        Assert.areEqual(new List<Id>{ failure.Id }, summary.requeued);
+        Assert.isTrue(summary.skipReasonByResultId.isEmpty(), '' + summary.skipReasonByResultId);
+        Assert.isNotNull(summary.enqueueResult.salesforceJobId);
+        Assert.areEqual(Async.AsyncType.BATCHABLE, summary.enqueueResult.asyncType);
+        for (Account account : [SELECT Name, Site FROM Account]) {
+            Assert.areEqual(
+                'processed:' + account.Name,
+                account.Site,
+                'The batch own execute() ran on the reloaded record.'
+            );
+        }
+        Assert.areEqual(AsyncRequeue.STATUS_REQUEUED, requeueStatusOf(failure));
+    }
+
+    @IsTest
+    private static void shouldReloadParentFieldsGivenAsStrings() {
+        List<Account> accounts = batchAccounts(1);
+        failedScope(accounts);
+
+        Test.startTest();
+        AsyncTestBatch.readsOwner = true;
+        Async.requeueBatchFailures(
+            new AsyncTestBatch(),
+            FAILED_BATCH_JOB_ID,
+            new List<String>{ 'Name', 'Owner.Name' }
+        );
+        Test.stopTest();
+
+        Assert.areEqual(
+            'owner:' + UserInfo.getName(),
+            [SELECT Site FROM Account].Site,
+            'A parent path reaches the batch as a queried relationship.'
+        );
+    }
+
+    @IsTest
+    private static void shouldReloadThroughALoaderWhenFieldsAreNotEnough() {
+        List<Account> accounts = batchAccounts(2);
+        failedScope(accounts);
+
+        Test.startTest();
+        Async.requeueBatchFailures(
+            new AsyncTestBatch(),
+            FAILED_BATCH_JOB_ID,
+            new FirstAccountOnlyLoader()
+        );
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM Account WHERE Site LIKE 'processed:%'],
+            'The batch gets exactly what the loader returned.'
+        );
+    }
+
+    @IsTest
+    private static void shouldPassOnlyIdsWhenTheFieldListIsEmpty() {
+        List<Account> accounts = batchAccounts(1);
+        failedScope(accounts);
+
+        Test.startTest();
+        AsyncTestBatch.readsOnlyId = true;
+        Async.requeueBatchFailures(
+            new AsyncTestBatch(),
+            FAILED_BATCH_JOB_ID,
+            new List<SObjectField>()
+        );
+        Test.stopTest();
+
+        Assert.areEqual('id-only', [SELECT Site FROM Account].Site);
+    }
+
+    @IsTest
+    private static void shouldKeepTheFailureOpenWhenTheRequeuedScopeFailsAgain() {
+        List<Account> accounts = batchAccounts(2);
+        AsyncResult__c failure = failedScope(accounts);
+        AsyncTestBatch.executeFails = true;
+
+        try {
+            Test.startTest();
+            Async.requeueBatchFailures(
+                new AsyncTestBatch(),
+                FAILED_BATCH_JOB_ID,
+                new List<SObjectField>{ Account.Name }
+            );
+            Test.stopTest();
+            Assert.fail('The batch throws again.');
+        } catch (AsyncTestBatch.BatchFailedException expected) {
+            Assert.areEqual(AsyncTestBatch.FAILURE_MESSAGE, expected.getMessage());
+        }
+
+        Assert.isNull(
+            requeueStatusOf(failure),
+            'A scope that fails again must stay open so it can be requeued again.'
+        );
+    }
+
+    @IsTest
+    private static void shouldExplainEveryBatchFailureItCannotRequeue() {
+        List<Account> accounts = batchAccounts(1);
+        AsyncResult__c inStart = batchFailure('START', null);
+        AsyncResult__c truncated = batchFailure(BatchFailureRecorder.PHASE_EXECUTE, accounts[0].Id);
+        truncated.BatchScopeTruncated__c = true;
+        AsyncResult__c alreadyRequeued = batchFailure(
+            BatchFailureRecorder.PHASE_EXECUTE,
+            accounts[0].Id
+        );
+        alreadyRequeued.RequeueStatus__c = AsyncRequeue.STATUS_REQUEUED;
+        insert new List<AsyncResult__c>{ inStart, truncated, alreadyRequeued };
+
+        Test.startTest();
+        Async.RequeueSummary summary = Async.requeueBatchFailures(
+            new AsyncTestBatch(),
+            FAILED_BATCH_JOB_ID,
+            new List<SObjectField>{ Account.Name }
+        );
+        Test.stopTest();
+
+        Assert.isTrue(summary.requeued.isEmpty(), 'Nothing here can run again.');
+        Assert.isNull(summary.enqueueResult, 'No batch is started for nothing.');
+        Assert.areEqual(
+            String.format(
+                QueueableManager.REQUEUE_SKIPPED_BATCH_PHASE,
+                new List<String>{ 'START' }
+            ),
+            summary.skipReasonByResultId.get(inStart.Id)
+        );
+        Assert.areEqual(
+            QueueableManager.REQUEUE_SKIPPED_BATCH_SCOPE_TRUNCATED,
+            summary.skipReasonByResultId.get(truncated.Id)
+        );
+        Assert.areEqual(
+            QueueableManager.REQUEUE_SKIPPED_ALREADY_REQUEUED,
+            summary.skipReasonByResultId.get(alreadyRequeued.Id)
+        );
+    }
+
+    @IsTest
+    private static void shouldReturnAnEmptySummaryWhenTheBatchJobHadNoFailures() {
+        batchAccounts(1);
+        Id batchJobId = runBatchAndDeliverFailures(new AsyncTestBatch());
+
+        Async.RequeueSummary summary = Async.requeueBatchFailures(
+            new AsyncTestBatch(),
+            batchJobId,
+            new List<SObjectField>{ Account.Name }
+        );
+
+        Assert.isTrue(summary.requeued.isEmpty());
+        Assert.isTrue(summary.skipReasonByResultId.isEmpty());
+        Assert.isNull(summary.enqueueResult);
+    }
+
+    @IsTest
+    private static void shouldRejectABatchJobIdItCannotFind() {
+        Assert.isTrue(
+            rejectionOf(new AsyncTestBatch(), FAILED_BATCH_JOB_ID, new List<String>())
+                .contains('No batch job with id'),
+            'An id that matches nothing must not look like a job with nothing to requeue.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectAFailedBatchJobWhoseFailuresItCannotSee() {
+        batchAccounts(1);
+        AsyncTestBatch.executeFails = true;
+        Id batchJobId = runBatchAndDeliverFailures(new AsyncTestBatch());
+        BatchRequeueGuard.failedScopesReportedInTest = 1;
+
+        String rejection = rejectionOf(new AsyncTestBatch(), batchJobId, new List<String>());
+
+        Assert.isTrue(
+            rejection.contains('no AsyncResult__c failure record for it is visible to you'),
+            'Failed scopes with no visible record are unrecorded or inaccessible, never "nothing to do": ' +
+            rejection
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectARequeueThatDoesNotSayWhatFailedOrHowToReloadIt() {
+        failedScope(batchAccounts(1));
+        List<SObjectField> noFields;
+        Async.BatchRecordLoader noLoader;
+
+        Assert.isTrue(
+            rejectionOf(null, FAILED_BATCH_JOB_ID, new List<String>())
+                .contains(QueueableManager.ERROR_MESSAGE_NOT_A_BATCH)
+        );
+        Assert.isTrue(
+            rejectionOf(new QueueableJobTest1(), FAILED_BATCH_JOB_ID, new List<String>())
+                .contains(QueueableManager.ERROR_MESSAGE_NOT_A_BATCH)
+        );
+        Assert.isTrue(
+            rejectionOf(new AsyncTestBatch(), null, new List<String>())
+                .contains(QueueableManager.ERROR_MESSAGE_BATCH_JOB_ID_REQUIRED)
+        );
+        Assert.isTrue(
+            rejectionOf(
+                    new AsyncTestBatch(),
+                    FAILED_BATCH_JOB_ID,
+                    new List<String>{ 'Name FROM Account' }
+                )
+                .contains('is not a field path')
+        );
+        Assert.isTrue(
+            rejectionOf(
+                    new AsyncTestBatch(),
+                    FAILED_BATCH_JOB_ID,
+                    new List<String>{ 'NoSuchField__c' }
+                )
+                .contains('cannot be reloaded')
+        );
+        try {
+            Async.requeueBatchFailures(new AsyncTestBatch(), FAILED_BATCH_JOB_ID, noFields);
+            Assert.fail('A missing field list is not the same as an empty one.');
+        } catch (Async.IllegalArgumentException expected) {
+            Assert.isTrue(
+                expected.getMessage().contains('BatchRecordLoader'),
+                expected.getMessage()
+            );
+        }
+        try {
+            Async.requeueBatchFailures(new AsyncTestBatch(), FAILED_BATCH_JOB_ID, noLoader);
+            Assert.fail('A requeue cannot guess how to reload the records.');
+        } catch (Async.IllegalArgumentException expected) {
+            Assert.isTrue(
+                expected.getMessage().contains('BatchRecordLoader'),
+                expected.getMessage()
+            );
+        }
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM AsyncApexJob WHERE JobType = 'BatchApex'],
+            'Every rejection happens before a batch is started.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectABatchOfADifferentClassThanTheOneThatFailed() {
+        AsyncResult__c failure = batchFailure(
+            BatchFailureRecorder.PHASE_EXECUTE,
+            batchAccounts(1)[0].Id
+        );
+        failure.ClassName__c = 'SomeOtherBatch';
+        insert failure;
+
+        try {
+            Async.requeueBatchFailures(
+                new AsyncTestBatch(),
+                FAILED_BATCH_JOB_ID,
+                new List<SObjectField>()
+            );
+            Assert.fail('Running one batch over the failures of another must be refused.');
+        } catch (Async.IllegalArgumentException expected) {
+            Assert.isTrue(expected.getMessage().contains('SomeOtherBatch'), expected.getMessage());
+        }
+    }
+
+    @IsTest
+    private static void shouldPointABatchFailureAtItsOwnRequeueCall() {
+        AsyncResult__c failure = failedScope(batchAccounts(1));
+
+        Async.RequeueSummary summary = Async.requeue(failure.Id);
+
+        Assert.isTrue(summary.requeued.isEmpty());
+        Assert.isTrue(
+            summary.skipReasonByResultId.get(failure.Id).contains('requeueBatchFailures'),
+            summary.skipReasonByResultId.get(failure.Id)
+        );
+    }
+
+    @IsTest
+    private static void shouldRecordAFailureWhoseBatchJobCanNoLongerBeFound() {
+        resultsAndLoggerForBatches(null);
+
+        BatchFailureRecorder.record(
+            new List<BatchApexErrorEvent>{ batchFailureEvent('System.DmlException') }
+        );
+
+        AsyncResult__c failure = [
+            SELECT SalesforceJobId__c, ClassName__c, BatchPhase__c, ExceptionType__c
+            FROM AsyncResult__c
+        ];
+        Assert.areEqual(
+            (String) FAILED_BATCH_JOB_ID,
+            failure.SalesforceJobId__c,
+            'With no job to resolve, the id the event reported is the best there is.'
+        );
+        Assert.isNull(failure.ClassName__c, 'The class is unknown without the job.');
+        Assert.areEqual(BatchFailureRecorder.PHASE_EXECUTE, failure.BatchPhase__c);
+        Assert.areEqual('System.DmlException', failure.ExceptionType__c);
+    }
+
+    @IsTest
+    private static void shouldNameABatchClassWithItsNamespace() {
+        AsyncApexJob packagedBatchJob = (AsyncApexJob) JSON.deserialize(
+            '{"attributes":{"type":"AsyncApexJob"},"ApexClass":{"attributes":{"type":"ApexClass"},"Name":"InvoiceBatch","NamespacePrefix":"acme"}}',
+            AsyncApexJob.class
+        );
+
+        Assert.areEqual(
+            'acme.InvoiceBatch',
+            BatchFailureRecorder.classNameOf(packagedBatchJob),
+            'requeueBatchFailures compares this name with the runtime type, which carries the namespace.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotThrowFromTheTriggerWhenAFailureCannotBeRecorded() {
+        resultsAndLoggerForBatches(null);
+        String tooLongForExceptionType = 'X'.repeat(256);
+
+        BatchFailureRecorder.record(
+            new List<BatchApexErrorEvent>{ batchFailureEvent(tooLongForExceptionType) }
+        );
+
+        Assert.areEqual(
+            0,
+            [SELECT COUNT() FROM AsyncResult__c],
+            'The insert failed, and the trigger swallowed it instead of failing the whole delivery.'
+        );
+    }
+
+    @IsTest
+    private static void shouldStillRecordTheBatchFailureWhenTheLoggerCannotBeConstructed() {
+        resultsAndLoggerForBatches(loggerName('UnconstructableLogger'));
+
+        BatchFailureRecorder.record(
+            new List<BatchApexErrorEvent>{ batchFailureEvent('System.DmlException') }
+        );
+
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM AsyncResult__c],
+            'A logger that cannot be built must not cost the failure record.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectALoaderClassThatIsNotSavedInTheOrg() {
+        try {
+            BatchRequeueGuard.assertIsSavedClass('LoaderDeclaredInAnonymousApex');
+            Assert.fail('The requeue batch could never rebuild this loader.');
+        } catch (Async.IllegalArgumentException expected) {
+            Assert.areEqual(
+                String.format(
+                    QueueableManager.ERROR_MESSAGE_LOADER_NOT_A_SAVED_CLASS,
+                    new List<String>{ 'LoaderDeclaredInAnonymousApex' }
+                ),
+                expected.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    private static void shouldRefuseToReloadAScopeThatMixesObjects() {
+        Account account = batchAccounts(1)[0];
+        Contact contact = new Contact(LastName = 'Mixed', AccountId = account.Id);
+        insert contact;
+
+        try {
+            new BatchFieldReload(new List<String>{ 'Name' })
+                .load(new Set<Id>{ account.Id, contact.Id });
+            Assert.fail('One field list cannot describe two objects.');
+        } catch (Async.IllegalArgumentException expected) {
+            Assert.areEqual(
+                String.format(
+                    QueueableManager.ERROR_MESSAGE_RELOAD_MIXED_TYPES,
+                    new List<String>{ QueueableManager.API_PREFIX }
+                ),
+                expected.getMessage()
+            );
+        }
+    }
+
+    private static String rejectionOf(Object batch, Id batchJobId, List<String> fields) {
+        try {
+            Async.requeueBatchFailures(batch, batchJobId, fields);
+        } catch (Async.IllegalArgumentException expected) {
+            return expected.getMessage();
+        }
+        Assert.fail('The requeue should have been rejected.');
+        return null;
+    }
+
+    private static void resultsAndLoggerForBatches(String loggerClassName) {
+        AsyncMock.jobSettings(
+            new List<QueueableJobSetting__mdt>{
+                new QueueableJobSetting__mdt(
+                    QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                    CreateResult__c = true,
+                    LoggerClass__c = loggerClassName
+                )
+            }
+        );
+    }
+
+    private static Id runBatchAndDeliverFailures(Object batch) {
+        Id batchJobId;
+        try {
+            Test.startTest();
+            batchJobId = Async.batchable(batch).execute().salesforceJobId;
+            Test.stopTest();
+        } catch (AsyncTestBatch.BatchFailedException rethrownByStopTest) {
+            Assert.areEqual(AsyncTestBatch.FAILURE_MESSAGE, rethrownByStopTest.getMessage());
+        }
+        Test.getEventBus().deliver();
+        return batchJobId;
+    }
+
+    private static List<Account> batchAccounts(Integer howMany) {
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < howMany; i++) {
+            accounts.add(new Account(Name = AsyncTestBatch.ACCOUNT_NAME_PREFIX + i));
+        }
+        insert accounts;
+        return accounts;
+    }
+
+    private static AsyncResult__c failedScope(List<Account> accounts) {
+        AsyncResult__c failure = batchFailure(
+            BatchFailureRecorder.PHASE_EXECUTE,
+            String.join(new List<Id>(new Map<Id, Account>(accounts).keySet()), ',')
+        );
+        insert failure;
+        return failure;
+    }
+
+    private static AsyncResult__c batchFailure(String phase, String scope) {
+        return new AsyncResult__c(
+            Status__c = QueueableManager.STATUS_FAILED,
+            ClassName__c = batchClassName(),
+            SalesforceJobId__c = FAILED_BATCH_JOB_ID,
+            BatchPhase__c = phase,
+            BatchScope__c = scope
+        );
+    }
+
+    private static String requeueStatusOf(AsyncResult__c failure) {
+        return [SELECT RequeueStatus__c FROM AsyncResult__c WHERE Id = :failure.Id]
+        .RequeueStatus__c;
+    }
+
+    private static BatchApexErrorEvent batchFailureEvent(String exceptionType) {
+        return (BatchApexErrorEvent) JSON.deserialize(
+            JSON.serialize(
+                new Map<String, Object>{
+                    'attributes' => new Map<String, String>{ 'type' => 'BatchApexErrorEvent' },
+                    'AsyncApexJobId' => FAILED_BATCH_JOB_ID,
+                    'Phase' => BatchFailureRecorder.PHASE_EXECUTE,
+                    'ExceptionType' => exceptionType,
+                    'Message' => AsyncTestBatch.FAILURE_MESSAGE,
+                    'DoesExceedJobScopeMaxLength' => false
+                }
+            ),
+            BatchApexErrorEvent.class
+        );
+    }
+
+    private static String batchClassName() {
+        return getClassNameWithNamespaceDotPrefix('AsyncTestBatch');
+    }
+
     private static String loggerName(String simpleName) {
         return getClassNameWithNamespaceDotPrefix('AsyncTest.' + simpleName);
     }
@@ -6291,6 +7018,38 @@ private class AsyncTest implements Database.Batchable<SObject> {
     public class FailureOnlyLogger implements Async.OnJobFailed {
         public void onJobFailed(Async.FailureContext ctx) {
             AsyncTest.loggedEvents.add('failed-only:' + ctx.className);
+        }
+    }
+
+    public class BatchFailureLogger implements Async.OnJobFailed {
+        public void onJobFailed(Async.FailureContext ctx) {
+            AsyncTest.loggedBatchFailure = ctx;
+        }
+    }
+
+    public class ThrowingBatchFailureLogger implements Async.OnJobFailed {
+        public void onJobFailed(Async.FailureContext ctx) {
+            throw new CustomException('logger exploded');
+        }
+    }
+
+    public class FirstAccountOnlyLoader implements Async.BatchRecordLoader {
+        public List<SObject> load(Set<Id> failedRecordIds) {
+            return [
+                SELECT Id, Name
+                FROM Account
+                WHERE Id IN :failedRecordIds
+                ORDER BY Name
+                LIMIT 1
+            ];
+        }
+    }
+
+    private class EmptyBuilderEnqueuingJob extends QueueableJob {
+        public override void work() {
+            AsyncTest.jobsReportedByEmptyEnqueueInsideJob = Async.queueable()
+                .enqueue()
+                .queueableChainState.jobs.size();
         }
     }
 

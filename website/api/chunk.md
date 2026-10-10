@@ -20,7 +20,7 @@ outcome of the whole run. See [Placing a run in a chain](#placing-a-run-in-a-cha
 Extend `ChunkJob` and put your per-page logic in `work(List<SObject> chunk)`.
 
 ```apex
-public class AccountRecalcJob extends ChunkJob {
+public class AccountRecalcJob extends ChunkJob implements Async.ChunkResettable, Async.Retryable {
   public override void work(List<SObject> chunk) {
     List<Account> accounts = (List<Account>) chunk;
     for (Account acc : accounts) {
@@ -28,8 +28,25 @@ public class AccountRecalcJob extends ChunkJob {
     }
     update accounts;
   }
+
+  public void resetBeforeNextChunk(Integer pageNumber) {
+  }
+
+  public void resetBeforeRetry(Integer attempt) {
+  }
 }
 ```
+
+Every chunk job has to say what happens to its state between pages, and one that uses `retry(n)`
+has to say it for retries too. There are two ways to answer each, and you pick one:
+
+| Question | In the class | Or on the builder |
+| -------- | ------------ | ----------------- |
+| Between pages | `implements Async.ChunkResettable` | `.restoreStateOnNextChunk()` |
+| Between retries | `implements Async.Retryable` | `.restoreStateOnRetry()` |
+
+This job keeps no state, so it implements both interfaces with empty methods. Answer neither way
+and `enqueue()` throws. See [Job State Between Runs](/explanations/job-state-between-runs).
 
 ```apex
 Async.Result result = Async.chunk(new AccountRecalcJob(), ChunkSource.of(records))
@@ -54,7 +71,7 @@ is still there on the next one. This is what `Database.Stateful` gives a batch,
 without asking for it.
 
 ```apex
-public class RevenueRollupJob extends ChunkJob {
+public class RevenueRollupJob extends ChunkJob implements Async.ChunkResettable {
   private Map<Id, Decimal> revenueByOwner = new Map<Id, Decimal>();
   private Integer processed = 0;
 
@@ -65,8 +82,13 @@ public class RevenueRollupJob extends ChunkJob {
     }
     processed += chunk.size();
   }
+
+  public void resetBeforeNextChunk(Integer pageNumber) {
+  }
 }
 ```
+
+The empty `resetBeforeNextChunk` is the job saying it wants to keep its totals from page to page.
 
 Keep those members serializable and small: they travel with the job on every hop.
 A page that fails and retries starts from the state that attempt began with, so
@@ -80,13 +102,16 @@ across hops than whole records, and re-querying inside `work(...)` means a long 
 acts on current data rather than a snapshot taken before the first page.
 
 ```apex
-public class CreateWelcomeTasksJob extends ChunkJob {
+public class CreateWelcomeTasksJob extends ChunkJob implements Async.ChunkResettable {
   public override void work(List<SObject> chunk) {
     List<Task> tasks = new List<Task>();
     for (Id accountId : new Map<Id, SObject>(chunk).keySet()) {
       tasks.add(new Task(WhatId = accountId, Subject = 'Welcome call'));
     }
     insert tasks;
+  }
+
+  public void resetBeforeNextChunk(Integer pageNumber) {
   }
 }
 ```
@@ -151,10 +176,13 @@ a higher priority runs before the next page, then the run resumes. A job of equa
 or lower priority (or no priority at all) waits for the whole run.
 
 ```apex
-public class AccountRecalcJob extends ChunkJob {
+public class AccountRecalcJob extends ChunkJob implements Async.ChunkResettable {
   public override void work(List<SObject> chunk) {
     // ...
     Async.queueable(new UrgentJob()).priority(1).chain(); // jumps the remaining pages
+  }
+
+  public void resetBeforeNextChunk(Integer pageNumber) {
   }
 }
 ```
@@ -216,7 +244,8 @@ your DML.
 ## Cursor governor caps
 
 `ChunkSource.cursor(...)` / `ChunkSource.query(...)` open a SOQL cursor. Salesforce
-enforces cursor limits you should weigh against a `Database.Batchable`:
+enforces cursor limits you should weigh against a `Database.Batchable`. For the
+wider comparison see [Batch or Chunk?](/explanations/batch-or-chunk).
 
 | Limit                              | Value                        |
 | ---------------------------------- | ---------------------------- |
@@ -224,13 +253,15 @@ enforces cursor limits you should weigh against a `Database.Batchable`:
 | Records per `fetch()` call         | 2,000 (caps `chunkSize` on a cursor source) |
 | `fetch()` calls per transaction    | 100 (a page uses one)        |
 | Cursor instances per org per day   | 10,000                       |
+| Cursor rows per org per day        | 100 million, counted when a cursor is opened |
 | Cursor lifespan                    | 2 days                       |
 
 ::: warning A throttled run can outlive its cursor
 A cursor expires 2 days after it is opened. A run that pages a large set with
 `.delayBetweenChunks(...)`, or one that sits behind a long queue, can still have
 pages left when the cursor dies. Size `chunkSize` and the delay so the run
-finishes inside 2 days, or use a `Database.Batchable` for very long runs.
+finishes inside 2 days. A `Database.Batchable` does not help here: its
+`QueryLocator` expires after 2 days as well.
 :::
 
 `ChunkSource.of(...)` / `ChunkSource.ofIds(...)` hold records in memory instead, so
@@ -657,8 +688,9 @@ stage two must query rows that stage one produces, build it inside stage one's
 #### enqueue
 
 Enqueues the run and returns the `Async.Result` for the first page. Enqueuing an
-empty source is a safe no-op: the run itself is skipped, and any jobs already
-chained still run.
+empty source is a safe no-op: the run itself is skipped, any jobs already
+chained still run, and `dependsOn(Async.afterPrevious())` on the next chain
+member resolves to the job before the skipped run.
 
 **Signature**
 

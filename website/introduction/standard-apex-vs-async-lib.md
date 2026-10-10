@@ -25,6 +25,8 @@ logic stays where it always was, so things like `Database.Stateful`,
 | Hand-rolled paging over a list or cursor       | `Async.chunk(job, source).chunkSize(200).enqueue()`       |
 | Track retries yourself to log a final failure  | `override onFinalFailure(Async.FailureContext)`           |
 | `Database.executeBatch(job, scope)`            | `Async.batchable(job).scopeSize(scope).execute()`         |
+| A trigger on `BatchApexErrorEvent` to see failed scopes | `implements Database.RaisesPlatformEvents`, nothing else |
+| Re-running the records of a failed scope by hand | `Async.requeueBatchFailures(job, jobId, fields)`        |
 | `implements Schedulable` + `System.schedule`   | `Async.schedulable(job).cronExpression(...).schedule()`   |
 | Hand-written cron string                       | `CronBuilder` fluent helpers                              |
 
@@ -159,9 +161,12 @@ public class RecalcJob implements Queueable {
 **Async Lib**
 
 ```apex
-public class RecalcJob extends ChunkJob {
+public class RecalcJob extends ChunkJob implements Async.ChunkResettable {
   public override void work(List<SObject> chunk) {
     // ... work on chunk ...
+  }
+
+  public void resetBeforeNextChunk(Integer pageNumber) {
   }
 }
 
@@ -177,7 +182,7 @@ built on one page is still there on the next one. This is what
 `Database.Stateful` gives a batch, except you do not have to ask for it.
 
 ```apex
-public class RevenueRollupJob extends ChunkJob {
+public class RevenueRollupJob extends ChunkJob implements Async.ChunkResettable {
   private Map<Id, Decimal> revenueByOwner = new Map<Id, Decimal>();
   private Integer processed = 0;
 
@@ -188,12 +193,17 @@ public class RevenueRollupJob extends ChunkJob {
     }
     processed += chunk.size();
   }
+
+  public void resetBeforeNextChunk(Integer pageNumber) {
+  }
 }
 ```
 
 Each page starts from the state the previous page left behind, so
 `revenueByOwner` keeps growing and `processed` keeps counting for the length of
-the run. Keep the members serializable and keep them small: they travel with the
+the run. The empty `resetBeforeNextChunk` is the job saying that is what it
+wants; every chunk job has to answer that question, see
+[Job State Between Runs](/explanations/job-state-between-runs). Keep the members serializable and keep them small: they travel with the
 job on every hop.
 
 ### Finalizers
@@ -300,6 +310,12 @@ Your batch class does **not** change. It is a normal
 `Database.Batchable<SObject>` with `start()`, `execute()`, and `finish()`. Async
 Lib only replaces the `Database.executeBatch(...)` call, adding scheduling and
 result tracking on top.
+
+Retry, finalizers and chaining are Queueable features, and Async Lib keeps them
+there on purpose. For new work over many records, a [chunk run](/api/chunk) is
+the recommended path. [Batch or Chunk?](/explanations/batch-or-chunk) has the
+reasoning, and [Batch Failures](/explanations/batch-failures) covers what a
+batch does get: recorded failures, logging and requeue.
 
 **Standard Apex**
 

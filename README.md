@@ -40,6 +40,8 @@ Visit https://async.beyondthecloud.dev/ to view the full documentation.
   - Convert any `QueueableJob` or `Database.Batchable` into a schedulable job, by using the `asSchedulable()` method.
   - Support easier cron expressions using the `CronBuilder` class.
 - **Batchable Jobs**: Execute batch jobs using the `Async.batchable()` method.
+  - Failed batch scopes are recorded on `AsyncResult__c` and reported to your logger, governor limit errors included, when the batch implements `Database.RaisesPlatformEvents`.
+  - Run the failed records again with `Async.requeueBatchFailures()`.
 - **Custom Metadata Configuration**: Configure the QueueableJob settings using the `QueueableJobSettings__mdt` custom metadata type to enable or disable jobs, and to control the creation of Async Result records.
 - **Custom Object for Async Results**: The `AsyncResult__c` custom object is created for each processed queueable job, allowing you to track the chained job status and details.
 

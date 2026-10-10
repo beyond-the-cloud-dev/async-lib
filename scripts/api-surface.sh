@@ -61,6 +61,10 @@ revert_internal_wiring() {
         "force-app/main/default/classes/Async.cls"
     api_surface_sed 's/global QueueableChainState setEnqueueType/public QueueableChainState setEnqueueType/g' \
         "force-app/main/default/classes/Async.cls"
+    # Built by BatchFailureRecorder from a failure row. A subscriber receives the context, it never
+    # constructs one, and a global constructor can never be withdrawn.
+    api_surface_sed 's/global FailureContext(AsyncResult__c batchFailure)/public FailureContext(AsyncResult__c batchFailure)/g' \
+        "force-app/main/default/classes/Async.cls"
     api_surface_sed 's/global void enqueue(QueueableChain chain)/public void enqueue(QueueableChain chain)/g' \
         "force-app/main/default/classes/queue/QueueableJob.cls"
 

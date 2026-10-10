@@ -1,4 +1,9 @@
 /**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ *
  * PMD False Positives:
  * - AvoidDebugStatements: a logger that cannot be reached leaves the debug log as the only channel
  * - ExcessiveParameterList: one event carries exactly one of the two context types, and bundling
@@ -31,6 +36,19 @@ public inherited sharing class AsyncEventDispatcher {
         Async.FailureContext ctx = new Async.FailureContext(job);
         ctx.nextAttemptDelayMinutes = delayMinutes;
         dispatch(job, loggerName, Event.RETRY_ENQUEUED, null, ctx);
+    }
+
+    public static void batchFailed(Async.FailureContext failureCtx, String loggerClassName) {
+        Object registeredLogger;
+        try {
+            registeredLogger = GlobalClassFactory.newInstance(loggerClassName);
+        } catch (Exception instantiationFailure) {
+            reportWithoutAffectingTheJob(instantiationFailure);
+            return;
+        }
+        if (registeredLogger != null) {
+            notifyListener(registeredLogger, Event.FAILED, null, failureCtx);
+        }
     }
 
     private static void dispatch(

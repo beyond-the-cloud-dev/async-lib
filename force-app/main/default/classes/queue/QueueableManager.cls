@@ -1,4 +1,9 @@
 /**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ *
  * PMD False Positives:
  * - CyclomaticComplexity / CognitiveComplexity: one guard clause per documented error message,
  *   and the most complex member scores 7
@@ -59,7 +64,7 @@ public inherited sharing class QueueableManager {
         'QueueableJobSetting__mdt.JobSerializerClass__c names "{0}", which is not a usable {1}Async.JobSerializer. Async Lib can only reach a class declared global, and it has to implement that interface. See ' +
         DOCS_URL_REQUEUE;
     public static final String ERROR_MESSAGE_REQUEUE_BUDGET_EXCEEDED = 'Requeuing these {2} results needs {0} characters of payload, above the limit of {1}. Split the ids into smaller batches. Order by PayloadSize__c to see which results are the heavy ones.';
-    public static final String REQUEUE_SKIPPED_NO_RECORD = 'No AsyncResult__c record with this id. It may have been deleted by AsyncResultCleanupBatch.';
+    public static final String REQUEUE_SKIPPED_NO_RECORD = 'No AsyncResult__c record with this id is visible to you. The id may be wrong, the record may have been deleted by AsyncResultCleanupBatch, or you may not have access to AsyncResult__c records.';
     public static final String REQUEUE_SKIPPED_NO_PAYLOAD =
         'No payload was stored for this job, so there is nothing to replay. Set QueueableJobSetting__mdt.StoreJobPayload__c to Yes before the job runs. See ' +
         DOCS_URL_REQUEUE;
@@ -69,6 +74,30 @@ public inherited sharing class QueueableManager {
     public static final String REQUEUE_SKIPPED_CLASS_NOT_FOUND =
         'The class "{0}" could not be resolved, so the job cannot be rebuilt. It may have been renamed or deleted. On a packaged install, register a {1}Async.JobSerializer in QueueableJobSetting__mdt.JobSerializerClass__c. See ' +
         DOCS_URL_REQUEUE;
+    public static final String DOCS_URL_BATCH_FAILURES = DOCS_URL + '/explanations/batch-failures';
+    public static final String REQUEUE_SKIPPED_BATCH_FAILURE =
+        'This is a batch failure, which has no stored payload. Requeue it with {0}Async.requeueBatchFailures(batch, batchJobId, fieldsToReload). See ' +
+        DOCS_URL_BATCH_FAILURES;
+    public static final String REQUEUE_SKIPPED_BATCH_PHASE = 'Only a failed execute() scope can be requeued. This failure happened in {0}, which has no records to run again.';
+    public static final String REQUEUE_SKIPPED_BATCH_SCOPE_TRUNCATED = 'Salesforce cut the list of failed record ids short for this scope, so it cannot be requeued without skipping records.';
+    public static final String ERROR_MESSAGE_NOT_A_BATCH =
+        'requeueBatchFailures needs an instance of the batch class whose scopes failed. Pass something that implements Database.Batchable<SObject>. See ' +
+        DOCS_URL_BATCH_FAILURES;
+    public static final String ERROR_MESSAGE_BATCH_JOB_ID_REQUIRED = 'requeueBatchFailures needs the id of the batch job whose scopes failed, the one Database.executeBatch returned.';
+    public static final String ERROR_MESSAGE_BATCH_JOB_NOT_FOUND = 'No batch job with id {0} is visible to you. The id may be wrong, or it may belong to something other than a batch.';
+    public static final String ERROR_MESSAGE_BATCH_FAILURES_NOT_VISIBLE =
+        'Batch job {0} reports {1} failed scope(s), but no AsyncResult__c failure record for it is visible to you. Either the failures were not recorded, which needs Database.RaisesPlatformEvents on the batch and CreateResult__c in QueueableJobSetting__mdt, or you do not have access to AsyncResult__c records. A failure is recorded about a second after its scope fails, so a job that only just finished may need a moment. See ' +
+        DOCS_URL_BATCH_FAILURES;
+    public static final String ERROR_MESSAGE_BATCH_RELOAD_REQUIRED =
+        'requeueBatchFailures needs to know how to reload the failed records, because a batch failure stores record ids only. Pass the fields execute() reads, or an {0}Async.BatchRecordLoader. An empty field list is a valid answer for a batch that reads nothing but Id. See ' +
+        DOCS_URL_BATCH_FAILURES;
+    public static final String ERROR_MESSAGE_LOADER_NOT_A_SAVED_CLASS =
+        'The BatchRecordLoader "{0}" is not an Apex class saved in this org, so the requeue batch could not rebuild it and would wait in the queue forever. A class declared inside anonymous Apex stops existing when the script ends. Save the loader as an Apex class, or pass a field list instead. See ' +
+        DOCS_URL_BATCH_FAILURES;
+    public static final String ERROR_MESSAGE_BATCH_CLASS_MISMATCH = 'Batch job {0} ran "{1}", but the batch passed to requeueBatchFailures is "{2}". Pass an instance of the class that failed.';
+    public static final String ERROR_MESSAGE_INVALID_RELOAD_FIELD = '"{0}" is not a field path. Use a field name such as Name, or a parent path such as Owner.Email. For anything else pass an {1}Async.BatchRecordLoader.';
+    public static final String ERROR_MESSAGE_RELOAD_QUERY_INVALID = 'The failed records cannot be reloaded with "{0}": {1}';
+    public static final String ERROR_MESSAGE_RELOAD_MIXED_TYPES = 'The failed scope holds records of more than one object, so a field list cannot reload it. Pass an {0}Async.BatchRecordLoader instead.';
     public static final String ERROR_MESSAGE_INVALID_DEPENDENCY = 'A dependency requires a target and an outcome (e.g. Async.after(result).succeeded())';
     public static final String ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB = 'dependsOn(Async.afterPrevious()) requires a previously chained job';
     public static final String ERROR_MESSAGE_UNKNOWN_JOB = 'No job in this chain has custom job id "{0}".';
@@ -159,6 +188,16 @@ public inherited sharing class QueueableManager {
         return new Async.Result(clonedJob).setCurrentQueueableChainState();
     }
 
+    public Async.Result enqueueJobsChainedEarlier() {
+        if (chain.isChainedContext() || chain.getJobs().isEmpty()) {
+            return new Async.Result((Id) null)
+                .setQueueableChainState(
+                    new Async.QueueableChainState().setJobs(new List<QueueableJob>())
+                );
+        }
+        return enqueue(null);
+    }
+
     public Async.Result enqueue(QueueableJob job) {
         Async.QueueableChainState queueableChainState = new Async.QueueableChainState()
             .setJobs(chain.getJobs())
@@ -187,7 +226,10 @@ public inherited sharing class QueueableManager {
             enqueuedJobId = job.salesforceJobId;
         }
 
-        Async.Result result = new Async.Result(job).setQueueableChainState(queueableChainState);
+        Async.Result result = (job == null
+                ? new Async.Result((Id) null).setAsyncType(Async.AsyncType.QUEUEABLE)
+                : new Async.Result(job))
+            .setQueueableChainState(queueableChainState);
         if (enqueuedJobId != null) {
             result.salesforceJobId = enqueuedJobId;
         }

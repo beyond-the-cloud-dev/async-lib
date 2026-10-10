@@ -1,4 +1,9 @@
 /**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ *
  * Copy this when Async Lib is installed as a namespaced package and you use Async.requeue().
  * Register it once: QueueableJobSetting__mdt.JobSerializerClass__c = 'AsyncJobSerializer' on the
  * All record.

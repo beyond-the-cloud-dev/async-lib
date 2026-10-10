@@ -44,7 +44,11 @@ npm test                    # Run LWC Jest tests
 npm run lint                # Run ESLint
 npm run prettier:verify     # Check code formatting
 npm run pmd:verify          # Run PMD static analysis
+npm run headers:verify      # Check the license header and version on every Apex file
 ```
+
+A new Apex class or trigger starts with the same header block as the existing ones. Copy it from
+any class. The version line is bumped by `scripts/release.sh`, not by hand.
 
 CI runs Prettier, ESLint and PMD on every pull request and fails on any violation, so a
 finding has to be resolved before merge. `npm run pmd` prints the same report without

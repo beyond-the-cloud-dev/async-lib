@@ -1,4 +1,9 @@
 /**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ *
  * Copy this class into your own org when Async Lib is installed as a namespaced package.
  *
  * A deep copy has to serialize your job, and two Salesforce rules stop Async Lib doing that from

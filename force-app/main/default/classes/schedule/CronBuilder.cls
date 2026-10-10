@@ -1,4 +1,9 @@
 /**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.0.0
+ *
  * PMD False Positives:
  * - EmptyStatementBlock: In Apex it is required to have constructor overload with empty arguments, when there is other constructor, to create the object with empty constructor
  * - ExcessiveParameterList: This was intended to require all the values upfront

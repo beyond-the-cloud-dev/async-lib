@@ -14,6 +14,7 @@
     "prettier:verify": "prettier --list-different \"**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,xml,yaml,yml}\"",
     "pmd": "./scripts/pmd.sh --no-fail-on-violation",
     "pmd:verify": "./scripts/pmd.sh",
+    "headers:verify": "./scripts/apex-headers.sh check",
     "prepare": "husky",
     "precommit": "lint-staged",
     "docs:dev": "vitepress dev website",

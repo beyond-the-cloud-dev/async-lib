@@ -20,14 +20,15 @@ Names below are for a source deploy. On a packaged install prefix every class wi
 | Call | Returns | Use it for |
 | ---- | ------- | ---------- |
 | `Async.queueable(QueueableJob job)` | `QueueableBuilder` | one job, or the start of a chain |
-| `Async.queueable()` | `QueueableBuilder` | an empty builder to `.chain(job)` into; `enqueue()` with nothing added is a no-op |
+| `Async.queueable()` | `QueueableBuilder` | an empty builder to `.chain(job)` into; `enqueue()` starts whatever was chained earlier in the transaction, by anyone, and does nothing if nothing is waiting |
 | `Async.chunk(ChunkJob job, ChunkSource source)` | `ChunkBuilder` | one job over many records, one page per transaction |
-| `Async.batchable(Database.Batchable job)` | `BatchableBuilder` | a standard batch, with scope and delay |
+| `Async.batchable(Database.Batchable job)` | `BatchableBuilder` | a standard batch you have a reason to keep, with scope and delay; for new work prefer `Async.chunk` |
 | `Async.schedulable(Schedulable job)` | `SchedulableBuilder` | a standard schedulable, with cron helpers |
 | `Async.after(Result r)` / `Async.after(String customJobId)` / `Async.afterPrevious()` | `Async.Dependency` | the target of `dependsOn(...)`, finished with `.succeeded()`, `.failed()` or `.finished()` |
 | `Async.stopChain()` | | inside a job or finalizer: skip every remaining job in the chain |
 | `Async.skipJob(String customJobId)` | | inside a job or finalizer: skip one job and its finalizers |
 | `Async.requeue(Id resultId)` / `Async.requeue(Set<Id> resultIds)` | `Async.RequeueSummary` | replay failed jobs from their `AsyncResult__c` records |
+| `Async.requeueBatchFailures(Object batch, Id batchJobId, List<SObjectField> fieldsToReload)` / `(batch, batchJobId, List<String> fieldsToReload)` / `(batch, batchJobId, Async.BatchRecordLoader loader)` | `Async.RequeueSummary` | run the failed scopes of a batch again through its own `execute()`; the third argument is required and says how to reload the records |
 | `Async.getQueueableJobContext()` | `Async.QueueableJobContext` | inside a job: the current job, `QueueableContext`, `FinalizerContext` |
 | `Async.getCurrentQueueableChainState()` | `Async.QueueableChainState` | every job in the chain and what runs next |
 | `Async.getQueueableChainSchedulableId()` | `Id` | the scheduled job id when the chain started through the 50-job overflow path |
@@ -36,7 +37,9 @@ Names below are for a source deploy. On a packaged install prefix every class wi
 ## Builders
 
 Every builder is fluent. `enqueue()` starts a chain, `chain()` adds to it without starting,
-`enqueue()` on the last builder starts everything chained before it.
+`enqueue()` on the last builder starts everything chained before it. Jobs chained and not yet
+enqueued wait in one open chain shared by all code in the transaction, and every `enqueue()` in a
+normal transaction starts a separate chain: [Chaining Across Services](/explanations/chaining-across-services).
 
 ### QueueableBuilder
 
@@ -98,6 +101,9 @@ Your own: extend `ChunkSource`, implement `getNumRecords()` and `fetch(Integer p
 | `asSchedulable()` | continue as a `SchedulableBuilder` |
 | `minutesFromNow(Integer)` | only with `asSchedulable().name(...).schedule()`: run once, that many minutes from now, instead of on a cron |
 
+There is no `retry`, no finalizer and no `chain` for a batch, and there will not be. Those are
+Queueable features; a `ChunkJob` has all of them. [Batch or Chunk?](/explanations/batch-or-chunk).
+
 ### SchedulableBuilder and CronBuilder
 
 | Method | What it does |
@@ -137,6 +143,27 @@ public class ImportJob extends QueueableJob {
 | `void resetBeforeNextChunk(Integer pageNumber)` | `implements Async.ChunkResettable` | clear state before the next page; required by every `ChunkJob` unless `restoreStateOnNextChunk()` |
 | `onJobEnqueued` / `onJobSucceeded` / `onJobFailed` / `onRetryEnqueued` | `implements Async.OnJobEnqueued` etc. | lifecycle events, on the job or on a class registered in `LoggerClass__c` |
 | `serialize(QueueableJob)` / `deserialize(String className, String payload)` | `implements Async.JobSerializer` | packaged installs using `requeue()`; see `extras/AsyncJobSerializer` |
+| `List<SObject> load(Set<Id> failedRecordIds)` | `implements Async.BatchRecordLoader` | passed to `requeueBatchFailures` when a field list cannot reload the failed records |
+| nothing | `implements Database.RaisesPlatformEvents`, on a `Database.Batchable` | standard marker; makes Async Lib record and log every failed scope of that batch |
+
+### State between runs: answer once per question
+
+A job object can run more than once, so Async Lib makes you say what happens to its fields in
+between. Each question has two valid answers. Give exactly one. Give neither and `enqueue()` or
+`chain()` throws, synchronously.
+
+| The job | Question | Answer in the class | Or answer on the builder |
+| ------- | -------- | ------------------- | ------------------------ |
+| uses `retry(n)` | what carries over between attempts | `implements Async.Retryable` with `resetBeforeRetry(Integer attempt)` | `.restoreStateOnRetry()` |
+| is a `ChunkJob` (always) | what carries over between pages | `implements Async.ChunkResettable` with `resetBeforeNextChunk(Integer pageNumber)` | `.restoreStateOnNextChunk()` |
+
+- The interfaces are not mandatory and neither are the builder calls. One of the two per row is.
+- A `ChunkJob` with `retry(n)` has both questions to answer.
+- An empty method body is a real answer: "keep whatever is there". Use it for a job with no
+  fields, and for one that accumulates on purpose, such as a running total across pages.
+- A plain `QueueableJob` without `retry(n)` answers nothing.
+- When writing a new job, default to the interface. The builder calls take a deep copy, which on
+  a packaged install needs `extras/BaseQueueableJob` or `BaseChunkJob`. The interfaces need nothing.
 
 Base classes: `QueueableJob.Finalizer` for a job attached with `attachFinalizer()`. Callouts are a
 marker, `implements Database.AllowsCallouts`, on any of them.
@@ -152,7 +179,7 @@ Inside `work()` of a `ChunkJob`, `getRun()` gives `currentPageNumber()`, `hasRem
 | `Async.QueueableChainState` | `jobs`, `nextSalesforceJobId`, `nextCustomJobId`, `enqueueType` |
 | `Async.QueueableJobContext` | `currentJob`, `queueableCtx`, `finalizerCtx` |
 | `Async.JobContext` | `customJobId`, `className`, `salesforceJobId`, `chainId`, `priority`, `retryAttempt`, `info` |
-| `Async.FailureContext` | `retryOutcome`, `failure` (`type`, `message`, `stackTrace`), `customJobId`, `className`, `retryAttempt`, `maxRetries`, `retryHistory`, `nextAttemptDelayMinutes`, `info` |
+| `Async.FailureContext` | `retryOutcome`, `failure` (`type`, `message`, `stackTrace`), `customJobId`, `className`, `retryAttempt`, `maxRetries`, `retryHistory`, `nextAttemptDelayMinutes`, `info`, `asyncType`, `salesforceJobId`, and for a batch failure `batchPhase`, `batchScope`, `batchScopeTruncated` |
 | `Async.RequeueSummary` | `requeued`, `skipReasonByResultId`, `enqueueResult` |
 | `Async.Outcome` | `SUCCESS`, `FAILURE`, `COMPLETED` |
 | `Async.RetryOutcome` | `NOT_CONFIGURED`, `NOT_RETRYABLE`, `EXHAUSTED` |
@@ -166,12 +193,12 @@ applies to that job. Wrong values degrade and record why, they never stop a job.
 | Field | Type | Effect |
 | ----- | ---- | ------ |
 | `IsDisabled__c` | Checkbox | the job is skipped with `SKIPPED_DISABLED` |
-| `CreateResult__c` | Checkbox | write an `AsyncResult__c` row for every outcome |
+| `CreateResult__c` | Checkbox | write an `AsyncResult__c` row for every outcome; for a batch, one row per failed scope |
 | `MaxRetries__c` | Number | default retries, 0 to 10; only applied to jobs that declare how state resets |
 | `BackoffStrategy__c` | Text | `FIXED`, `EXPONENTIAL`, `EXPONENTIAL_JITTER` |
 | `BackoffBaseMinutes__c` | Number | base for the strategy |
 | `RetryableExceptions__c` | Text | comma-separated exception type names |
-| `LoggerClass__c` | Text | a `global` class implementing the lifecycle interfaces |
+| `LoggerClass__c` | Text | a `global` class implementing the lifecycle interfaces; batch failures arrive on `OnJobFailed` |
 | `StoreJobPayload__c` | Picklist `Yes`/`No` | store a snapshot for `requeue()`; `No` on a job beats `Yes` on `All` |
 | `JobSerializerClass__c` | Text | a `global` `Async.JobSerializer`, packaged installs only |
 
@@ -180,7 +207,8 @@ In tests, inject them: `AsyncMock.jobSettings(new List<QueueableJobSetting__mdt>
 ## `AsyncResult__c`
 
 One row per job, written after its last attempt, when `CreateResult__c` is on or a payload is
-stored. Read access through the `AsyncResultAccess` permission set.
+stored. A batch writes one row per failed scope and nothing for a successful one. Read access
+through the `AsyncResultAccess` permission set.
 
 | Field | Holds |
 | ----- | ----- |
@@ -190,6 +218,7 @@ stored. Read access through the `AsyncResultAccess` permission set.
 | `RetryAttempts__c`, `RetryHistory__c` | one line per attempt, plus configuration warnings |
 | `DependsOnResult__c`, `RequiredOutcome__c`, `ActualOutcome__c`, `SkipReason__c` | why a dependent job ran or was skipped |
 | `JobPayload__c`, `PayloadSize__c`, `RequeueStatus__c`, `RequeuedFrom__c` | requeue |
+| `BatchPhase__c`, `BatchScope__c`, `BatchScopeTruncated__c` | batch failures only: `START` / `EXECUTE` / `FINISH`, the failed record ids, and whether Salesforce cut that list short |
 
 Old rows do not delete themselves. Schedule `AsyncResultCleanupBatch` with
 `failedOlderThanDays(n)` and/or `othersOlderThanDays(n)`.
@@ -297,6 +326,33 @@ global class AsyncJobLogger implements Async.OnJobFailed {
 // then QueueableJobSetting__mdt.LoggerClass__c = 'AsyncJobLogger' on the All record
 ```
 
+### Several services, one chain
+
+```apex
+// in each service
+Async.queueable(new SendWelcomeJob(accountIds)).chain();
+Async.queueable(new ReviewContactJob(contactIds)).chain();
+
+// once, as the last line of the entry point
+Async.queueable().enqueue();
+```
+
+### A batch you keep, with its failures recorded and requeued
+
+```apex
+public class AccountSyncBatch implements Database.Batchable<SObject>, Database.RaisesPlatformEvents {
+    public Database.QueryLocator start(Database.BatchableContext bc) { /* ... */ }
+    public void execute(Database.BatchableContext bc, List<Account> scope) { /* ... */ }
+    public void finish(Database.BatchableContext bc) { /* ... */ }
+}
+// QueueableJobSetting__mdt.CreateResult__c = true on All, or on a record named AccountSyncBatch
+
+Id jobId = Async.batchable(new AccountSyncBatch()).scopeSize(200).execute().salesforceJobId;
+
+// later, after fixing what broke
+Async.requeueBatchFailures(new AccountSyncBatch(), jobId, new List<SObjectField>{ Account.Name });
+```
+
 ### Test a job
 
 ```apex
@@ -317,8 +373,10 @@ static void failsCleanly() {
 Things that read as bugs and are not, and things agents get wrong on the first try.
 
 - **`retry(n)` throws at enqueue unless the job says what happens to its state.** Implement
-  `Async.Retryable` or call `restoreStateOnRetry()`. An empty `resetBeforeRetry` body is a valid
-  answer. Same for every `ChunkJob` with `Async.ChunkResettable` or `restoreStateOnNextChunk()`.
+  `Async.Retryable` or call `restoreStateOnRetry()`, one or the other. An empty `resetBeforeRetry`
+  body is a valid answer. Same for every `ChunkJob`, retry or not, with `Async.ChunkResettable` or
+  `restoreStateOnNextChunk()`. A bare `extends ChunkJob` with no builder call does not enqueue.
+  The table is under [What you implement](#state-between-runs-answer-once-per-question).
   [Job State Between Runs](/explanations/job-state-between-runs).
 - **More than 50 jobs is fine.** The chain switches to a scheduled starter past the platform's
   50-queueable limit on its own. Do not batch enqueues by hand.
@@ -346,4 +404,21 @@ Things that read as bugs and are not, and things agents get wrong on the first t
 - **A `ChunkJob` is not a batch.** One page per transaction, in sequence, inside the chain, with
   retry and dependencies. `Async.batchable(...)` is a plain `Database.Batchable` with a fluent
   wrapper. [Chunk](/api/chunk).
+- **Default to `Async.chunk`, not `Async.batchable`, for new work over many records.** Batches get
+  no retry, no finalizer and no chaining, on purpose: a batch has no Transaction Finalizer to build
+  them on. Write a batch only for sharing recalculation, a non-record scope, or more than 100
+  million cursor rows a day. [Batch or Chunk?](/explanations/batch-or-chunk).
+- **`chain()` alone runs nothing.** Something has to call `enqueue()` before the transaction ends,
+  and a chain that is never started is dropped without an error. Services call `chain()`, the entry
+  point ends with `Async.queueable().enqueue()`.
+  [Chaining Across Services](/explanations/chaining-across-services).
+- **A batch failure is recorded only if the batch implements `Database.RaisesPlatformEvents`.**
+  The row is written by a platform event trigger about a second after the scope fails, so the last
+  one may not be there yet inside the batch's own `finish()`. In a test, catch what `Test.stopTest()` rethrows and
+  call `Test.getEventBus().deliver()`. [Batch Failures](/explanations/batch-failures).
+- **`requeueBatchFailures` needs to be told what to reload.** A failure stores ids only. Pass the
+  fields `execute()` reads, an empty list for `Id` only, or an `Async.BatchRecordLoader`. `null`
+  throws. It does not call `finish()` and does not retry on its own. A loader must be a saved
+  class, not one declared inside an anonymous Apex script.
+- **A logger hears batch failures as the Automated Process user.** Log there; do not enqueue work.
 - **`delay()` and `asyncOptions()` are exclusive**, and `delay` tops out at 10 minutes.

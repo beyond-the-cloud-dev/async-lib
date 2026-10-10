@@ -54,6 +54,11 @@ to warn or to page. There is no overlap and no double counting.
 
 Chunk runs fire `OnJobEnqueued` per page, because each page really is queued separately.
 
+A batch that implements `Database.RaisesPlatformEvents` fires `OnJobFailed` for every failed scope,
+with `ctx.asyncType == Async.AsyncType.BATCHABLE` and the `batchPhase` and `batchScope` fields
+filled. It fires nothing else, and the logger runs as the Automated Process user for those. See
+[Batch Failures](/explanations/batch-failures#logging).
+
 ## Two layers, one vocabulary
 
 The same interfaces work on a **job**, with no Custom Metadata at all:

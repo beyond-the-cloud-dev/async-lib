@@ -29,7 +29,12 @@ export default async function middleware(request) {
     const url = new URL(request.url);
 
     if (url.pathname.endsWith('.md')) {
-        return next({ headers: { Link: `<${url.origin}${url.pathname.slice(0, -3)}${PAGE_SUFFIX}>; rel="canonical"`, Vary: 'Accept' } });
+        return next({
+            headers: {
+                Link: `<${url.origin}${url.pathname.slice(0, -3)}${PAGE_SUFFIX}>; rel="canonical"`,
+                Vary: 'Accept'
+            }
+        });
     }
     if (!prefersMarkdown(request.headers.get('accept') || '')) {
         return next({ headers: { Vary: 'Accept' } });
@@ -43,7 +48,9 @@ export default async function middleware(request) {
     for (const name of ['cookie', 'x-vercel-protection-bypass']) {
         if (request.headers.has(name)) headers[name] = request.headers.get(name);
     }
-    const twin = await fetch(markdown, { method: 'HEAD', headers, redirect: 'manual' }).catch(() => null);
+    const twin = await fetch(markdown, { method: 'HEAD', headers, redirect: 'manual' }).catch(
+        () => null
+    );
     if (!twin?.ok) {
         return next({ headers: { Vary: 'Accept' } });
     }

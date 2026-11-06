@@ -55,7 +55,7 @@ static void shouldMockFinalizerContext() {
 For finalizer mocking, the `mockId` must be set on the finalizer itself (via `attachFinalizer()` inside `work()`), not on the parent job.
 :::
 
-For testing patterns and best practices, see [Testing Async Jobs](/explanations/testing-async-jobs).
+For testing patterns and best practices, see [Testing Async Jobs](/features/testing-async-jobs).
 
 ## Methods
 

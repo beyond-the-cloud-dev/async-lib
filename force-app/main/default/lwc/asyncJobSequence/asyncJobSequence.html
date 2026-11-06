@@ -1,0 +1,277 @@
+<template>
+    <section class={chainClass} data-chain-id={sequence.chainId}>
+        <div class="chain-head" data-id="head" onclick={handleHeadClick}>
+            <lightning-button-icon
+                class="toggle"
+                data-id="toggle"
+                icon-name={toggleIcon}
+                variant="bare"
+                size="medium"
+                alternative-text={caretLabel}
+                title={caretLabel}
+                aria-expanded={isExpanded}
+                onclick={toggleExpanded}
+            ></lightning-button-icon>
+            <div class="chain-block">
+                <div class="chain-title">
+                    <h3 data-id="name">{title}</h3>
+                    <span class={badgeClass} data-id="badge" title={badgeTitle}>
+                        <span class="chain-badge-main">
+                            <template lwc:if={badgeRetrying}
+                                ><svg
+                                    class="mark mark-svg"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M18.89 10.78 A7.0 7.0 0 1 1 7.98 6.27"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="3.6"
+                                        stroke-linecap="round"
+                                    ></path>
+                                    <polygon
+                                        points="13.23,2.60 9.89,11.77 3.46,2.60"
+                                        fill="currentColor"
+                                    ></polygon></svg
+                            ></template>
+                            <template lwc:else
+                                ><i
+                                    class={badgeMarkClass}
+                                    aria-hidden="true"
+                                ></i
+                            ></template>
+                            <span class="chain-badge-text">{badgeLabel}</span>
+                        </span>
+                        <template lwc:if={failedSoFar}>
+                            <span
+                                class="chain-badge-tail"
+                                data-id="badge-failed"
+                                ><i
+                                    class="mark mark-cross"
+                                    aria-hidden="true"
+                                ></i
+                                ><span class="chain-badge-text"
+                                    >{failedSoFar}</span
+                                ></span
+                            >
+                        </template>
+                        <template lwc:if={delayedTail}>
+                            <span
+                                class="chain-badge-tail chain-badge-tail-delayed"
+                                data-id="badge-delayed"
+                                ><span class="chain-badge-text"
+                                    >Delayed</span
+                                ></span
+                            >
+                        </template>
+                    </span>
+                    <template lwc:if={isNew}
+                        ><span class="badge badge-new" data-id="new-chain"
+                            >New</span
+                        ></template
+                    >
+                    <template lwc:if={replayOf}
+                        ><span class="badge badge-replay" data-id="replay-of"
+                            >{replayOf}</span
+                        ></template
+                    >
+                </div>
+                <div class="chain-meta">
+                    <template lwc:if={isExpanded}><span></span></template>
+                    <template lwc:elseif={dotsFit}>
+                        <span class="dots" data-id="dots">
+                            <template for:each={dots} for:item="dot"
+                                ><i
+                                    key={dot.key}
+                                    class={dot.className}
+                                    style={dot.style}
+                                ></i
+                            ></template>
+                        </span>
+                    </template>
+                    <template lwc:else>
+                        <span
+                            class="mini-progress"
+                            data-id="mini-progress"
+                            title={progressText}
+                        >
+                            <span class="bar mini-bar">
+                                <template
+                                    for:each={barSegments}
+                                    for:item="segment"
+                                    ><i
+                                        key={segment.key}
+                                        class={segment.className}
+                                        style={segment.style}
+                                    ></i
+                                ></template>
+                            </span>
+                            <span>{percentLabel}</span>
+                        </span>
+                    </template>
+                    <span class="chain-sub" data-id="sub">
+                        <span data-id="started" title={startedFull}
+                            >{startedText}</span
+                        >
+                        <span> · </span>
+                        <span data-id="subline">{subline}</span>
+                    </span>
+                </div>
+            </div>
+            <div
+                class="chain-actions"
+                data-id="actions"
+                onclick={stopHeadClick}
+            >
+                <template lwc:if={showRequeueFailed}>
+                    <lightning-button-group class="compact-only">
+                        <lightning-button
+                            data-id="requeue-failed-compact"
+                            variant="brand-outline"
+                            label={requeueCount}
+                            title={requeueLabel}
+                            icon-name="utility:refresh"
+                            onclick={handleRequeueFailed}
+                        ></lightning-button>
+                        <lightning-button-menu
+                            data-id="menu-compact"
+                            alternative-text="More actions"
+                            menu-alignment="right"
+                            onselect={handleMenu}
+                        >
+                            <lightning-menu-item
+                                value="map"
+                                label="Chain map"
+                                prefix-icon-name="utility:hierarchy"
+                            ></lightning-menu-item>
+                            <lightning-menu-item
+                                value="result"
+                                label="Open first result"
+                                prefix-icon-name="utility:open"
+                            ></lightning-menu-item>
+                            <lightning-menu-item
+                                value="copy"
+                                label="Copy chain id"
+                                prefix-icon-name="utility:copy"
+                            ></lightning-menu-item>
+                        </lightning-button-menu>
+                    </lightning-button-group>
+                    <lightning-button-group class="full-only">
+                        <lightning-button
+                            data-id="requeue-failed"
+                            variant="brand-outline"
+                            label={requeueLabel}
+                            icon-name="utility:refresh"
+                            onclick={handleRequeueFailed}
+                        ></lightning-button>
+                        <lightning-button-menu
+                            data-id="menu"
+                            alternative-text="More actions"
+                            menu-alignment="right"
+                            onselect={handleMenu}
+                        >
+                            <lightning-menu-item
+                                value="map"
+                                label="Chain map"
+                                prefix-icon-name="utility:hierarchy"
+                            ></lightning-menu-item>
+                            <lightning-menu-item
+                                value="result"
+                                label="Open first result"
+                                prefix-icon-name="utility:open"
+                            ></lightning-menu-item>
+                            <lightning-menu-item
+                                value="copy"
+                                label="Copy chain id"
+                                prefix-icon-name="utility:copy"
+                            ></lightning-menu-item>
+                        </lightning-button-menu>
+                    </lightning-button-group>
+                </template>
+                <template lwc:else>
+                    <lightning-button-menu
+                        data-id="menu"
+                        alternative-text="More actions"
+                        menu-alignment="right"
+                        variant="border"
+                        onselect={handleMenu}
+                    >
+                        <lightning-menu-item
+                            value="map"
+                            label="Chain map"
+                            prefix-icon-name="utility:hierarchy"
+                        ></lightning-menu-item>
+                        <lightning-menu-item
+                            value="result"
+                            label="Open first result"
+                            prefix-icon-name="utility:open"
+                        ></lightning-menu-item>
+                        <lightning-menu-item
+                            value="copy"
+                            label="Copy chain id"
+                            prefix-icon-name="utility:copy"
+                        ></lightning-menu-item>
+                    </lightning-button-menu>
+                </template>
+            </div>
+        </div>
+        <template lwc:if={isExpanded}>
+            <div class="chain-body" data-id="body">
+                <div class="progress">
+                    <span data-id="progress-text">{progressText}</span>
+                    <span data-id="percent">{percentLabel}</span>
+                    <div class="bar" data-id="bar">
+                        <template for:each={barSegments} for:item="segment"
+                            ><i
+                                key={segment.key}
+                                class={segment.className}
+                                style={segment.style}
+                            ></i
+                        ></template>
+                    </div>
+                </div>
+                <ul class="steps">
+                    <template for:each={visibleRows} for:item="view">
+                        <li key={view.key}>
+                            <template lwc:if={view.isGap}>
+                                <div class="gap-row">
+                                    <button
+                                        class="gap"
+                                        data-id="gap"
+                                        data-key={view.key}
+                                        onclick={expandGap}
+                                    >
+                                        {view.label}
+                                    </button>
+                                </div>
+                            </template>
+                            <template lwc:else>
+                                <c-async-job-step
+                                    row={view.row}
+                                    name-by-custom-job-id={nameByCustomJobId}
+                                    can-requeue={canRequeue}
+                                    chain-in-flight={isInFlight}
+                                    is-new={view.isNew}
+                                    is-changed={view.isChanged}
+                                    is-current={view.isCurrent}
+                                    is-target={view.isTarget}
+                                    is-last-row={view.isLastRow}
+                                    ontagtarget={handleTagTarget}
+                                    page-record-id={pageRecordId}
+                                    onrequeue={handleStepRequeue}
+                                    onopenreplay={handleOpenReplay}
+                                ></c-async-job-step>
+                            </template>
+                        </li>
+                    </template>
+                </ul>
+                <template lwc:if={capNote}
+                    ><div class="cap-note" data-id="cap-note">
+                        {capNote}
+                    </div></template
+                >
+            </div>
+        </template>
+    </section>
+</template>

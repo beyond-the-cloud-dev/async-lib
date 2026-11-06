@@ -1,0 +1,371 @@
+<template>
+    <lightning-card>
+        <h2 slot="title" class="title">
+            <span class="logo"><img src={logoUrl} alt="" /></span>
+            <span class="title-text" title={cardTitle}>{cardTitle}</span>
+        </h2>
+        <div slot="actions" class="actions">
+            <lightning-button-menu
+                class="full-only"
+                data-id="range"
+                label={rangeLabel}
+                alternative-text="Time range"
+                menu-alignment="right"
+                variant="border"
+                onselect={selectRange}
+            >
+                <template for:each={rangeOptions} for:item="option">
+                    <lightning-menu-item
+                        key={option.value}
+                        value={option.value}
+                        label={option.label}
+                        checked={option.checked}
+                    ></lightning-menu-item>
+                </template>
+            </lightning-button-menu>
+            <lightning-button-menu
+                class="compact-only"
+                data-id="range-compact"
+                label={rangeShortLabel}
+                alternative-text="Time range"
+                menu-alignment="right"
+                variant="border"
+                onselect={selectRange}
+            >
+                <template for:each={rangeOptions} for:item="option">
+                    <lightning-menu-item
+                        key={option.value}
+                        value={option.value}
+                        label={option.label}
+                        checked={option.checked}
+                    ></lightning-menu-item>
+                </template>
+            </lightning-button-menu>
+            <lightning-button-icon
+                icon-name="utility:refresh"
+                variant={refreshVariant}
+                alternative-text="Refresh now"
+                title={refreshTitle}
+                data-id="refresh"
+                onclick={refresh}
+            ></lightning-button-icon>
+            <lightning-button-icon
+                icon-name="utility:info"
+                variant={helpVariant}
+                alternative-text={legendLabel}
+                title={legendLabel}
+                data-id="help"
+                onclick={toggleLegend}
+            ></lightning-button-icon>
+            <lightning-button
+                class="full-only"
+                label="View all results"
+                data-id="view-all"
+                onclick={viewAllResults}
+            ></lightning-button>
+            <lightning-button-icon
+                class="compact-only"
+                icon-name="utility:open"
+                variant="border"
+                alternative-text="View all results"
+                title="View all results"
+                data-id="view-all-compact"
+                onclick={viewAllResults}
+            ></lightning-button-icon>
+        </div>
+        <div class="slds-assistive-text" aria-live="polite" data-id="announcer">
+            {announcement}
+        </div>
+        <template lwc:if={showLive}>
+            <div class="status-line">
+                <span class={liveClass} data-id="live" title={liveState.title}
+                    ><span class={liveState.className}></span
+                    >{liveState.text}<template lwc:if={liveState.at}
+                        >&nbsp;<lightning-formatted-date-time
+                            value={liveState.at}
+                            hour="2-digit"
+                            minute="2-digit"
+                        ></lightning-formatted-date-time></template
+                ></span>
+                <div class="follow" title={followTitle}>
+                    <span data-id="follow-label" onclick={toggleFollow}
+                        >Follow new runs</span
+                    >
+                    <lightning-input
+                        data-id="follow"
+                        type="toggle"
+                        label="Follow new runs"
+                        variant="label-hidden"
+                        message-toggle-active=""
+                        message-toggle-inactive=""
+                        checked={isFollowing}
+                        onchange={handleFollowChange}
+                    ></lightning-input>
+                </div>
+            </div>
+        </template>
+        <template lwc:if={loading}>
+            <div class="loading" data-id="loading">
+                <lightning-spinner
+                    alternative-text="Loading"
+                    size="small"
+                ></lightning-spinner>
+            </div>
+        </template>
+        <template lwc:elseif={error}>
+            <div class="error" data-id="error">{error}</div>
+        </template>
+        <template lwc:else>
+            <template lwc:if={hasSequences}>
+                <div class="summary">
+                    <template for:each={chips} for:item="chip">
+                        <button
+                            key={chip.name}
+                            class={chip.className}
+                            data-id={chip.id}
+                            data-filter={chip.name}
+                            onclick={selectFilter}
+                        >
+                            <template lwc:if={chip.live}
+                                ><i
+                                    class={chip.dotClass}
+                                    data-id="chip-dot"
+                                    aria-hidden="true"
+                                ></i
+                            ></template>
+                            {chip.label} <b>{chip.count}</b>
+                        </button>
+                    </template>
+                    <template lwc:if={showLoadLine}
+                        ><span class="load-line" data-id="load-line"></span
+                    ></template>
+                </div>
+            </template>
+            <div class={bodyClass} onclick={closeLegendOnClickBeside}>
+                <template lwc:if={showLegend}>
+                    <div
+                        class="legend"
+                        data-id="legend"
+                        lwc:ref="legend"
+                        role="dialog"
+                        aria-label="Legend"
+                    >
+                        <div class="legend-head">
+                            <span>Legend</span>
+                            <lightning-button-icon
+                                icon-name="utility:close"
+                                variant="bare"
+                                size="small"
+                                alternative-text="Close legend"
+                                data-id="legend-close"
+                                lwc:ref="legendClose"
+                                onclick={toggleLegend}
+                            ></lightning-button-icon>
+                        </div>
+                        <div class="legend-grid">
+                            <span class="sample"
+                                ><i class="glyph glyph-ok">✓</i></span
+                            >
+                            <span>Completed</span>
+                            <span class="sample"
+                                ><i class="glyph glyph-bad">✕</i></span
+                            >
+                            <span>Failed</span>
+                            <span class="sample"
+                                ><i class="glyph glyph-skip">→</i></span
+                            >
+                            <span
+                                >Skipped: dependency, chain stopped, chunk run
+                                stopped, by code</span
+                            >
+                            <span class="sample"
+                                ><i class="glyph glyph-wait">○</i></span
+                            >
+                            <span>Enqueued, waiting for the platform</span>
+                            <span class="sample"
+                                ><i class="glyph glyph-delay">◷</i></span
+                            >
+                            <span
+                                >Delayed, with the time once the job is enqueued
+                                and only its delay before that</span
+                            >
+                            <span class="sample"
+                                ><i class="glyph glyph-run"></i
+                            ></span>
+                            <span
+                                >Running, or finishing while the finalizer
+                                writes the result</span
+                            >
+                            <span class="sample"
+                                ><i class="glyph glyph-wait">↻</i></span
+                            >
+                            <span
+                                >Retrying, with the time of the next
+                                attempt</span
+                            >
+                            <span class="sample"
+                                ><span class="chain-badge chain-badge-running"
+                                    ><span class="chain-badge-main"
+                                        ><i
+                                            class="mark mark-dot"
+                                            aria-hidden="true"
+                                        ></i
+                                        ><span class="chain-badge-text"
+                                            >Running</span
+                                        ></span
+                                    ><span class="chain-badge-tail"
+                                        ><i
+                                            class="mark mark-cross"
+                                            aria-hidden="true"
+                                        ></i
+                                        ><span class="chain-badge-text"
+                                            >1</span
+                                        ></span
+                                    ></span
+                                ></span
+                            >
+                            <span
+                                >Chain badge: pulsing dot while a step executes,
+                                hollow dot between steps, circular arrow while a
+                                retry waits. The red count is steps failed so
+                                far</span
+                            >
+                            <span class="sample"
+                                ><i class="tag">P1</i>
+                                <i class="tag">↳ added by</i></span
+                            >
+                            <span
+                                >Grey tags: priority, inserted at runtime,
+                                finalizer of, chunk pages, dependency,
+                                requeued</span
+                            >
+                            <span class="sample"
+                                ><i class="dot dot-ok"></i
+                                ><i class="dot dot-ok"></i
+                                ><i class="dot dot-bad"></i
+                            ></span>
+                            <span
+                                >Collapsed sequence: one dot per step, in
+                                order</span
+                            >
+                            <span class="sample"
+                                ><i class="sq sq-ok"></i><i class="sq sq-ok"></i
+                                ><i class="sq sq-bad"></i><i class="sq"></i
+                            ></span>
+                            <span>Chunk run: one square per page</span>
+                            <span class="sample"><i class="outline"></i></span>
+                            <span
+                                >Blue outline: the step running now, or held by
+                                the platform</span
+                            >
+                        </div>
+                    </div>
+                </template>
+                <div
+                    class="scroller"
+                    lwc:ref="scroller"
+                    data-id="scroller"
+                    style={scrollerStyle}
+                    aria-busy={busy}
+                    onscroll={handleScroll}
+                >
+                    <template for:each={sequenceViews} for:item="view">
+                        <c-async-job-sequence
+                            key={view.key}
+                            sequence={view.sequence}
+                            can-requeue={canRequeue}
+                            default-expanded={view.defaultExpanded}
+                            is-new={view.isNew}
+                            page-record-id={recordId}
+                            collapse-token={collapseToken}
+                            onsequencetoggle={handleSequenceToggle}
+                            highlight={view.highlight}
+                            onrequeue={handleRequeue}
+                            onopenmap={handleOpenMap}
+                            onopenresult={handleOpenResult}
+                            onopenreplay={handleOpenReplay}
+                        ></c-async-job-sequence>
+                    </template>
+                    <template lwc:if={showEmpty}>
+                        <div class="empty" data-id="empty">{emptyText}</div>
+                    </template>
+                    <template lwc:if={fillerPx}
+                        ><div
+                            class="filler"
+                            data-id="filler"
+                            style={fillerStyle}
+                        ></div
+                    ></template>
+                </div>
+            </div>
+        </template>
+        <template lwc:if={page}>
+            <div slot="footer" class="foot">
+                <span class="brand brand-library" data-id="brand">
+                    <a href={docsUrl} target="_blank" rel="noopener"
+                        >Async Lib</a
+                    >
+                    <span>{versionLabel}</span>
+                </span>
+                <span class="foot-center">
+                    <template lwc:if={showPager}>
+                        <span class="pager" data-id="pager">
+                            <lightning-button-icon
+                                icon-name="utility:jump_to_left"
+                                variant="bare"
+                                size="medium"
+                                alternative-text="First page"
+                                data-id="first"
+                                disabled={isFirstPage}
+                                onclick={firstPage}
+                            ></lightning-button-icon>
+                            <lightning-button-icon
+                                icon-name="utility:chevronleft"
+                                variant="bare"
+                                size="medium"
+                                alternative-text="Previous page"
+                                data-id="prev"
+                                disabled={isFirstPage}
+                                onclick={previousPage}
+                            ></lightning-button-icon>
+                            <span class="pager-label">{pagerLabel}</span>
+                            <lightning-button-icon
+                                icon-name="utility:chevronright"
+                                variant="bare"
+                                size="medium"
+                                alternative-text="Next page"
+                                data-id="next"
+                                disabled={isLastPage}
+                                onclick={nextPage}
+                            ></lightning-button-icon>
+                            <lightning-button-icon
+                                icon-name="utility:jump_to_right"
+                                variant="bare"
+                                size="medium"
+                                alternative-text="Last page"
+                                data-id="last"
+                                disabled={isLastPage}
+                                onclick={lastPage}
+                            ></lightning-button-icon>
+                        </span>
+                    </template>
+                </span>
+                <span
+                    class="brand brand-maker"
+                    data-id="brand-maker"
+                    title={brandTitle}
+                >
+                    <span>by</span>
+                    <a href={makerUrl} target="_blank" rel="noopener"
+                        >Beyond The Cloud</a
+                    >
+                </span>
+                <template lwc:if={olderLabel}
+                    ><span class="foot-older"
+                        ><span data-id="older-count">{olderLabel}</span></span
+                    ></template
+                >
+            </div>
+        </template>
+    </lightning-card>
+</template>

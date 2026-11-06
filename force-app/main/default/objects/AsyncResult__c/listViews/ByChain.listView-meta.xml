@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ByChain</fullName>
+    <columns>NAME</columns>
+    <columns>ChainName__c</columns>
+    <columns>ChainId__c</columns>
+    <columns>ChainSequence__c</columns>
+    <columns>JobName__c</columns>
+    <columns>ClassName__c</columns>
+    <columns>Status__c</columns>
+    <columns>StartedAt__c</columns>
+    <filterScope>Everything</filterScope>
+    <label>By chain</label>
+</ListView>

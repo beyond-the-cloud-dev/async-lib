@@ -79,7 +79,7 @@ public inherited sharing class ChunkRun {
         );
     }
 
-    private Integer totalPages() {
+    public Integer totalPages() {
         return (totalSize + chunkSize - 1) / chunkSize;
     }
 

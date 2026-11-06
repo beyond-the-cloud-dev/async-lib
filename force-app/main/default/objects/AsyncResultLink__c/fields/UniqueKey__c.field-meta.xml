@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>UniqueKey__c</fullName>
+    <description>Result id plus a hash of source and key, so the database rejects a second link to the same record. Set by the framework.</description>
+    <externalId>false</externalId>
+    <label>Unique Key</label>
+    <length>59</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>true</unique>
+    <caseSensitive>true</caseSensitive>
+</CustomField>

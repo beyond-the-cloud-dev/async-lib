@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>FinishedAt__c</fullName>
+    <description>When the job settled: completed, failed after its last attempt, or skipped. Finished At minus Started At is the duration of the final attempt.</description>
+    <externalId>false</externalId>
+    <label>Finished At</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>DateTime</type>
+</CustomField>

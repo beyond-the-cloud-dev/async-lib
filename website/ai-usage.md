@@ -27,7 +27,9 @@ Names below are for a source deploy. On a packaged install prefix every class wi
 | `Async.after(Result r)` / `Async.after(String customJobId)` / `Async.afterPrevious()` | `Async.Dependency` | the target of `dependsOn(...)`, finished with `.succeeded()`, `.failed()` or `.finished()` |
 | `Async.stopChain()` | | inside a job or finalizer: skip every remaining job in the chain |
 | `Async.skipJob(String customJobId)` | | inside a job or finalizer: skip one job and its finalizers |
-| `Async.requeue(Id resultId)` / `Async.requeue(Set<Id> resultIds)` | `Async.RequeueSummary` | replay failed jobs from their `AsyncResult__c` records |
+| `Async.requeue(Id resultId)` / `Async.requeue(Set<Id> resultIds)` | `Async.RequeueSummary` | replay failed jobs from their `AsyncResult__c` records, in chain order, with `dependsOn` rebuilt between rows of the same call |
+| `Async.linkRecord(SObject)` / `linkRecord(Id)` / `linkRecords(List<SObject>)` / `linkRecords(List<Id>)` / `linkRecords(Set<Id>)` | | inside `work()`: link the running job to records it discovered; no DML, written when the job settles |
+| `Async.linkExternalRecord(String source, String objectName, String key)` / `linkExternalRecords(List<Async.RecordLink>)` | | inside `work()`: link the running job to a record in another system by its key; `source` and `objectName` are stored as given, blank stays blank |
 | `Async.requeueBatchFailures(Object batch, Id batchJobId, List<SObjectField> fieldsToReload)` / `(batch, batchJobId, List<String> fieldsToReload)` / `(batch, batchJobId, Async.BatchRecordLoader loader)` | `Async.RequeueSummary` | run the failed scopes of a batch again through its own `execute()`; the third argument is required and says how to reload the records |
 | `Async.getQueueableJobContext()` | `Async.QueueableJobContext` | inside a job: the current job, `QueueableContext`, `FinalizerContext` |
 | `Async.getCurrentQueueableChainState()` | `Async.QueueableChainState` | every job in the chain and what runs next |
@@ -57,6 +59,10 @@ normal transaction starts a separate chain: [Chaining Across Services](/explanat
 | `restoreStateOnRetry()` | replay every attempt from the job as it was at enqueue |
 | `deepClone()` | copy collections and objects, not just references, when cloning the job |
 | `dependsOn(Async.Dependency)` | skip this job unless the target had that outcome |
+| `name(String)` / `chainName(String)` | display names on the record page timeline and `AsyncResult__c`; `chainName` applies to the whole chain, last one wins |
+| `linkRecord(SObject)` / `linkRecord(Id)` / `linkRecords(List<SObject>)` / `linkRecords(List<Id>)` / `linkRecords(Set<Id>)` | link the job to the Salesforce records it works on; forces a result row; capped by `MaxRecordLinks__c` |
+| `linkExternalRecord(String source, String objectName, String key)` / `linkExternalRecords(List<Async.RecordLink>)` | link the job to a record in another system by its key, e.g. `linkExternalRecord('NetSuite', 'Customer', '4711')`; only `key` is required |
+| `nextInChain()` | inside `work()` only: run this job right after the current one, before everything waiting; not with `priority()` |
 | `info(String key, String value)` / `info(Map<String, String>)` | metadata that arrives on every lifecycle context |
 | `mockId(String)` | key for `AsyncMock` in tests |
 | `chain(QueueableJob next)` | add this job to the chain and hold `next` |
@@ -68,7 +74,8 @@ normal transaction starts a separate chain: [Chaining Across Services](/explanat
 
 ### ChunkBuilder
 
-Everything from `QueueableBuilder` that makes sense for a run, plus:
+Everything from `QueueableBuilder` that makes sense for a run (`name`, `chainName`, `linkRecord(s)`
+and `nextInChain` included), plus:
 
 | Method | What it does |
 | ------ | ------------ |
@@ -178,9 +185,10 @@ Inside `work()` of a `ChunkJob`, `getRun()` gives `currentPageNumber()`, `hasRem
 | `Async.Result` | `salesforceJobId`, `customJobId`, `asyncType`, `job`, `queueableChainState` |
 | `Async.QueueableChainState` | `jobs`, `nextSalesforceJobId`, `nextCustomJobId`, `enqueueType` |
 | `Async.QueueableJobContext` | `currentJob`, `queueableCtx`, `finalizerCtx` |
-| `Async.JobContext` | `customJobId`, `className`, `salesforceJobId`, `chainId`, `priority`, `retryAttempt`, `info` |
-| `Async.FailureContext` | `retryOutcome`, `failure` (`type`, `message`, `stackTrace`), `customJobId`, `className`, `retryAttempt`, `maxRetries`, `retryHistory`, `nextAttemptDelayMinutes`, `info`, `asyncType`, `salesforceJobId`, and for a batch failure `batchPhase`, `batchScope`, `batchScopeTruncated` |
-| `Async.RequeueSummary` | `requeued`, `skipReasonByResultId`, `enqueueResult` |
+| `Async.JobContext` | `customJobId`, `className`, `salesforceJobId`, `chainId`, `priority`, `retryAttempt`, `info`, `jobName`, `chainName` |
+| `Async.FailureContext` | `retryOutcome`, `failure` (`type`, `message`, `stackTrace`), `customJobId`, `className`, `retryAttempt`, `maxRetries`, `retryHistory`, `nextAttemptDelayMinutes`, `info`, `asyncType`, `salesforceJobId`, and for a batch failure `batchPhase`, `batchScope`, `batchScopeTruncated`; `jobName`, `chainName` |
+| `Async.RequeueSummary` | `requeued`, `skipReasonByResultId`, `droppedDependencyByResultId`, `enqueueResult` |
+| `Async.RecordLink` | `source`, `objectName`, `key`; built with `new Async.RecordLink(source, objectName, key)`, nothing is derived from the key |
 | `Async.Outcome` | `SUCCESS`, `FAILURE`, `COMPLETED` |
 | `Async.RetryOutcome` | `NOT_CONFIGURED`, `NOT_RETRYABLE`, `EXHAUSTED` |
 | `Async.AsyncType` | `QUEUEABLE`, `BATCHABLE`, `SCHEDULABLE` |
@@ -198,21 +206,30 @@ applies to that job. Wrong values degrade and record why, they never stop a job.
 | `BackoffStrategy__c` | Text | `FIXED`, `EXPONENTIAL`, `EXPONENTIAL_JITTER` |
 | `BackoffBaseMinutes__c` | Number | base for the strategy |
 | `RetryableExceptions__c` | Text | comma-separated exception type names |
-| `LoggerClass__c` | Text | a `global` class implementing the lifecycle interfaces; batch failures arrive on `OnJobFailed` |
+| `LoggerClass__c` | Text | a `global` class implementing the lifecycle interfaces; batch failures arrive on `OnJobFailed`, at most 50 per transaction, so keep it to about 3 DML per call |
 | `StoreJobPayload__c` | Picklist `Yes`/`No` | store a snapshot for `requeue()`; `No` on a job beats `Yes` on `All` |
 | `JobSerializerClass__c` | Text | a `global` `Async.JobSerializer`, packaged installs only |
+| `TrackJobProgress__c` | Picklist `Yes`/`No` | write the row at enqueue as `ENQUEUED` and update it in place, with `StartedAt__c` / `FinishedAt__c`; implies a row for every outcome; `No` on a job beats `Yes` on `All` |
+| `MaxRecordLinks__c` | Number | links stored per job through `linkRecord(s)` and `linkExternalRecord(s)`, on the builder or inside `work()`; blank is 5000, which is also the ceiling |
 
 In tests, inject them: `AsyncMock.jobSettings(new List<QueueableJobSetting__mdt>{ ... })`.
 
 ## `AsyncResult__c`
 
-One row per job, written after its last attempt, when `CreateResult__c` is on or a payload is
-stored. A batch writes one row per failed scope and nothing for a successful one. Read access
-through the `AsyncResultAccess` permission set.
+One row per job, written after its last attempt, when `CreateResult__c` is on, a payload is
+stored, or the job is linked to a record; written at enqueue instead when `TrackJobProgress__c` is
+`Yes`. A batch writes one row per failed scope and nothing for a successful one. Read access through
+the `AsyncResultAccess` permission set, which also covers `AsyncResultLink__c` (one row per result
+and linked record: `Key__c` indexed, `Source__c` `Salesforce` or whatever `linkExternalRecord`
+was given, `ObjectName__c`). The requeue actions on the record page need the
+`AsyncRequeue` custom permission from the `AsyncRequeueAccess` permission set.
 
 | Field | Holds |
 | ----- | ----- |
-| `Status__c` | `COMPLETED`, `FAILED`, `SKIPPED_DEPENDENCY`, `SKIPPED_CHAIN_STOPPED`, `SKIPPED_CHUNK_STOPPED`, `SKIPPED_EXPLICIT`, `SKIPPED_DISABLED`, `FRAMEWORK_ERROR` |
+| `Status__c` | `ENQUEUED`, `COMPLETED`, `FAILED`, `SKIPPED_DEPENDENCY`, `SKIPPED_CHAIN_STOPPED`, `SKIPPED_CHUNK_STOPPED`, `SKIPPED_EXPLICIT`, `SKIPPED_DISABLED`, `FRAMEWORK_ERROR` |
+| `JobName__c`, `ChainName__c`, `ChainSequence__c`, `Priority__c` | names, position in the chain in run order, priority |
+| `StartedAt__c`, `FinishedAt__c`, `NextAttemptAt__c`, `DelayMinutes__c` | timing; `NextAttemptAt__c` is the next retry or the start of an enqueued delayed job, `DelayMinutes__c` the delay set on the job; `Running` and `Delayed` are not stored, the record page derives them |
+| `ParentCustomJobId__c`, `AddedByCustomJobId__c`, `ChunkRunId__c`, `ChunkPage__c`, `ChunkPages__c`, `Dependencies__c` | finalizer parent, the running job that added this one, chunk run position, `dependsOn` rules as JSON |
 | `ClassName__c`, `CustomJobId__c`, `SalesforceJobId__c`, `ChainId__c` | identity |
 | `Result__c`, `ExceptionType__c`, `ExceptionMessage__c` | outcome |
 | `RetryAttempts__c`, `RetryHistory__c` | one line per attempt, plus configuration warnings |
@@ -353,6 +370,33 @@ Id jobId = Async.batchable(new AccountSyncBatch()).scopeSize(200).execute().sale
 Async.requeueBatchFailures(new AccountSyncBatch(), jobId, new List<SObjectField>{ Account.Name });
 ```
 
+### A pipeline you can watch on the record page
+
+```apex
+Async.queueable(new ReserveStockJob(lines))
+    .name('Reserve stock')
+    .chainName('Order fulfilment pipeline')
+    .linkRecord(order)
+    .linkRecords(lines)
+    .chain(new CommissionSplitJob(order)).name('Commission split').linkRecord(order).retry(2)
+    .chain(new AccountRollupJob(order.AccountId))
+        .name('Recalculate account rollups')
+        .linkRecord(order)
+        .dependsOn(Async.afterPrevious().succeeded())
+    .enqueue();
+
+public class CommissionSplitJob extends QueueableJob implements Async.Retryable {
+    public override void work() {
+        Account parent = [SELECT Id FROM Account WHERE Id = :order.AccountId];
+        Async.linkRecord(parent);
+        Async.queueable(new SplitAuditJob(order)).name('Audit split').nextInChain().enqueue();
+    }
+    public void resetBeforeRetry(Integer attempt) {}
+}
+// QueueableJobSetting__mdt.TrackJobProgress__c = Yes on All shows the chain while it runs.
+// Place the "Async Jobs" component on the Order record page.
+```
+
 ### Test a job
 
 ```apex
@@ -394,11 +438,30 @@ Things that read as bugs and are not, and things agents get wrong on the first t
   [Deep Clone in Packages](/explanations/deep-clone-in-packages).
 - **Inside a `QueueableJob` subclass write `Async.Backoff.exponential(1)`, not `Backoff.exponential(1)`.**
   The inherited `backoff` field shadows the type there.
-- **Result rows are opt-in.** Nothing is written unless `CreateResult__c` is on, or a payload is
-  stored and the job failed or was skipped. Do not query `AsyncResult__c` and expect a row.
+- **Result rows are opt-in.** Nothing is written unless `CreateResult__c` or `TrackJobProgress__c`
+  is on, a payload is stored and the job failed or was skipped, or the job is linked to a record
+  with `linkRecord(s)` / `linkExternalRecord(s)`. Do not query `AsyncResult__c` and expect a row
+  otherwise.
+- **Linked records are rows, not context fields.** `JobContext` and `FailureContext` have no
+  `links`; query `AsyncResultLink__c` by `AsyncResult__r.CustomJobId__c`. On a chunk run
+  the builder's `linkRecords()` links the first page only; each page links its own in `work()`.
+- **`Source__c` is never guessed.** `linkRecord(s)` takes an `Id`, so it stamps `Salesforce` and
+  the object name. `linkExternalRecord(s)` stores `source` and `objectName` exactly as given; a
+  key that happens to look like an Id is not promoted. Same key under two sources is two links.
+- **`nextInChain()`, `Async.linkRecord(s)` and `Async.linkExternalRecord(s)` only work from inside a running job.** All throw
+  anywhere else. `nextInChain()` also refuses `priority()`: a job placed next runs before any
+  priority. [Job Timeline](/features/job-timeline).
+- **`Running` is never written to `AsyncResult__c`.** With `TrackJobProgress__c` a row is `ENQUEUED`
+  until it settles; the record page reads `AsyncApexJob.Status` to tell queued from running.
+- **`requeue()` keeps chain order and rebuilds `dependsOn` only between rows of the same call.**
+  A target outside the call that already satisfied the dependency is dropped and reported in
+  `droppedDependencyByResultId`; one that did not skips the dependent with a reason.
+- **The record page component polls, it does not subscribe.** No Platform Events, so nothing
+  counts against the org's delivery allocation; it checks every 3 s while a job runs and stops when
+  nothing is in flight.
 - **`requeue()` replays data, not intent.** The payload is the job as it was enqueued, rebuilt by
   the class as it is now. If the fix renamed a field or changed what one means, enqueue fresh.
-  [Requeue](/explanations/requeue).
+  [Requeue](/features/requeue).
 - **Anything registered by name in Custom Metadata is `global` on a packaged install.**
   `LoggerClass__c`, `JobSerializerClass__c`. Class only, methods stay `public`.
 - **A `ChunkJob` is not a batch.** One page per transaction, in sequence, inside the chain, with
@@ -415,10 +478,10 @@ Things that read as bugs and are not, and things agents get wrong on the first t
 - **A batch failure is recorded only if the batch implements `Database.RaisesPlatformEvents`.**
   The row is written by a platform event trigger about a second after the scope fails, so the last
   one may not be there yet inside the batch's own `finish()`. In a test, catch what `Test.stopTest()` rethrows and
-  call `Test.getEventBus().deliver()`. [Batch Failures](/explanations/batch-failures).
+  call `Test.getEventBus().deliver()`. [Batch Failures](/features/batch-failures).
 - **`requeueBatchFailures` needs to be told what to reload.** A failure stores ids only. Pass the
   fields `execute()` reads, an empty list for `Id` only, or an `Async.BatchRecordLoader`. `null`
   throws. It does not call `finish()` and does not retry on its own. A loader must be a saved
   class, not one declared inside an anonymous Apex script.
 - **A logger hears batch failures as the Automated Process user.** Log there; do not enqueue work.
-- **`delay()` and `asyncOptions()` are exclusive**, and `delay` tops out at 10 minutes.
+- **`delay()` and `asyncOptions()` are exclusive**, and `delay` tops out at 10 minutes. The delay starts when the job is enqueued, so in a chain that is when the job before it finishes, and `NextAttemptAt__c` stays blank until then.

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customPermissions>
+        <enabled>true</enabled>
+        <name>AsyncRequeue</name>
+    </customPermissions>
+    <description>Grants the Async Requeue custom permission, which shows the requeue actions on the Async Jobs record page component. Assign together with Async Result Access.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Async Requeue Access</label>
+</PermissionSet>

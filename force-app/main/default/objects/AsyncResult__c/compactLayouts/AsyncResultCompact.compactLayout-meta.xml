@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CompactLayout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>AsyncResultCompact</fullName>
+    <fields>Name</fields>
+    <fields>Status__c</fields>
+    <fields>JobName__c</fields>
+    <fields>ClassName__c</fields>
+    <fields>StartedAt__c</fields>
+    <fields>ChainName__c</fields>
+    <label>Async Result Compact</label>
+</CompactLayout>

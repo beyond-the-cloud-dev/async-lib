@@ -1,0 +1,135 @@
+.chain-badge {
+    display: inline-flex;
+    align-items: stretch;
+    height: 1.25rem;
+    border-radius: 0.25rem;
+    overflow: hidden;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.chain-badge-main,
+.chain-badge-tail {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    padding: 0 0.5rem;
+}
+.chain-badge-tail {
+    padding: 0 0.45rem 0 0.4rem;
+    background: #fef1ee;
+    color: var(--bad);
+}
+.chain-badge-tail-delayed {
+    background: #eef4ff;
+    color: var(--run);
+    border-left: 1px solid rgba(1, 109, 195, 0.3);
+}
+.chain-badge-delayed .chain-badge-main {
+    background: #fbf0d9;
+    color: #8a5a00;
+}
+.chain-badge-failed .chain-badge-main,
+.chain-badge-stopped .chain-badge-main {
+    background: #fef1ee;
+    color: var(--bad);
+}
+.chain-badge-running .chain-badge-main,
+.chain-badge-queued .chain-badge-main {
+    background: #eef4ff;
+    color: var(--run);
+}
+.chain-badge-completed .chain-badge-main {
+    background: #ebf7e6;
+    color: var(--ok);
+}
+.chain-badge-text {
+    line-height: 1;
+    margin-right: -0.02em;
+    text-box: trim-both cap alphabetic;
+}
+@supports not (text-box: trim-both cap alphabetic) {
+    .chain-badge-text {
+        position: relative;
+        top: 0.06em;
+    }
+}
+.mark {
+    position: relative;
+    display: inline-block;
+    width: 0.9em;
+    height: 0.9em;
+    flex: none;
+    font-style: normal;
+}
+.mark-svg {
+    width: 1.1em;
+    height: 1.1em;
+    margin: -0.1em 0;
+    display: block;
+}
+.mark-dot::before,
+.mark-hollow::before,
+.mark-square::before,
+.mark-check::before,
+.mark-cross::before,
+.mark-cross::after {
+    content: '';
+    position: absolute;
+    box-sizing: border-box;
+}
+.mark-dot::before {
+    inset: 0.1em;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse-mark 1.2s ease-in-out infinite;
+}
+@keyframes pulse-mark {
+    50% {
+        opacity: 0.3;
+    }
+}
+.mark-hollow::before {
+    inset: 0.04em;
+    border-radius: 50%;
+    border: 0.2em solid currentColor;
+}
+.mark-square::before {
+    inset: 0.12em;
+    border-radius: 0.06em;
+    background: currentColor;
+}
+.mark-cross::before,
+.mark-cross::after {
+    left: 50%;
+    top: 50%;
+    width: 0.15em;
+    height: 0.9em;
+    margin: -0.45em 0 0 -0.075em;
+    border-radius: 0.08em;
+    background: currentColor;
+}
+.mark-cross::before {
+    transform: rotate(45deg);
+}
+.mark-cross::after {
+    transform: rotate(-45deg);
+}
+.mark-check::before {
+    left: 0.2em;
+    top: -0.04em;
+    width: 0.42em;
+    height: 0.8em;
+    border: solid currentColor;
+    border-width: 0 0.2em 0.2em 0;
+    transform: rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+    .mark-dot::before {
+        animation: none;
+    }
+}

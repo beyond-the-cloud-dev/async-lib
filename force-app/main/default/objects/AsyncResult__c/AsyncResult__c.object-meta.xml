@@ -132,16 +132,20 @@
     </actionOverrides>
     <actionOverrides>
         <actionName>View</actionName>
+        <content>AsyncResultRecordPage</content>
         <formFactor>Large</formFactor>
-        <type>Default</type>
+        <skipRecordTypeSelect>false</skipRecordTypeSelect>
+        <type>Flexipage</type>
     </actionOverrides>
     <actionOverrides>
         <actionName>View</actionName>
+        <content>AsyncResultRecordPage</content>
         <formFactor>Small</formFactor>
-        <type>Default</type>
+        <skipRecordTypeSelect>false</skipRecordTypeSelect>
+        <type>Flexipage</type>
     </actionOverrides>
     <allowInChatterGroups>false</allowInChatterGroups>
-    <compactLayoutAssignment>SYSTEM</compactLayoutAssignment>
+    <compactLayoutAssignment>AsyncResultCompact</compactLayoutAssignment>
     <deploymentStatus>Deployed</deploymentStatus>
     <description>Results of Async Jobs that are using the Async Framework.</description>
     <enableActivities>false</enableActivities>
@@ -161,7 +165,21 @@
         <type>AutoNumber</type>
     </nameField>
     <pluralLabel>Async Results</pluralLabel>
-    <searchLayouts/>
+    <searchLayouts>
+        <customTabListAdditionalFields>Status__c</customTabListAdditionalFields>
+        <customTabListAdditionalFields>JobName__c</customTabListAdditionalFields>
+        <customTabListAdditionalFields>ChainName__c</customTabListAdditionalFields>
+        <customTabListAdditionalFields>ClassName__c</customTabListAdditionalFields>
+        <customTabListAdditionalFields>StartedAt__c</customTabListAdditionalFields>
+        <customTabListAdditionalFields>FinishedAt__c</customTabListAdditionalFields>
+        <lookupDialogsAdditionalFields>Status__c</lookupDialogsAdditionalFields>
+        <lookupDialogsAdditionalFields>JobName__c</lookupDialogsAdditionalFields>
+        <lookupDialogsAdditionalFields>ChainName__c</lookupDialogsAdditionalFields>
+        <searchResultsAdditionalFields>Status__c</searchResultsAdditionalFields>
+        <searchResultsAdditionalFields>JobName__c</searchResultsAdditionalFields>
+        <searchResultsAdditionalFields>ChainName__c</searchResultsAdditionalFields>
+        <searchResultsAdditionalFields>ClassName__c</searchResultsAdditionalFields>
+    </searchLayouts>
     <sharingModel>ReadWrite</sharingModel>
     <visibility>Public</visibility>
 </CustomObject>

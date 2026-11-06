@@ -5,11 +5,12 @@
  * v3.1.0
  *
  * PMD False Positives:
- * - CognitiveComplexity / CyclomaticComplexity / StdCyclomaticComplexity / NcssTypeCount: This
- *   was intended to have all the logic in one class
+ * - CognitiveComplexity / CyclomaticComplexity / StdCyclomaticComplexity / NcssTypeCount /
+ *   TooManyFields: every ordering rule of a chain lives here on purpose; result rows are
+ *   written by AsyncResultWriter and settings read by QueueableJobSettings
  **/
 @SuppressWarnings(
-    'PMD.CognitiveComplexity,PMD.CyclomaticComplexity,PMD.StdCyclomaticComplexity,PMD.NcssTypeCount'
+    'PMD.CognitiveComplexity,PMD.CyclomaticComplexity,PMD.StdCyclomaticComplexity,PMD.NcssTypeCount,PMD.TooManyFields'
 )
 public inherited sharing class QueueableChain {
     @TestVisible
@@ -25,27 +26,10 @@ public inherited sharing class QueueableChain {
     private Boolean wasStoppedBeforeAttempt;
     private QueueableJob currentJob;
     private Map<String, Async.Outcome> outcomeByCustomJobId = new Map<String, Async.Outcome>();
-    private Map<String, Id> resultIdByCustomJobId = new Map<String, Id>();
+    private AsyncResultWriter resultWriter = new AsyncResultWriter();
     private String chainId;
-
-    @TestVisible
-    public static Map<String, QueueableJobSetting__mdt> jobSettingByName {
-        get {
-            if (jobSettingByName == null) {
-                jobSettingByName = fromCustomMetadata();
-            }
-            return jobSettingByName;
-        }
-        private set;
-    }
-
-    private static Map<String, QueueableJobSetting__mdt> fromCustomMetadata() {
-        Map<String, QueueableJobSetting__mdt> settings = new Map<String, QueueableJobSetting__mdt>();
-        for (QueueableJobSetting__mdt setting : QueueableJobSetting__mdt.getAll().values()) {
-            settings.put(setting.QueueableJobName__c, setting);
-        }
-        return settings;
-    }
+    private String chainName;
+    private Integer nextInChainSlot;
 
     public void execute(QueueableContext ctx) {
         QueueableManager.get().setChain(this);
@@ -68,6 +52,8 @@ public inherited sharing class QueueableChain {
         currentJob.queueableCtx = ctx;
         currentJob.salesforceJobId = ctx.getJobId();
         currentJob.setChainCounterToName(++chainCounter);
+        currentJob.startedAt = System.now();
+        nextInChainSlot = currentJob.chainSequence;
         customJobIdsBeforeAttempt = currentCustomJobIds();
         skippedCustomJobIdsBeforeAttempt = currentSkippedCustomJobIds();
         wasStoppedBeforeAttempt = isStopped;
@@ -121,28 +107,8 @@ public inherited sharing class QueueableChain {
         enqueueNextJobIfAny();
     }
 
-    // Ignores CreateResult__c on purpose: opting out of routine bookkeeping is not opting out of
-    // being told the framework broke. The debug is the last channel left if the insert fails too.
-    @SuppressWarnings('PMD.AvoidDebugStatements')
     public void recordFrameworkFailure(Exception frameworkFailure) {
-        try {
-            insert as system new AsyncResult__c(
-                ChainId__c = chainId,
-                CustomJobId__c = currentJob?.customJobId,
-                ClassName__c = currentJob?.className,
-                SalesforceJobId__c = currentJob?.salesforceJobId,
-                Status__c = QueueableManager.STATUS_FRAMEWORK_ERROR,
-                ExceptionType__c = frameworkFailure.getTypeName(),
-                ExceptionMessage__c = QueueableManager.frameworkFailureMessage(frameworkFailure)
-            );
-        } catch (Exception recordingFailure) {
-            System.debug(
-                LoggingLevel.ERROR,
-                QueueableManager.frameworkFailureMessage(frameworkFailure) +
-                    '\nThe failure could not be recorded either: ' +
-                    recordingFailure.getMessage()
-            );
-        }
+        resultWriter.recordFrameworkFailure(chainId, currentJob, frameworkFailure);
     }
 
     private void maybeAdvanceChunkRun(QueueableJob previousJob) {
@@ -188,7 +154,7 @@ public inherited sharing class QueueableChain {
             }
             if (!ownsRunLevelOutcome((ChunkJob) job)) {
                 outcomeByCustomJobId.remove(job.customJobId);
-                resultIdByCustomJobId.remove(job.customJobId);
+                resultWriter.forget(job.customJobId);
             }
             jobs.remove(i);
         }
@@ -264,6 +230,7 @@ public inherited sharing class QueueableChain {
         QueueableJob retryJob = QueueableManager.retryJobFrom(previousJob);
 
         previousJob.recordRetryHistory(nextAttempt, delayMinutes);
+        resultWriter.updatePlaceholderForRetry(previousJob, nextAttempt, delayMinutes);
         previousJob.isProcessed = true;
         // Only the final attempt produces a result row; suppress this superseded one.
         previousJob.resultCreated = true;
@@ -282,7 +249,7 @@ public inherited sharing class QueueableChain {
         retryJob.requeueStatus = previousJob.requeueStatus;
         retryJob.requeuePayloadSize = previousJob.requeuePayloadSize;
         retryJob.requeuedFromResultId = previousJob.requeuedFromResultId;
-        releasePayload(previousJob);
+        AsyncRequeue.releasePayload(previousJob);
         QueueableManager.runRetryReset(retryJob, nextAttempt);
 
         revertChainChangesBeforeRetry();
@@ -352,7 +319,7 @@ public inherited sharing class QueueableChain {
     private void discardJobAt(Integer index) {
         QueueableJob job = jobs[index];
         outcomeByCustomJobId.remove(job.customJobId);
-        resultIdByCustomJobId.remove(job.customJobId);
+        resultWriter.forget(job.customJobId);
         jobs.remove(index);
     }
 
@@ -374,20 +341,6 @@ public inherited sharing class QueueableChain {
         return customJobIds;
     }
 
-    private Boolean resultEnabledFor(QueueableJob job) {
-        return createResultEnabledFor(job) || payloadStorageOnAndJobDidNotSucceed(job);
-    }
-
-    private Boolean createResultEnabledFor(QueueableJob job) {
-        return jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)?.CreateResult__c ==
-            true ||
-            jobSettingByName.get(job.className)?.CreateResult__c == true;
-    }
-
-    private Boolean payloadStorageOnAndJobDidNotSucceed(QueueableJob job) {
-        return job.requeueStatus != null && (job.hasFailed || job.skipStatus != null);
-    }
-
     private void createPendingResults() {
         List<QueueableJob> candidates = new List<QueueableJob>();
         for (QueueableJob job : jobs) {
@@ -395,128 +348,7 @@ public inherited sharing class QueueableChain {
                 candidates.add(job);
             }
         }
-        recordResults(candidates);
-    }
-
-    private void recordResults(List<QueueableJob> candidates) {
-        List<QueueableJob> toRecord = new List<QueueableJob>();
-        for (QueueableJob job : candidates) {
-            if (job.resultCreated) {
-                continue;
-            }
-            if (resultEnabledFor(job)) {
-                toRecord.add(job);
-            } else {
-                job.resultCreated = true;
-                releasePayload(job);
-            }
-        }
-        if (toRecord.isEmpty()) {
-            return;
-        }
-
-        List<AsyncResult__c> results = new List<AsyncResult__c>();
-        for (QueueableJob job : toRecord) {
-            results.add(buildResult(job));
-        }
-        dropLinksToSourcesTheCleanupBatchRemoved(results);
-        insert as system results;
-        for (Integer i = 0; i < toRecord.size(); i++) {
-            toRecord[i].resultCreated = true;
-            resultIdByCustomJobId.put(toRecord[i].customJobId, results[i].Id);
-            releasePayload(toRecord[i]);
-        }
-        linkDependencyResults(toRecord);
-    }
-
-    // The payload rides the serialized job into every later execution context, so a job that kept
-    // it would carry its own size twice for the rest of the chain.
-    private void releasePayload(QueueableJob job) {
-        job.requeuePayload = null;
-    }
-
-    private void dropLinksToSourcesTheCleanupBatchRemoved(List<AsyncResult__c> results) {
-        Set<Id> sourceIds = new Set<Id>();
-        for (AsyncResult__c result : results) {
-            if (result.RequeuedFrom__c != null) {
-                sourceIds.add(result.RequeuedFrom__c);
-            }
-        }
-        if (sourceIds.isEmpty()) {
-            return;
-        }
-        Set<Id> stillThere = new Map<Id, AsyncResult__c>(
-                [SELECT Id FROM AsyncResult__c WHERE Id IN :sourceIds WITH SYSTEM_MODE]
-            )
-            .keySet();
-        for (AsyncResult__c result : results) {
-            if (result.RequeuedFrom__c != null && !stillThere.contains(result.RequeuedFrom__c)) {
-                result.RequeuedFrom__c = null;
-            }
-        }
-    }
-
-    private AsyncResult__c buildResult(QueueableJob job) {
-        AsyncResult__c result = new AsyncResult__c(
-            SalesforceJobId__c = job.salesforceJobId,
-            CustomJobId__c = job.customJobId,
-            ChainId__c = job.chainId,
-            ClassName__c = job.className,
-            RetryAttempts__c = job.retryAttempt,
-            RetryHistory__c = job.retryHistory,
-            RequeuedFrom__c = job.requeuedFromResultId
-        );
-        if (payloadStorageOnAndJobDidNotSucceed(job)) {
-            result.JobPayload__c = job.requeuePayload;
-            result.PayloadSize__c = job.requeuePayloadSize;
-            result.RequeueStatus__c = job.requeueStatus;
-        }
-        if (job.skipStatus != null) {
-            result.Status__c = job.skipStatus;
-            result.SkipReason__c = job.skipReason;
-        } else if (job.hasFailed) {
-            result.Status__c = QueueableManager.STATUS_FAILED;
-            result.Result__c = job.finalizerCtx?.getResult()?.name();
-            result.ExceptionType__c = job.failure?.type;
-            result.ExceptionMessage__c = job.failure?.message;
-        } else {
-            result.Status__c = QueueableManager.STATUS_COMPLETED;
-            result.Result__c = job.finalizerCtx?.getResult()?.name();
-        }
-        return result;
-    }
-
-    private void linkDependencyResults(List<QueueableJob> recordedJobs) {
-        List<AsyncResult__c> toUpdate = new List<AsyncResult__c>();
-        for (QueueableJob job : recordedJobs) {
-            Async.Dependency decisive = decisiveDependency(job);
-            Id dependencyResultId = decisive == null
-                ? null
-                : resultIdByCustomJobId.get(decisive.resolvedTargetCustomJobId);
-            if (dependencyResultId == null) {
-                continue;
-            }
-            Async.Outcome actual = outcomeByCustomJobId.get(decisive.resolvedTargetCustomJobId);
-            toUpdate.add(
-                new AsyncResult__c(
-                    Id = resultIdByCustomJobId.get(job.customJobId),
-                    DependsOnResult__c = dependencyResultId,
-                    RequiredOutcome__c = decisive.requiredOutcome.name(),
-                    ActualOutcome__c = actual?.name() ?? 'NOT_RUN'
-                )
-            );
-        }
-        if (!toUpdate.isEmpty()) {
-            update as system toUpdate;
-        }
-    }
-
-    private Async.Dependency decisiveDependency(QueueableJob job) {
-        if (job.dependencies == null || job.dependencies.isEmpty()) {
-            return null;
-        }
-        Async.Dependency blocking = firstUnsatisfiedDependency(job);
-        return blocking ?? job.dependencies[0];
+        resultWriter.recordResults(candidates, outcomeByCustomJobId);
     }
 
     public void enqueueNextJobIfAny() {
@@ -528,17 +360,21 @@ public inherited sharing class QueueableChain {
         }
 
         QueueableJob nextJob = getNextJobToProcess();
+        resultWriter.createEnqueuedPlaceholders(jobs, currentJob);
         try {
             isChainedContext = true;
             nextJob.enqueue(this);
         } catch (Exception ex) {
             if (!nextJob.continueOnJobEnqueueFail) {
+                resultWriter.deletePlaceholdersOfUnprocessedJobs(jobs, nextJob);
                 throw ex;
             }
             isChainedContext = false;
             nextJob.isProcessed = true;
             enqueueNextJobIfAny();
+            return;
         }
+        resultWriter.stampSalesforceJobId(nextJob);
     }
 
     public void stop() {
@@ -603,7 +439,10 @@ public inherited sharing class QueueableChain {
 
     private void skipJobsWithUnsatisfiedDependencies() {
         QueueableJob candidate = getNextJobToProcess();
-        while (candidate != null && firstUnsatisfiedDependency(candidate) != null) {
+        while (
+            candidate != null &&
+            QueueableManager.firstUnsatisfiedDependency(candidate, outcomeByCustomJobId) != null
+        ) {
             markSkipped(
                 candidate,
                 QueueableManager.STATUS_SKIPPED_DEPENDENCY,
@@ -613,21 +452,11 @@ public inherited sharing class QueueableChain {
         }
     }
 
-    private Async.Dependency firstUnsatisfiedDependency(QueueableJob job) {
-        if (job.dependencies == null) {
-            return null;
-        }
-        for (Async.Dependency dependency : job.dependencies) {
-            Async.Outcome actual = outcomeByCustomJobId.get(dependency.resolvedTargetCustomJobId);
-            if (!outcomeMatches(actual, dependency.requiredOutcome)) {
-                return dependency;
-            }
-        }
-        return null;
-    }
-
     private String buildDependencySkipReason(QueueableJob job) {
-        Async.Dependency blocking = firstUnsatisfiedDependency(job);
+        Async.Dependency blocking = QueueableManager.firstUnsatisfiedDependency(
+            job,
+            outcomeByCustomJobId
+        );
         Async.Outcome actual = outcomeByCustomJobId.get(blocking.resolvedTargetCustomJobId);
         return 'Dependency \'' +
             labelForCustomJobId(blocking.resolvedTargetCustomJobId) +
@@ -646,18 +475,16 @@ public inherited sharing class QueueableChain {
         return customJobId;
     }
 
-    private Boolean outcomeMatches(Async.Outcome actual, Async.Outcome required) {
-        if (actual == null) {
-            return false;
-        }
-        return required == Async.Outcome.COMPLETED || actual == required;
-    }
-
     public Boolean hasNextJob() {
         return getNextJobToProcess() != null;
     }
 
     public void addJob(QueueableJob job) {
+        chainName = job.chainName ?? chainName;
+        for (QueueableJob queued : jobs) {
+            queued.chainName = chainName;
+        }
+        job.chainName = chainName;
         AsyncRequeue.captureJobAsHandedOver(job);
         job.setMainAttributes();
         if (chainId == null) {
@@ -665,12 +492,44 @@ public inherited sharing class QueueableChain {
         }
         job.chainId = chainId;
         keepSlotOfChunkRunOrTakeNextOne(job);
-        applyRetryDefaultsIfNeeded(job);
+        placeNextInChainIfRequested(job);
+        QueueableJobSettings.applyRetryDefaults(job);
         QueueableManager.assertStateHandlingDeclared(job);
         job.captureEnqueuedState();
         jobs.add(job);
         jobs.sort();
+        keepSequenceInRunOrder();
         AsyncEventDispatcher.jobEnqueued(job, QueueableManager.loggerClassFor(job));
+    }
+
+    private void keepSequenceInRunOrder() {
+        List<QueueableJob> waitingInRunOrder = new List<QueueableJob>();
+        List<Integer> slots = new List<Integer>();
+        for (QueueableJob queued : jobs) {
+            if (ownsAMovableSlot(queued)) {
+                waitingInRunOrder.add(queued);
+                slots.add(queued.chainSequence);
+            }
+        }
+        slots.sort();
+        for (Integer i = 0; i < slots.size(); i++) {
+            QueueableJob waiting = waitingInRunOrder[i];
+            if (waiting.chainSequence != slots[i]) {
+                waiting.chainSequence = slots[i];
+                resultWriter.markResequenced(waiting.customJobId);
+            }
+        }
+    }
+
+    private Boolean ownsAMovableSlot(QueueableJob job) {
+        return !job.isProcessed &&
+            !job.isFinalizer &&
+            job.customJobId != currentJob?.customJobId &&
+            !isLaterPageOfChunkRun(job);
+    }
+
+    private Boolean isLaterPageOfChunkRun(QueueableJob job) {
+        return job instanceof ChunkJob && ((ChunkJob) job).getRun().currentPageNumber() > 1;
     }
 
     private void keepSlotOfChunkRunOrTakeNextOne(QueueableJob job) {
@@ -681,60 +540,27 @@ public inherited sharing class QueueableChain {
         }
     }
 
-    @TestVisible
-    private void applyRetryDefaultsIfNeeded(QueueableJob job) {
-        if (job.maxRetries > 0) {
-            // Explicit fluent .retry(...) wins over CMDT defaults.
+    private void placeNextInChainIfRequested(QueueableJob job) {
+        if (job.nextInChain != true) {
             return;
         }
-
-        QueueableJobSetting__mdt setting = resolveRetrySetting(job.className);
-        if (setting == null) {
-            return;
-        }
-
-        if (!QueueableManager.declaresRetryStateHandling(job)) {
-            job.recordConfigurationWarning(
-                String.format(
-                    QueueableManager.WARNING_CMDT_RETRY_WITHOUT_RESET,
-                    new List<String>{ job.className, QueueableManager.API_PREFIX }
-                )
+        if (currentJob == null) {
+            throw new IllegalArgumentException(
+                QueueableManager.ERROR_MESSAGE_NEXT_IN_CHAIN_OUTSIDE_CHAIN
             );
-            return;
         }
-
-        job.maxRetries = QueueableManager.cappedRetries(job, setting.MaxRetries__c.intValue());
-        QueueableManager.applyBackoffDefault(job, setting);
-
-        if (job.retryOnExceptionTypes == null) {
-            job.retryOnExceptionTypes = parseExceptionTypes(setting.RetryableExceptions__c);
-        }
-    }
-
-    private QueueableJobSetting__mdt resolveRetrySetting(String jobClassName) {
-        Map<String, QueueableJobSetting__mdt> jobSettings = jobSettingByName;
-        QueueableJobSetting__mdt setting = jobSettings.get(jobClassName);
-        if (setting == null || setting.MaxRetries__c == null) {
-            setting = jobSettings.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL);
-        }
-        Boolean hasRetryDefault =
-            setting != null &&
-            setting.MaxRetries__c != null &&
-            setting.MaxRetries__c > 0;
-        return hasRetryDefault ? setting : null;
-    }
-
-    private Set<String> parseExceptionTypes(String csv) {
-        if (String.isBlank(csv)) {
-            return null;
-        }
-        Set<String> types = new Set<String>();
-        for (String exceptionType : csv.split(',')) {
-            if (String.isNotBlank(exceptionType)) {
-                types.add(exceptionType.trim());
+        nextInChainSlot++;
+        for (QueueableJob queued : jobs) {
+            if (
+                !queued.isProcessed &&
+                !queued.isFinalizer &&
+                queued.chainSequence >= nextInChainSlot
+            ) {
+                queued.chainSequence++;
+                resultWriter.markResequenced(queued.customJobId);
             }
         }
-        return types.isEmpty() ? null : types;
+        job.chainSequence = nextInChainSlot;
     }
 
     public List<QueueableJob> getJobs() {
@@ -776,17 +602,10 @@ public inherited sharing class QueueableChain {
 
     @TestVisible
     private void removeJobsThatAreDisabledAndDependentFinalizers() {
-        Map<String, QueueableJobSetting__mdt> jobSettings = jobSettingByName;
-
-        if (jobSettings.isEmpty()) {
+        if (QueueableJobSettings.jobSettingByName.isEmpty()) {
             return;
         }
-
-        QueueableJobSetting__mdt allJobSetting = jobSettings.get(
-            QueueableManager.QUEUEABLE_JOB_SETTING_ALL
-        );
-
-        if (allJobSetting?.IsDisabled__c == true) {
+        if (QueueableJobSettings.forAllJobs()?.IsDisabled__c == true) {
             markDisabledAndRecord(new List<QueueableJob>(jobs));
             jobs.clear();
             return;
@@ -794,8 +613,7 @@ public inherited sharing class QueueableChain {
 
         Set<String> customJobIdsToRemove = new Set<String>();
         for (QueueableJob job : jobs) {
-            QueueableJobSetting__mdt jobSetting = jobSettings.get(job.className);
-            if (jobSetting != null && jobSetting.IsDisabled__c) {
+            if (QueueableJobSettings.isDisabled(job)) {
                 customJobIdsToRemove.add(job.customJobId);
             }
         }
@@ -830,7 +648,7 @@ public inherited sharing class QueueableChain {
                 );
             }
         }
-        recordResults(disabledJobs);
+        resultWriter.recordResults(disabledJobs, outcomeByCustomJobId);
     }
 
     private Set<String> getAllCustomJobIdsToRemove(Set<String> customJobIdsToRemove) {

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Status__c</fullName>
-    <description>Lifecycle outcome of the job in the chain: whether it ran (completed/failed) or was skipped and why.</description>
+    <description>Lifecycle of the job in the chain. Enqueued means the job is waiting in the chain or running, written when Track Job Progress is on; the rest are outcomes: whether it ran (completed/failed) or was skipped and why.</description>
     <label>Status</label>
     <required>false</required>
     <trackTrending>false</trackTrending>
@@ -10,6 +10,11 @@
         <restricted>true</restricted>
         <valueSetDefinition>
             <sorted>false</sorted>
+            <value>
+                <fullName>ENQUEUED</fullName>
+                <default>false</default>
+                <label>Enqueued</label>
+            </value>
             <value>
                 <fullName>COMPLETED</fullName>
                 <default>false</default>

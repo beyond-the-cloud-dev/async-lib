@@ -6,10 +6,14 @@
  *
  * PMD False Positives:
  * - CognitiveComplexity: a facade over the whole API, and the most complex member scores 1
+ * - ExcessivePublicCount: one static entry point per feature is the whole point of the facade
+ * - TooManyFields: FailureContext mirrors the failure row field by field
  * - PropertyNamingConventions: `Async.Backoff` is the Apex Fluently accessor idiom, matching
  *   `SOQL.Filter` and `SOQL.SubQuery`, so it reads as a type at the call site
  **/
-@SuppressWarnings('PMD.CognitiveComplexity,PMD.PropertyNamingConventions')
+@SuppressWarnings(
+    'PMD.CognitiveComplexity,PMD.ExcessivePublicCount,PMD.TooManyFields,PMD.PropertyNamingConventions'
+)
 public inherited sharing class Async {
     public static QueueableBuilder queueable(QueueableJob job) {
         return new QueueableBuilder(job);
@@ -61,6 +65,35 @@ public inherited sharing class Async {
 
     public static void skipJob(String customJobId) {
         QueueableManager.get().skipJob(customJobId);
+    }
+
+    public static void linkRecord(SObject record) {
+        linkRecord(record?.Id);
+    }
+
+    public static void linkRecord(Id recordId) {
+        QueueableManager.get().linkRecords(new List<Id>{ recordId });
+    }
+
+    public static void linkRecords(List<SObject> records) {
+        QueueableManager.get().linkRecords(QueueableManager.idsOf(records));
+    }
+
+    public static void linkRecords(List<Id> recordIds) {
+        QueueableManager.get().linkRecords(recordIds);
+    }
+
+    public static void linkRecords(Set<Id> recordIds) {
+        QueueableManager.get().linkRecords(recordIds == null ? null : new List<Id>(recordIds));
+    }
+
+    public static void linkExternalRecord(String source, String objectName, String key) {
+        QueueableManager.get()
+            .linkExternalRecords(new List<RecordLink>{ new RecordLink(source, objectName, key) });
+    }
+
+    public static void linkExternalRecords(List<RecordLink> links) {
+        QueueableManager.get().linkExternalRecords(links);
     }
 
     public static RequeueSummary requeue(Id resultId) {
@@ -245,6 +278,7 @@ public inherited sharing class Async {
     public class RequeueSummary {
         public List<Id> requeued = new List<Id>();
         public Map<Id, String> skipReasonByResultId = new Map<Id, String>();
+        public Map<Id, String> droppedDependencyByResultId = new Map<Id, String>();
         public Result enqueueResult;
     }
 
@@ -275,6 +309,8 @@ public inherited sharing class Async {
         public Integer priority;
         public Integer retryAttempt;
         public Map<String, String> info;
+        public String jobName;
+        public String chainName;
 
         public JobContext(QueueableJob job) {
             this.customJobId = job.customJobId;
@@ -284,6 +320,8 @@ public inherited sharing class Async {
             this.priority = job.priority;
             this.retryAttempt = job.retryAttempt;
             this.info = job.info ?? new Map<String, String>();
+            this.jobName = job.jobName;
+            this.chainName = job.chainName;
         }
     }
 
@@ -303,6 +341,8 @@ public inherited sharing class Async {
         public String batchPhase;
         public String batchScope;
         public Boolean batchScopeTruncated = false;
+        public String jobName;
+        public String chainName;
 
         public FailureContext(AsyncResult__c batchFailure) {
             this.asyncType = Async.AsyncType.BATCHABLE;
@@ -332,6 +372,8 @@ public inherited sharing class Async {
             this.maxRetries = job.maxRetries;
             this.retryHistory = job.retryHistory;
             this.info = job.info ?? new Map<String, String>();
+            this.jobName = job.jobName;
+            this.chainName = job.chainName;
         }
 
         private Async.RetryOutcome retryOutcomeFor(QueueableJob job) {
@@ -373,6 +415,19 @@ public inherited sharing class Async {
         public Dependency finished() {
             this.requiredOutcome = Outcome.COMPLETED;
             return this;
+        }
+    }
+
+    @JsonAccess(serializable='always' deserializable='always')
+    public class RecordLink {
+        public String source;
+        public String objectName;
+        public String key;
+
+        public RecordLink(String source, String objectName, String key) {
+            this.source = source;
+            this.objectName = objectName;
+            this.key = key;
         }
     }
 

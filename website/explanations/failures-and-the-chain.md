@@ -176,7 +176,7 @@ of routine bookkeeping, not out of being told the framework broke. It is the
 only status that ignores that setting.
 
 `FRAMEWORK_ERROR` rows are cleaned up on the `othersOlderThanDays(...)` track,
-see [AsyncResult Cleanup](/explanations/asyncresult-cleanup).
+see [AsyncResult Cleanup](/features/asyncresult-cleanup).
 
 :::
 

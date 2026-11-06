@@ -172,6 +172,25 @@ export default defineConfig({
         ]
       },
       {
+        text: 'Features',
+        collapsed: false,
+        items: [
+          { text: 'Job Timeline', link: '/features/job-timeline' },
+          { text: 'Requeue', link: '/features/requeue' },
+          { text: 'Batch Failures', link: '/features/batch-failures' },
+          { text: 'Logging', link: '/features/logging' },
+          {
+            text: 'Configuration Safety',
+            link: '/features/configuration-safety'
+          },
+          {
+            text: 'AsyncResult Cleanup',
+            link: '/features/asyncresult-cleanup'
+          },
+          { text: 'Testing Async Jobs', link: '/features/testing-async-jobs' }
+        ]
+      },
+      {
         text: 'Explanations',
         collapsed: false,
         items: [
@@ -184,17 +203,10 @@ export default defineConfig({
             link: '/explanations/job-state-between-runs'
           },
           {
-            text: 'Configuration Safety',
-            link: '/explanations/configuration-safety'
-          },
-          { text: 'Logging', link: '/explanations/logging' },
-          { text: 'Requeue', link: '/explanations/requeue' },
-          {
             text: 'Chaining Across Services',
             link: '/explanations/chaining-across-services'
           },
           { text: 'Batch or Chunk?', link: '/explanations/batch-or-chunk' },
-          { text: 'Batch Failures', link: '/explanations/batch-failures' },
           { text: 'Job Cloning', link: '/explanations/job-cloning' },
           {
             text: 'Deep Clone in Packages',
@@ -203,11 +215,6 @@ export default defineConfig({
           {
             text: 'Failures and the Chain',
             link: '/explanations/failures-and-the-chain'
-          },
-          { text: 'Testing Async Jobs', link: '/explanations/testing-async-jobs' },
-          {
-            text: 'AsyncResult Cleanup',
-            link: '/explanations/asyncresult-cleanup'
           },
           {
             text: 'Expected Exceptions in Debug Logs',

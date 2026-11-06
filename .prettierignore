@@ -22,10 +22,13 @@ sfdx-project.json
 config/
 ticket/
 website/
-package-tests/anonymous/
+dev/package-tests/anonymous/
 release-notes/
 package.json
 README.md
 CONTRIBUTING.md
 SECURITY.md
 CODE_OF_CONDUCT.md
+
+# Manual test jobs and screenshot scripts, not part of the package
+dev/job-timeline-demo/

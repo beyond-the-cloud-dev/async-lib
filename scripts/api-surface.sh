@@ -70,7 +70,7 @@ revert_internal_wiring() {
 
     # Enqueue-time snapshot plumbing. QueueableChain, QueueableManager and ChunkJob call these
     # across class boundaries so they cannot be protected, but a subscriber has no use for them
-    # and a global member can never be withdrawn. See docs/api-evolution.md.
+    # and a global member can never be withdrawn. See dev/docs/api-evolution.md.
     api_surface_sed 's/global void captureEnqueuedState(/public void captureEnqueuedState(/g' \
         "force-app/main/default/classes/queue/QueueableJob.cls"
     api_surface_sed 's/global Boolean canRestoreEnqueuedState(/public Boolean canRestoreEnqueuedState(/g' \
@@ -91,6 +91,24 @@ revert_internal_wiring() {
     api_surface_sed 's/global Integer requeuePayloadSize;/public Integer requeuePayloadSize;/g' \
         "force-app/main/default/classes/queue/QueueableJob.cls"
     api_surface_sed 's/global Id requeuedFromResultId;/public Id requeuedFromResultId;/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+
+    # Timeline plumbing. QueueableChain sets these across class boundaries; a subscriber reads
+    # the same facts from AsyncResult__c. jobName, chainName and links stay global on purpose:
+    # a subscriber job may read what it was given on the builder.
+    api_surface_sed 's/global Boolean nextInChain = false;/public Boolean nextInChain = false;/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global String addedByCustomJobId;/public String addedByCustomJobId;/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global Datetime startedAt;/public Datetime startedAt;/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global Integer recordLinksWritten = 0;/public Integer recordLinksWritten = 0;/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global void linkRecords(/public void linkRecords(/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global void linkExternalRecords(/public void linkExternalRecords(/g' \
+        "force-app/main/default/classes/queue/QueueableJob.cls"
+    api_surface_sed 's/global void addLinks(/public void addLinks(/g' \
         "force-app/main/default/classes/queue/QueueableJob.cls"
 
 

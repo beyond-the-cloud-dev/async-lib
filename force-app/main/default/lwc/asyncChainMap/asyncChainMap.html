@@ -1,0 +1,158 @@
+<template>
+    <lightning-modal-header label={label}></lightning-modal-header>
+    <lightning-modal-body>
+        <div class="toolbar">
+            <div class="legend">
+                <span class="lg lg-ok">Completed</span>
+                <span class="lg lg-bad">Failed</span>
+                <span class="lg lg-skip">Skipped</span>
+                <span class="lg lg-run">Running</span>
+                <span class="lg lg-wait">Enqueued</span>
+                <span class="lg lg-delay">Delayed</span>
+                <span class="lg lg-fin">Finalizer</span>
+                <span class="lg lg-dep"
+                    >depends on (green met, red not met)</span
+                >
+            </div>
+        </div>
+        <div class="map-wrap" lwc:ref="scroller">
+            <div class="canvas" lwc:ref="canvas" style={canvasStyle}>
+                <svg class="links" aria-hidden="true">
+                    <template for:each={connectors} for:item="arc">
+                        <path
+                            key={arc.key}
+                            d={arc.d}
+                            class={arc.className}
+                            data-id="arc"
+                        ></path>
+                    </template>
+                    <template for:each={connectors} for:item="arc">
+                        <path
+                            key={arc.key}
+                            d={arc.head}
+                            class={arc.headClass}
+                        ></path>
+                    </template>
+                    <template for:each={connectors} for:item="arc">
+                        <text
+                            key={arc.key}
+                            x={arc.labelX}
+                            y={arc.labelY}
+                            class="arc-label"
+                            data-id="arc-label"
+                            text-anchor="middle"
+                        >
+                            {arc.label}
+                        </text>
+                    </template>
+                </svg>
+                <div class="columns">
+                    <template for:each={columns} for:item="column">
+                        <div key={column.key} class="col">
+                            <div
+                                class={column.node.className}
+                                data-id="node"
+                                data-key={column.node.key}
+                                role="button"
+                                tabindex="0"
+                                onclick={selectNode}
+                                onkeydown={keySelectNode}
+                            >
+                                <div class="node-head">
+                                    <span
+                                        class={column.node.glyphClass}
+                                        aria-hidden="true"
+                                        >{column.node.glyphText}</span
+                                    >
+                                    <span
+                                        class="node-name"
+                                        data-id="node-name"
+                                        title={column.node.title}
+                                        >{column.node.name}</span
+                                    >
+                                </div>
+                                <div class="node-sub">{column.node.sub}</div>
+                                <template lwc:if={column.node.strip}>
+                                    <div
+                                        class="strip"
+                                        title={column.node.strip.summary}
+                                    >
+                                        <template
+                                            for:each={column.node.strip.squares}
+                                            for:item="square"
+                                            ><i
+                                                key={square.page}
+                                                class={square.className}
+                                            ></i
+                                        ></template>
+                                    </div>
+                                </template>
+                                <template lwc:if={column.node.tags.length}>
+                                    <div class="node-tags">
+                                        <template
+                                            for:each={column.node.tags}
+                                            for:item="tag"
+                                            ><span key={tag} class="tag"
+                                                >{tag}</span
+                                            ></template
+                                        >
+                                    </div>
+                                </template>
+                            </div>
+                            <template
+                                for:each={column.finalizers}
+                                for:item="fin"
+                            >
+                                <div
+                                    key={fin.key}
+                                    class={fin.className}
+                                    data-id="fin"
+                                    title={fin.title}
+                                >
+                                    <span
+                                        class={fin.glyphClass}
+                                        aria-hidden="true"
+                                        >{fin.glyphText}</span
+                                    >
+                                    <span class="fin-name">{fin.name}</span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+        <p class="caption">
+            Left to right in the order the chain runs: jobs added with
+            nextInChain first, then by priority, then in the order they were
+            added. A job added at runtime appears on the next refresh. Click a
+            node for its details.
+        </p>
+        <template lwc:if={detail}>
+            <div class="detail" data-id="detail">
+                <div class="detail-head">
+                    <h3>{detail.title}</h3>
+                    <lightning-button-icon
+                        icon-name="utility:close"
+                        variant="bare"
+                        size="small"
+                        alternative-text="Close details"
+                        onclick={clearSelection}
+                    ></lightning-button-icon>
+                </div>
+                <template for:each={detail.lines} for:item="line">
+                    <div key={line.label} class="detail-line">
+                        <span class="detail-label">{line.label}</span>
+                        <span class="detail-value">{line.value}</span>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </lightning-modal-body>
+    <lightning-modal-footer>
+        <lightning-button
+            label="Close"
+            onclick={handleClose}
+        ></lightning-button>
+    </lightning-modal-footer>
+</template>

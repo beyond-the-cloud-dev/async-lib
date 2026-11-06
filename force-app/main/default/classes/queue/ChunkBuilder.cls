@@ -5,10 +5,11 @@
  * v3.1.0
  *
  * PMD False Positives:
- * - CyclomaticComplexity: every fluent method validates its own argument
+ * - CyclomaticComplexity / CognitiveComplexity: every fluent method validates its own argument,
+ *   and the most complex member scores 8
  * - ExcessivePublicCount: one fluent method per chunk option
  **/
-@SuppressWarnings('PMD.CyclomaticComplexity,PMD.ExcessivePublicCount')
+@SuppressWarnings('PMD.CyclomaticComplexity,PMD.CognitiveComplexity,PMD.ExcessivePublicCount')
 public inherited sharing class ChunkBuilder {
     @TestVisible
     private static final String ERROR_MESSAGE_INVALID_CHUNK_SIZE = 'chunkSize must be a positive integer';
@@ -91,7 +92,68 @@ public inherited sharing class ChunkBuilder {
     }
 
     public ChunkBuilder priority(Integer priority) {
+        if (job.nextInChain) {
+            throw new IllegalArgumentException(
+                QueueableManager.ERROR_MESSAGE_PRIORITY_WITH_NEXT_IN_CHAIN
+            );
+        }
         job.priority = priority;
+        return this;
+    }
+
+    public ChunkBuilder name(String jobName) {
+        job.jobName = jobName;
+        return this;
+    }
+
+    public ChunkBuilder chainName(String chainName) {
+        job.chainName = chainName;
+        return this;
+    }
+
+    public ChunkBuilder linkRecord(SObject record) {
+        return linkRecord(record?.Id);
+    }
+
+    public ChunkBuilder linkRecord(Id recordId) {
+        job.linkRecords(new List<Id>{ recordId });
+        return this;
+    }
+
+    public ChunkBuilder linkRecords(List<SObject> records) {
+        job.linkRecords(QueueableManager.idsOf(records));
+        return this;
+    }
+
+    public ChunkBuilder linkRecords(List<Id> recordIds) {
+        job.linkRecords(recordIds);
+        return this;
+    }
+
+    public ChunkBuilder linkRecords(Set<Id> recordIds) {
+        job.linkRecords(recordIds == null ? null : new List<Id>(recordIds));
+        return this;
+    }
+
+    public ChunkBuilder linkExternalRecord(String source, String objectName, String key) {
+        job.linkExternalRecords(
+            new List<Async.RecordLink>{ new Async.RecordLink(source, objectName, key) }
+        );
+        return this;
+    }
+
+    public ChunkBuilder linkExternalRecords(List<Async.RecordLink> links) {
+        job.linkExternalRecords(links);
+        return this;
+    }
+
+    public ChunkBuilder nextInChain() {
+        if (job.priority != null) {
+            throw new IllegalArgumentException(
+                QueueableManager.ERROR_MESSAGE_PRIORITY_WITH_NEXT_IN_CHAIN
+            );
+        }
+        job.nextInChain = true;
         return this;
     }
 

@@ -26,7 +26,7 @@ git checkout -b feature/my-awesome-feature
 
 ### 4. Make Your Changes
 
-Make your changes in the appropriate files. Please follow the current coding style and conventions used in the codebase.
+Make your changes in the appropriate files. Please follow the current coding style and conventions used in the codebase, and the [code style](dev/docs/code-style.md): class, method and variable names explain the code, and a comment is allowed only when it cannot be done otherwise.
 
 - For Salesforce metadata: follow Salesforce best practices
 - For LWC components: follow the patterns in existing components
@@ -55,7 +55,7 @@ finding has to be resolved before merge. `npm run pmd` prints the same report wi
 failing. PMD needs Java 8+ on your PATH; `scripts/pmd.sh` downloads the pinned PMD release
 into `.pmd-dist/` on first run.
 
-The ruleset lives in `pmd/ruleset.xml` and is kept identical to the shared Beyond The Cloud
+The ruleset lives in `dev/pmd/ruleset.xml` and is kept identical to the shared Beyond The Cloud
 ruleset. Do not weaken it to silence a finding. Either fix the code, or add a narrow
 `@SuppressWarnings('PMD.RuleName')` at the class or method with a `PMD False Positives:` note
 saying why. Suppressions travel with the source, which matters because consumers vendor these
@@ -100,14 +100,14 @@ Please include:
 Before submitting your PR, make sure you've:
 
 - [ ] Written clear and concise commit messages
-- [ ] Followed the [code style](docs/code-style.md), in particular: code is self-explaining and comments are a last resort
+- [ ] Followed the [code style](dev/docs/code-style.md), in particular: code is self-explaining and comments are a last resort
 - [ ] Added or updated relevant documentation (if applicable)
 - [ ] Added or updated unit tests (if applicable)
 - [ ] Verified that all existing tests pass (`npm test`)
 - [ ] Run linting and formatting (`npm run lint`, `npm run prettier`)
 - [ ] Updated the documentation site if needed, and for any public API change also `website/ai-usage.md`, the one-page contract agents read (take signatures from the code, not from memory)
-- [ ] Added a consumer-perspective test in `package-tests/consumer-app` for any new `global` surface
-- [ ] Checked [API evolution rules](docs/api-evolution.md) if you touched a `global` type or added an extension point
+- [ ] Added a consumer-perspective test in `dev/package-tests/consumer-app` for any new `global` surface
+- [ ] Checked [API evolution rules](dev/docs/api-evolution.md) if you touched a `global` type or added an extension point
 - [ ] Added every new field to its page layout in `force-app/main/default/layouts` and, for `AsyncResult__c`, to `AsyncResultAccess` (a field missing from either is invisible to admins)
 - [ ] Added any new `extras/` class to `extras/README.md` and to the tables in `website/introduction/packaged-install.md`
 - [ ] Added any new website page to the sidebar in `website/.vitepress/config.mts` (`llms.txt` is generated from it)

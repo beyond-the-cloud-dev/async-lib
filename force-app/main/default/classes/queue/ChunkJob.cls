@@ -45,6 +45,9 @@ public inherited sharing abstract class ChunkJob extends QueueableJob {
         nextPage.finalizerCtx = null;
         nextPage.isProcessed = false;
         nextPage.resultCreated = false;
+        nextPage.nextInChain = false;
+        nextPage.links = null;
+        nextPage.recordLinksWritten = 0;
         if (!restoreStateOnNextChunk && nextPage instanceof Async.ChunkResettable) {
             ((Async.ChunkResettable) nextPage)
                 .resetBeforeNextChunk(nextPage.run.currentPageNumber());

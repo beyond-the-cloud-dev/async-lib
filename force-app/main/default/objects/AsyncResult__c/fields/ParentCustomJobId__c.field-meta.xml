@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ParentCustomJobId__c</fullName>
+    <description>For a finalizer, the Custom Job Id of the job it was attached to. Blank for every other job.</description>
+    <externalId>false</externalId>
+    <label>Parent Custom Job Id</label>
+    <length>36</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

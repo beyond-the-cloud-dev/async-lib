@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>TrackJobProgress__c</fullName>
+    <description>Create the result row when the job is enqueued instead of when it finishes, so a chain in flight shows which jobs wait, run and are done, with start and finish times. Yes implies Create Result for the matching job. Blank falls back to the All record; No on a job record overrides Yes on All. Needed for the progress bar on the record timeline; linked records and completed steps show without it.</description>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>Track Job Progress</label>
+    <required>false</required>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Yes</fullName>
+                <default>false</default>
+                <label>Yes</label>
+            </value>
+            <value>
+                <fullName>No</fullName>
+                <default>false</default>
+                <label>No</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

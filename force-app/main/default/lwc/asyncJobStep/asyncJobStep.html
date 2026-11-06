@@ -1,0 +1,307 @@
+<template>
+    <div class={rowClass} data-id="row" onclick={toggleExpanded}>
+        <span class="glyph-cell">
+            <span
+                class={glyphClass}
+                data-id="glyph"
+                data-key={status.key}
+                aria-hidden="true"
+                >{glyphText}</span
+            >
+        </span>
+        <div class="main">
+            <div class="name-line" data-id="name-line">
+                <span class="name" data-id="name" title={nameTitle}
+                    >{displayName}</span
+                >
+                <span class={statusClass} data-id="status">{status.label}</span>
+                <template lwc:if={isNew}
+                    ><span class="badge-new" data-id="new-badge"
+                        >New</span
+                    ></template
+                >
+                <span class="tags" data-id="tags">
+                    <template for:each={tags} for:item="tag"
+                        ><span
+                            key={tag.label}
+                            class={tag.className}
+                            data-target={tag.targetJobId}
+                            tabindex={tag.tabIndex}
+                            onmouseenter={showTagTarget}
+                            onmouseleave={clearTagTarget}
+                            onfocus={showTagTarget}
+                            onblur={clearTagTarget}
+                            >{tag.label}</span
+                        ></template
+                    >
+                    <template lwc:if={hiddenTagLabel}
+                        ><span
+                            class="tag-more"
+                            data-id="tags-more"
+                            title={hiddenTagTitle}
+                            >{hiddenTagLabel}</span
+                        ></template
+                    >
+                </span>
+            </div>
+            <div class="meta">
+                <template lwc:if={step.startedAt}>
+                    <lightning-formatted-date-time
+                        value={step.startedAt}
+                        hour="2-digit"
+                        minute="2-digit"
+                        second="2-digit"
+                    ></lightning-formatted-date-time>
+                </template>
+                <template lwc:if={duration}
+                    ><span data-id="duration">{duration}</span></template
+                >
+                <template lwc:if={platformLabel}
+                    ><span
+                        class="platform"
+                        data-id="platform"
+                        title={platformTitle}
+                        >{platformLabel}</span
+                    ></template
+                >
+                <template lwc:if={delayUntil}>
+                    <span data-id="delay-until"
+                        >until&nbsp;<lightning-formatted-date-time
+                            value={delayUntil}
+                            hour="2-digit"
+                            minute="2-digit"
+                        ></lightning-formatted-date-time
+                    ></span>
+                </template>
+                <template lwc:if={plannedDelayLabel}
+                    ><span data-id="delay-planned"
+                        >{plannedDelayLabel}</span
+                    ></template
+                >
+                <template lwc:if={attemptLabel}
+                    ><span data-id="attempt">{attemptLabel}</span></template
+                >
+                <template lwc:if={nextAttemptAt}>
+                    <span data-id="next-attempt"
+                        >next attempt&nbsp;<lightning-formatted-date-time
+                            value={nextAttemptAt}
+                            hour="2-digit"
+                            minute="2-digit"
+                        ></lightning-formatted-date-time
+                    ></span>
+                </template>
+                <template lwc:if={strip}>
+                    <template lwc:if={strip.squares}>
+                        <span
+                            class="strip"
+                            data-id="strip"
+                            title={strip.summary}
+                        >
+                            <template for:each={squares} for:item="square"
+                                ><i
+                                    key={square.key}
+                                    class={square.className}
+                                    title={square.title}
+                                ></i
+                            ></template>
+                        </span>
+                    </template>
+                    <template lwc:else>
+                        <span
+                            class="strip-bar"
+                            data-id="strip-bar"
+                            title={strip.summary}
+                            style={stripBarStyle}
+                        ></span>
+                    </template>
+                    <span data-id="strip-summary">{strip.summary}</span>
+                </template>
+                <template lwc:if={chips.length}>
+                    <span class="chips" data-id="chips">
+                        <template for:each={chips} for:item="chip">
+                            <template lwc:if={chip.url}
+                                ><a
+                                    key={chip.key}
+                                    class="chip"
+                                    href={chip.url}
+                                    target="_blank"
+                                    rel="noopener"
+                                    title={chip.title}
+                                    onclick={stopClick}
+                                    >{chip.label}</a
+                                ></template
+                            >
+                            <template lwc:else
+                                ><span
+                                    key={chip.key}
+                                    class="chip chip-external"
+                                    title={chip.title}
+                                    >{chip.label}</span
+                                ></template
+                            >
+                        </template>
+                        <template lwc:if={hiddenChipCount}>
+                            <button
+                                class="chip-more"
+                                data-id="chips-more"
+                                onclick={showAllRecords}
+                            >
+                                {hiddenChipLabel}
+                            </button>
+                        </template>
+                    </span>
+                </template>
+            </div>
+            <template lwc:if={replayLink}>
+                <button
+                    class="link replay-link"
+                    data-id="open-replay"
+                    onclick={openReplay}
+                >
+                    Open the replay ↗
+                </button>
+            </template>
+            <template lwc:if={warning}
+                ><div class="warn" data-id="warning">{warning}</div></template
+            >
+            <template lwc:if={skipReasonVisible}
+                ><div class="skip-reason" data-id="skip-reason">
+                    {step.skipReason}
+                </div></template
+            >
+        </div>
+        <div class="right" onclick={stopClick}>
+            <template lwc:if={requeueable}>
+                <lightning-button
+                    class="full-only"
+                    data-id="requeue"
+                    variant="neutral"
+                    label="Requeue"
+                    icon-name="utility:refresh"
+                    onclick={handleRequeue}
+                ></lightning-button>
+                <lightning-button-icon
+                    class="compact-only"
+                    data-id="requeue-compact"
+                    icon-name="utility:refresh"
+                    variant="border"
+                    alternative-text="Requeue"
+                    title="Requeue"
+                    onclick={handleRequeue}
+                ></lightning-button-icon>
+            </template>
+            <lightning-button-icon
+                data-id="expand"
+                icon-name={expandIcon}
+                variant="bare"
+                size="small"
+                alternative-text={expandLabel}
+                title={expandLabel}
+                aria-expanded={expanded}
+                onclick={toggleExpanded}
+            ></lightning-button-icon>
+        </div>
+        <template lwc:if={expanded}>
+            <div class="details-row" onclick={stopClick}>
+                <div class="details" data-id="details">
+                    <dl class="facts">
+                        <template for:each={facts} for:item="fact">
+                            <div key={fact.label} class="fact">
+                                <dt>{fact.label}</dt>
+                                <dd data-id={fact.id} class={fact.className}>
+                                    {fact.value}
+                                </dd>
+                            </div>
+                        </template>
+                    </dl>
+                    <template lwc:if={showFailure}>
+                        <div class="failbox" data-id="failbox">
+                            <template lwc:if={showOwnException}>
+                                <template lwc:if={step.exceptionType}
+                                    ><div class="exception-type">
+                                        {step.exceptionType}
+                                    </div></template
+                                >
+                                <template lwc:if={step.exceptionMessage}>
+                                    <code data-id="exception"
+                                        >{exceptionText}</code
+                                    >
+                                    <template lwc:if={hasMoreException}
+                                        ><button
+                                            class="link"
+                                            data-id="more"
+                                            onclick={showWholeException}
+                                        >
+                                            more
+                                        </button></template
+                                    >
+                                </template>
+                            </template>
+                            <template lwc:if={step.skipReason}
+                                ><div>{step.skipReason}</div></template
+                            >
+                            <template for:each={failedGroups} for:item="group">
+                                <div
+                                    key={group.key}
+                                    class="failed-group"
+                                    data-id="failed-group"
+                                >
+                                    <div
+                                        class="failed-group-title"
+                                        data-id="failed-group-title"
+                                    >
+                                        {group.title}
+                                    </div>
+                                    <template lwc:if={group.exceptionType}
+                                        ><div class="exception-type">
+                                            {group.exceptionType}
+                                        </div></template
+                                    >
+                                    <template lwc:if={group.message}
+                                        ><code>{group.message}</code></template
+                                    >
+                                    <div class="failed-group-links">
+                                        <span>Open result</span>
+                                        <template
+                                            for:each={group.links}
+                                            for:item="link"
+                                            ><a
+                                                key={link.key}
+                                                href={link.url}
+                                                data-id="failed-page-result"
+                                                target="_blank"
+                                                rel="noopener"
+                                                >{link.label}</a
+                                            ></template
+                                        >
+                                    </div>
+                                </div>
+                            </template>
+                            <template lwc:if={failedMoreLabel}
+                                ><div data-id="failed-more">
+                                    {failedMoreLabel}
+                                </div></template
+                            >
+                        </div>
+                    </template>
+                    <template lwc:if={retryLines.length}>
+                        <ul class="retry-history" data-id="retry-history">
+                            <template for:each={retryLines} for:item="line"
+                                ><li key={line}>{line}</li></template
+                            >
+                        </ul>
+                    </template>
+                    <div class="details-foot">
+                        <a
+                            href={resultUrl}
+                            data-id="open-result"
+                            target="_blank"
+                            rel="noopener"
+                            >{resultLinkLabel}</a
+                        >
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

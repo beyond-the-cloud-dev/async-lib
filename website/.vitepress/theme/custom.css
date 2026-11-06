@@ -13,3 +13,32 @@
 .VPHome {
   margin-bottom: 0 !important;
 }
+
+.VPHero.has-image .image {
+  order: 2;
+  margin: 32px 0 0;
+}
+
+.VPHero.has-image .image-container {
+  width: 100%;
+  height: auto;
+  transform: none;
+}
+
+.VPHero.has-image .image-bg {
+  z-index: 0;
+}
+
+@media (min-width: 960px) {
+  .VPHero.has-image .image {
+    margin: 0;
+  }
+
+  .VPHero.has-image .main {
+    max-width: 520px;
+  }
+}
+
+.landing-section {
+  margin-top: 56px;
+}

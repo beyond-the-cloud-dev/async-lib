@@ -180,4 +180,4 @@ org-wide outage.
 
 Instead, **retry is simply not applied** to a job that has not declared how its state resets, the
 job runs once as its code was written and tested to, and the reason is recorded on the job. See
-[Configuration Safety](/explanations/configuration-safety).
+[Configuration Safety](/features/configuration-safety).

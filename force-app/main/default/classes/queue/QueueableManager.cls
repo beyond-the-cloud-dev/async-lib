@@ -21,9 +21,13 @@ public inherited sharing class QueueableManager {
     public static final String STATUS_SKIPPED_EXPLICIT = 'SKIPPED_EXPLICIT';
     public static final String STATUS_SKIPPED_DISABLED = 'SKIPPED_DISABLED';
     public static final String STATUS_FRAMEWORK_ERROR = 'FRAMEWORK_ERROR';
+    public static final String STATUS_ENQUEUED = 'ENQUEUED';
     public static final String DOCS_URL = 'https://async.beyondthecloud.dev';
     public static final String ISSUES_URL = 'https://github.com/beyond-the-cloud-dev/async-lib/issues';
     public static final Integer MAX_RETRY_CAP = 10;
+    public static final String SOURCE_SALESFORCE = 'Salesforce';
+    public static final Integer MAX_RECORD_LINKS_CAP = 5000;
+    public static final Integer DEFAULT_MAX_RECORD_LINKS = 5000;
     public static final String ERROR_MESSAGE_INVALID_MAX_RETRIES = 'Max retries must be a non-negative integer';
     public static final String ERROR_MESSAGE_MAX_RETRIES_EXCEEDS_CAP =
         'Max retries cannot exceed the framework cap of ' + MAX_RETRY_CAP;
@@ -48,7 +52,7 @@ public inherited sharing class QueueableManager {
         DOCS_URL_JOB_STATE;
     public static final String WARNING_UNKNOWN_BACKOFF_STRATEGY = 'QueueableJobSetting__mdt.BackoffStrategy__c is "{0}" for "{1}", which is not a known strategy, so no backoff was applied and retries run without delay. Use one of: {2}.';
     public static final String WARNING_MAX_RETRIES_EXCEEDS_CAP = 'QueueableJobSetting__mdt.MaxRetries__c is {0} for "{1}", above the framework cap of {2}, so it was clamped to {2}.';
-    public static final String DOCS_URL_LOGGING = DOCS_URL + '/explanations/logging';
+    public static final String DOCS_URL_LOGGING = DOCS_URL + '/features/logging';
     public static final String WARNING_LOGGER_NOT_FOUND =
         'QueueableJobSetting__mdt.LoggerClass__c names "{0}", which could not be resolved, so no events were logged. Async Lib can only reach a class declared global. Change it to "global class {0}" and make sure the name is spelled exactly as the class. See ' +
         DOCS_URL_LOGGING;
@@ -56,7 +60,7 @@ public inherited sharing class QueueableManager {
         'QueueableJobSetting__mdt.LoggerClass__c names "{0}", which could not be constructed, so no events were logged: {1}. The class needs a public no-argument constructor. See ' +
         DOCS_URL_LOGGING;
     public static final String WARNING_LOGGER_THREW = 'An Async Lib event listener threw {0}: {1}. The job was not affected. {2}';
-    public static final String DOCS_URL_REQUEUE = DOCS_URL + '/explanations/requeue';
+    public static final String DOCS_URL_REQUEUE = DOCS_URL + '/features/requeue';
     public static final String WARNING_PAYLOAD_NOT_CAPTURED =
         'QueueableJobSetting__mdt.StoreJobPayload__c is Yes for "{0}", but the job could not be serialized, so it cannot be requeued: {1}. On a packaged install this is usually a missing JobSerializerClass__c, because JSON cannot cross a namespace boundary. Otherwise the job holds a field JSON cannot write, such as an interface or an abstract type. See ' +
         DOCS_URL_REQUEUE;
@@ -74,7 +78,7 @@ public inherited sharing class QueueableManager {
     public static final String REQUEUE_SKIPPED_CLASS_NOT_FOUND =
         'The class "{0}" could not be resolved, so the job cannot be rebuilt. It may have been renamed or deleted. On a packaged install, register a {1}Async.JobSerializer in QueueableJobSetting__mdt.JobSerializerClass__c. See ' +
         DOCS_URL_REQUEUE;
-    public static final String DOCS_URL_BATCH_FAILURES = DOCS_URL + '/explanations/batch-failures';
+    public static final String DOCS_URL_BATCH_FAILURES = DOCS_URL + '/features/batch-failures';
     public static final String REQUEUE_SKIPPED_BATCH_FAILURE =
         'This is a batch failure, which has no stored payload. Requeue it with {0}Async.requeueBatchFailures(batch, batchJobId, fieldsToReload). See ' +
         DOCS_URL_BATCH_FAILURES;
@@ -101,6 +105,25 @@ public inherited sharing class QueueableManager {
     public static final String ERROR_MESSAGE_INVALID_DEPENDENCY = 'A dependency requires a target and an outcome (e.g. Async.after(result).succeeded())';
     public static final String ERROR_MESSAGE_DEPENDS_ON_PREVIOUS_WITHOUT_JOB = 'dependsOn(Async.afterPrevious()) requires a previously chained job';
     public static final String ERROR_MESSAGE_UNKNOWN_JOB = 'No job in this chain has custom job id "{0}".';
+    public static final String DOCS_URL_JOB_TIMELINE = DOCS_URL + '/features/job-timeline';
+    public static final String ERROR_MESSAGE_NEXT_IN_CHAIN_OUTSIDE_CHAIN =
+        'nextInChain() places a job right after the one that is running, so it can only be used from inside a QueueableJob. Outside a job, chain() and enqueue() already run jobs in the order they were added. See ' +
+        DOCS_URL_JOB_TIMELINE;
+    public static final String ERROR_MESSAGE_PRIORITY_WITH_NEXT_IN_CHAIN = 'nextInChain() and priority() cannot be combined: a job placed next in the chain runs before any priority.';
+    public static final String ERROR_MESSAGE_LINK_KEY_REQUIRED = 'linkExternalRecord(...) needs a key: the identifier of the record in the other system.';
+    public static final String ERROR_MESSAGE_LINK_RECORD_OUTSIDE_JOB =
+        'Async.linkRecord() adds records to the job that is running, so it can only be called from inside work(). Before the job runs, use forRecord() on the builder. See ' +
+        DOCS_URL_JOB_TIMELINE;
+    public static final String WARNING_MAX_RECORD_LINKS_EXCEEDS_CAP = 'QueueableJobSetting__mdt.MaxRecordLinks__c is {0} for "{1}", above the framework cap of {2}, so it was clamped to {2}.';
+    public static final String WARNING_RECORD_LINKS_TRUNCATED = 'The job "{1}" was linked to {2} records, above the limit of {0} from QueueableJobSetting__mdt.MaxRecordLinks__c, so only the first {0} were stored.';
+    public static final String WARNING_PROGRESS_ROW_NOT_WRITTEN = 'The Enqueued row for "{0}" could not be written: {1}. The job runs anyway and its result row is written when it settles.';
+    public static final String WARNING_PROGRESS_ROW_REPLACED = 'The Enqueued row for "{0}" could not be updated: {1}. A new result row was written instead.';
+    public static final String WARNING_RECORD_LINKS_NOT_WRITTEN = 'Record links for "{0}" could not be written: {1}.';
+    public static final String WARNING_RECORD_LINKS_DML_BUDGET = 'Only {0} of {1} record links were stored for "{2}": the transaction had no DML rows left for the rest.';
+    public static final String REQUEUE_SKIPPED_DEPENDENCY_UNMET = 'Depends on "{0}", which required {1} but was {2}, and that job is not being requeued. Requeue both in the same call, or enqueue this job fresh.';
+    public static final String REQUEUE_SKIPPED_DEPENDENCY_UNKNOWN = 'Depends on job "{0}", whose result is no longer there, so the dependency cannot be checked. Enqueue this job fresh.';
+    public static final String REQUEUE_DEPENDENCY_DROPPED = 'Depended on "{0}", which was {1}, so the replay runs without that dependency.';
+    public static final String ERROR_MESSAGE_REQUEUE_PERMISSION = 'Requeue needs the Async Requeue custom permission. Ask an admin for the Async Requeue Access permission set.';
     public static final String ERROR_MESSAGE_ASYNC_OPTIONS_AFTER_DELAY = 'Cannot set asyncOptions after delay has been set';
     public static final String ERROR_MESSAGE_DELAY_AFTER_ASYNC_OPTIONS = 'Cannot set delay after asyncOptions has been set';
     private static final String ERROR_MESSAGE_CHAIN_NULL = 'QueueableChain cannot be null';
@@ -140,6 +163,56 @@ public inherited sharing class QueueableManager {
 
     public void skipJob(String customJobId) {
         chain.skipJobByCustomJobId(customJobId);
+    }
+
+    public void linkRecords(List<Id> recordIds) {
+        QueueableJob runningJob = chain.getCurrentJob();
+        if (runningJob == null) {
+            throw new IllegalArgumentException(ERROR_MESSAGE_LINK_RECORD_OUTSIDE_JOB);
+        }
+        runningJob.linkRecords(recordIds);
+    }
+
+    public void linkExternalRecords(List<Async.RecordLink> links) {
+        QueueableJob runningJob = chain.getCurrentJob();
+        if (runningJob == null) {
+            throw new IllegalArgumentException(ERROR_MESSAGE_LINK_RECORD_OUTSIDE_JOB);
+        }
+        runningJob.linkExternalRecords(links);
+    }
+
+    public static String linkIdentityOf(Async.RecordLink link) {
+        return (link.source ?? '') + '|' + link.key;
+    }
+
+    public static Async.Outcome outcomeOf(String status) {
+        if (status == STATUS_COMPLETED) {
+            return Async.Outcome.SUCCESS;
+        }
+        if (status == STATUS_FAILED) {
+            return Async.Outcome.FAILURE;
+        }
+        return null;
+    }
+
+    public static Boolean outcomeMatches(Async.Outcome actual, Async.Outcome required) {
+        return actual != null && (required == Async.Outcome.COMPLETED || actual == required);
+    }
+
+    public static Schema.SObjectType sobjectTypeOrNull(Id recordId) {
+        try {
+            return recordId.getSObjectType();
+        } catch (SObjectException unknownPrefix) {
+            return null;
+        }
+    }
+
+    public static List<Id> idsOf(List<SObject> records) {
+        List<Id> ids = new List<Id>();
+        for (SObject record : records ?? new List<SObject>()) {
+            ids.add(record?.Id);
+        }
+        return ids;
     }
 
     public Async.QueueableJobContext getQueueableJobContext() {
@@ -184,6 +257,7 @@ public inherited sharing class QueueableManager {
         }
 
         QueueableJob clonedJob = job.cloneJob();
+        clonedJob.addedByCustomJobId = job.isFinalizer ? null : chain.getCurrentJob()?.customJobId;
         chain.addJob(clonedJob);
         return new Async.Result(clonedJob).setCurrentQueueableChainState();
     }
@@ -278,12 +352,62 @@ public inherited sharing class QueueableManager {
         return settingFor(job.className, QueueableJobSetting__mdt.LoggerClass__c);
     }
 
+    public static Boolean trackProgressEnabledFor(QueueableJob job) {
+        return settingFor(job.className, QueueableJobSetting__mdt.TrackJobProgress__c) == 'Yes';
+    }
+
+    public static Integer maxRecordLinksFor(QueueableJob job) {
+        Decimal configured = numericSettingFor(
+            job.className,
+            QueueableJobSetting__mdt.MaxRecordLinks__c
+        );
+        if (configured == null) {
+            return DEFAULT_MAX_RECORD_LINKS;
+        }
+        if (configured <= MAX_RECORD_LINKS_CAP) {
+            return configured.intValue();
+        }
+        job.recordConfigurationWarning(
+            String.format(
+                WARNING_MAX_RECORD_LINKS_EXCEEDS_CAP,
+                new List<String>{
+                    String.valueOf(configured.intValue()),
+                    job.className,
+                    String.valueOf(MAX_RECORD_LINKS_CAP)
+                }
+            )
+        );
+        return MAX_RECORD_LINKS_CAP;
+    }
+
+    private static Decimal numericSettingFor(String jobClassName, SObjectField field) {
+        Map<String, QueueableJobSetting__mdt> settings = QueueableJobSettings.jobSettingByName;
+        Decimal jobSpecific = (Decimal) settings.get(jobClassName)?.get(field);
+        return jobSpecific ?? (Decimal) settings.get(QUEUEABLE_JOB_SETTING_ALL)?.get(field);
+    }
+
     public static String settingFor(String jobClassName, SObjectField field) {
-        Map<String, QueueableJobSetting__mdt> settings = QueueableChain.jobSettingByName;
+        Map<String, QueueableJobSetting__mdt> settings = QueueableJobSettings.jobSettingByName;
         String jobSpecific = (String) settings.get(jobClassName)?.get(field);
         return String.isNotBlank(jobSpecific)
             ? jobSpecific
             : (String) settings.get(QUEUEABLE_JOB_SETTING_ALL)?.get(field);
+    }
+
+    public static Async.Dependency firstUnsatisfiedDependency(
+        QueueableJob job,
+        Map<String, Async.Outcome> outcomeByCustomJobId
+    ) {
+        if (job.dependencies == null) {
+            return null;
+        }
+        for (Async.Dependency dependency : job.dependencies) {
+            Async.Outcome actual = outcomeByCustomJobId.get(dependency.resolvedTargetCustomJobId);
+            if (!outcomeMatches(actual, dependency.requiredOutcome)) {
+                return dependency;
+            }
+        }
+        return null;
     }
 
     public static Boolean declaresRetryStateHandling(QueueableJob job) {

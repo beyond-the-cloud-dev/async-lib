@@ -37,24 +37,6 @@ features:
 
 <div class="landing-section">
 
-## See it, then fix it
-
-**Watch a chain run.** Jobs, chunk pages and retries update in place, and a job added at runtime shows up where it will run.
-
-![A running chain on the record page, with a chunk run and a live progress bar](/images/job-timeline/running.png)
-
-**Find out what broke and why.** The failed step opens with its exception, and the steps it took down with it are marked as skipped. Requeue them in one click.
-
-![A failed chain with its exception and the requeue button](/images/job-timeline/failed-chain.png)
-
-**See what depends on what.** The chain map draws the run order and every dependency, met or not.
-
-![The chain map with dependency lines between jobs](/images/job-timeline/chain-map.png)
-
-</div>
-
-<div class="landing-section">
-
 ## Less code than doing it by hand
 
 Your job logic stays the same. Async Lib takes over enqueueing, chaining and tracking.

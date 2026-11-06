@@ -3,78 +3,130 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { withBase } from 'vitepress';
 
 const PAGES = 8;
-const PAGE_MS = 450;
-const CHUNK_START_MS = 1800;
+const PAGE_MS = 600;
+const CHUNK_START_MS = 2400;
 const CHUNK_END_MS = CHUNK_START_MS + PAGE_MS * PAGES;
-const ADDED_JOB_END_MS = CHUNK_END_MS + 1600;
-const CHAIN_END_MS = ADDED_JOB_END_MS + 1600;
-const LOOP_MS = CHAIN_END_MS + 2400;
+const ADDED_JOB_END_MS = CHUNK_END_MS + 2200;
+const CHAIN_END_MS = ADDED_JOB_END_MS + 2200;
+const HAND_OVER_MS = CHAIN_END_MS + 4000;
 const STILL_FRAME_MS = CHUNK_START_MS + PAGE_MS * 5;
 
 const STATUS_LABELS = { ok: 'Completed', run: 'Running', wait: 'Enqueued' };
 
-const startingState = () => ({
+const RUNS = [
+    {
+        name: 'Order approval pipeline',
+        first: 'Validate order',
+        second: 'Credit check',
+        third: 'Reserve stock',
+        chunk: 'Tax 16 lines',
+        added: 'Notify sales team',
+        last: 'Sync to ERP'
+    },
+    {
+        name: 'Nightly stock sync',
+        first: 'Read warehouse feed',
+        second: 'Match SKUs',
+        third: 'Adjust reservations',
+        chunk: 'Update 16 locations',
+        added: 'Alert buyers',
+        last: 'Publish to storefront'
+    },
+    {
+        name: 'Invoice export',
+        first: 'Collect invoices',
+        second: 'Apply tax rules',
+        third: 'Render PDFs',
+        chunk: 'Send 16 invoices',
+        added: 'Flag late payers',
+        last: 'Post to ledger'
+    }
+];
+
+const runningChain = run => ({
+    name: run.name,
+    addedJobName: run.added,
+    open: false,
+    isNew: false,
+    finished: false,
+    age: 'just now',
     seconds: 12,
     pagesDone: 0,
-    finished: false,
-    newChain: false,
     steps: [
-        { id: 'validate', name: 'Validate order', status: 'ok', meta: '4 s' },
-        { id: 'credit', name: 'Credit check', status: 'ok', meta: '6 s' },
-        { id: 'reserve', name: 'Reserve stock', status: 'run', meta: 'on the platform' },
-        { id: 'tax', name: 'Tax 16 lines', status: 'wait', chunk: true },
-        { id: 'sync', name: 'Sync to ERP', status: 'wait' }
+        { id: 'first', name: run.first, status: 'ok', meta: '4 s' },
+        { id: 'second', name: run.second, status: 'ok', meta: '6 s' },
+        { id: 'third', name: run.third, status: 'run', meta: 'on the platform' },
+        { id: 'chunk', name: run.chunk, status: 'wait', chunk: true },
+        { id: 'last', name: run.last, status: 'wait' }
     ]
 });
 
-const state = ref(startingState());
-const fading = ref(false);
+const finishedChain = (run, age) => {
+    const chain = runningChain(run);
+    chain.steps.forEach(step => (step.status = 'ok'));
+    return { ...chain, age, finished: true, seconds: 21, pagesDone: PAGES };
+};
+
+const openChain = chain => ({ ...chain, open: true });
+
+const chains = ref([openChain(runningChain(RUNS[0])), finishedChain(RUNS[2], '1 min ago')]);
+const runIndex = ref(0);
+const completedCount = ref(1);
 const timers = [];
 
-const stepById = id => state.value.steps.find(step => step.id === id);
+const currentChain = () => chains.value.find(chain => chain.open);
+const stepOf = (chain, id) => chain.steps.find(step => step.id === id);
 
 function setStep(id, status, meta) {
-    Object.assign(stepById(id), { status, meta });
+    Object.assign(stepOf(currentChain(), id), { status, meta });
 }
 
 function finishPage() {
-    state.value.pagesDone += 1;
+    currentChain().pagesDone += 1;
 }
 
 function startChunk() {
-    setStep('reserve', 'ok', '5 s');
-    setStep('tax', 'run');
-    state.value.seconds += 2;
+    setStep('third', 'ok', '5 s');
+    setStep('chunk', 'run');
+    currentChain().seconds += 2;
 }
 
 function addJobAfterChunk() {
-    setStep('tax', 'ok', '4 s');
-    state.value.steps.splice(4, 0, {
-        id: 'notify',
-        name: 'Notify sales team',
+    const chain = currentChain();
+    setStep('chunk', 'ok', '4 s');
+    chain.steps.splice(4, 0, {
+        id: 'added',
+        name: chain.addedJobName,
         status: 'run',
         isNew: true,
-        tag: '↳ added by Tax 16 lines',
+        tag: `↳ added by ${stepOf(chain, 'chunk').name}`,
         meta: 'on the platform'
     });
-    state.value.seconds += 4;
+    chain.seconds += 4;
 }
 
 function runLastStep() {
-    setStep('notify', 'ok', '1 s');
-    setStep('sync', 'run', 'on the platform');
-    state.value.newChain = true;
-    state.value.seconds += 2;
+    setStep('added', 'ok', '1 s');
+    setStep('last', 'run', 'on the platform');
+    currentChain().seconds += 2;
+    const nextRun = RUNS[(runIndex.value + 1) % RUNS.length];
+    chains.value.unshift({ ...runningChain(nextRun), isNew: true });
 }
 
 function finishChain() {
-    setStep('sync', 'ok', '2 s');
-    state.value.finished = true;
+    setStep('last', 'ok', '2 s');
+    currentChain().finished = true;
+    completedCount.value += 1;
 }
 
-function restart() {
-    state.value = startingState();
-    fading.value = false;
+function handOverToNextChain() {
+    const finished = currentChain();
+    const next = chains.value[0];
+    finished.open = false;
+    next.open = true;
+    next.isNew = false;
+    chains.value = [next, finished];
+    runIndex.value = (runIndex.value + 1) % RUNS.length;
     schedule();
 }
 
@@ -90,9 +142,9 @@ const beats = () => [
 ];
 
 function schedule() {
+    timers.length = 0;
     beats().forEach(([at, beat]) => timers.push(setTimeout(beat, at)));
-    timers.push(setTimeout(() => (fading.value = true), LOOP_MS - 300));
-    timers.push(setTimeout(restart, LOOP_MS));
+    timers.push(setTimeout(handOverToNextChain, HAND_OVER_MS));
 }
 
 onMounted(() => {
@@ -107,57 +159,53 @@ onMounted(() => {
 
 onBeforeUnmount(() => timers.forEach(clearTimeout));
 
-const inFlight = computed(() => (state.value.finished ? 0 : 1) + (state.value.newChain ? 1 : 0));
+const inFlight = computed(() => chains.value.filter(chain => !chain.finished).length);
 
 const chips = computed(() => [
-    { label: 'All', count: 3 + (state.value.newChain ? 1 : 0), active: true },
+    { label: 'All', count: inFlight.value + completedCount.value + 1, active: true },
     { label: 'In flight', count: inFlight.value, live: true },
     { label: 'Failed', count: 1 },
-    { label: 'Completed', count: 1 + (state.value.finished ? 1 : 0) }
+    { label: 'Completed', count: completedCount.value }
 ]);
 
-const stepsDone = computed(() => state.value.steps.filter(step => step.status === 'ok').length);
+const stepsDoneOf = chain => chain.steps.filter(step => step.status === 'ok').length;
 
-const percent = computed(() => {
-    const jobs = state.value.steps.filter(step => !step.chunk);
+function percentOf(chain) {
+    const jobs = chain.steps.filter(step => !step.chunk);
     const jobsDone = jobs.filter(step => step.status === 'ok').length;
-    return Math.round(((jobsDone + state.value.pagesDone) / (jobs.length + PAGES)) * 100);
-});
+    return Math.round(((jobsDone + chain.pagesDone) / (jobs.length + PAGES)) * 100);
+}
 
-const progressText = computed(
-    () =>
-        `${stepsDone.value} of ${state.value.steps.length} steps completed · ` +
-        `${state.value.pagesDone} of ${PAGES} pages`
-);
+const progressTextOf = chain =>
+    `${stepsDoneOf(chain)} of ${chain.steps.length} steps completed · ` +
+    `${chain.pagesDone} of ${PAGES} pages`;
 
-const chainMeta = computed(() => {
-    const steps = `${state.value.steps.length} steps · ${PAGES} pages`;
-    return state.value.finished
-        ? `just now · ${state.value.seconds} s · ${steps}`
-        : `just now · running ${state.value.seconds} s · ${steps}`;
-});
+function metaOf(chain) {
+    const steps = `${chain.steps.length} steps · ${PAGES} pages`;
+    return chain.finished
+        ? `${chain.age} · ${chain.seconds} s · ${steps}`
+        : `${chain.age} · running ${chain.seconds} s · ${steps}`;
+}
 
-const squares = computed(() =>
+const squaresOf = chain =>
     Array.from({ length: PAGES }, (_, page) => {
-        if (page < state.value.pagesDone) return 'ok';
-        return page === state.value.pagesDone && stepById('tax').status === 'run' ? 'run' : 'todo';
-    })
-);
+        if (page < chain.pagesDone) return 'ok';
+        return page === chain.pagesDone && stepOf(chain, 'chunk').status === 'run' ? 'run' : 'todo';
+    });
 
-const pageSummary = computed(() =>
-    stepById('tax').status === 'run'
-        ? `page ${Math.min(state.value.pagesDone + 1, PAGES)} of ${PAGES}`
-        : `${state.value.pagesDone} of ${PAGES} pages`
-);
+const pageSummaryOf = chain =>
+    stepOf(chain, 'chunk').status === 'run'
+        ? `page ${Math.min(chain.pagesDone + 1, PAGES)} of ${PAGES}`
+        : `${chain.pagesDone} of ${PAGES} pages`;
 </script>
 
 <template>
-    <div
+    <a
         class="demo"
-        role="img"
-        aria-label="The Async Jobs card on a Salesforce record page. A chain of jobs runs step by step, a chunk run fills page by page, a job added at runtime appears in its place, and a new chain arrives on top."
+        :href="withBase('/features/job-timeline')"
+        aria-label="See the Job Timeline. The Async Jobs card on a Salesforce record page. A chain of jobs runs step by step, a chunk run fills page by page, a job added at runtime appears in its place, and a new chain arrives on top."
     >
-        <div class="card" :class="{ fading }" aria-hidden="true">
+        <div class="card" aria-hidden="true">
             <div class="head">
                 <img class="logo" :src="withBase('/logo.png')" alt="" />
                 <span class="title">Async Jobs</span>
@@ -176,79 +224,79 @@ const pageSummary = computed(() =>
             </div>
 
             <div class="list">
-                <Transition name="arrive">
-                    <div v-if="state.newChain" class="chain-row">
-                        <span class="chevron">›</span>
-                        <div class="chain-text">
-                            <div>
-                                <span class="chain-name">Nightly stock sync</span>
-                                <span class="badge badge-run">Running</span>
-                                <span class="badge badge-new">New</span>
-                            </div>
-                            <div class="chain-meta">just now · 3 steps</div>
-                        </div>
-                    </div>
-                </Transition>
-
-                <div class="chain-row open">
-                    <span class="chevron down">›</span>
-                    <div class="chain-text">
-                        <div>
-                            <span class="chain-name">Order approval pipeline</span>
-                            <span v-if="state.finished" class="badge badge-ok">✓ Completed</span>
-                            <span v-else class="badge badge-run">Running</span>
-                        </div>
-                        <div class="chain-meta">{{ chainMeta }}</div>
-                    </div>
-                </div>
-
-                <div class="panel">
-                    <div class="progress-text">
-                        <span>{{ progressText }}</span>
-                        <span>{{ percent }} %</span>
-                    </div>
-                    <div class="bar"><i :style="{ width: percent + '%' }"></i></div>
-
-                    <TransitionGroup name="arrive" tag="div" class="steps">
-                        <div
-                            v-for="(step, index) in state.steps"
-                            :key="step.id"
-                            class="step"
-                            :class="{
-                                current: step.status === 'run',
-                                added: step.isNew,
-                                last: index === state.steps.length - 1
-                            }"
-                        >
-                            <span class="glyph" :class="'glyph-' + step.status">
-                                <template v-if="step.status === 'ok'">✓</template>
-                            </span>
-                            <div class="step-text">
+                <TransitionGroup name="arrive" tag="div">
+                    <div v-for="chain in chains" :key="chain.name" class="chain">
+                        <div class="chain-row" :class="{ open: chain.open }">
+                            <span class="chevron" :class="{ down: chain.open }">›</span>
+                            <div class="chain-text">
                                 <div>
-                                    <span class="step-name">{{ step.name }}</span>
-                                    <span class="step-status" :class="'status-' + step.status">
-                                        {{ STATUS_LABELS[step.status] }}
+                                    <span class="chain-name">{{ chain.name }}</span>
+                                    <span v-if="chain.finished" class="badge badge-ok">✓ Completed</span>
+                                    <span v-else class="badge badge-run">Running</span>
+                                    <span v-if="chain.isNew" class="badge badge-new">New</span>
+                                </div>
+                                <div class="chain-meta">
+                                    <span v-if="chain.finished && !chain.open" class="dots">
+                                        <i v-for="step in chain.steps" :key="step.id" class="ok"></i>
                                     </span>
-                                    <span v-if="step.isNew" class="badge badge-new">New</span>
+                                    {{ metaOf(chain) }}
                                 </div>
-                                <div v-if="step.chunk" class="step-meta">
-                                    <span class="strip">
-                                        <i
-                                            v-for="(square, page) in squares"
-                                            :key="page"
-                                            :class="'sq-' + square"
-                                        ></i>
-                                    </span>
-                                    {{ pageSummary }}
-                                </div>
-                                <div v-else-if="step.tag" class="step-meta">
-                                    <span class="tag">{{ step.tag }}</span>
-                                </div>
-                                <div v-else-if="step.meta" class="step-meta">{{ step.meta }}</div>
                             </div>
                         </div>
-                    </TransitionGroup>
-                </div>
+
+                        <div class="panel-slide" :class="{ open: chain.open }">
+                            <div class="panel-clip">
+                                <div class="panel">
+                                    <div class="progress-text">
+                                        <span>{{ progressTextOf(chain) }}</span>
+                                        <span>{{ percentOf(chain) }} %</span>
+                                    </div>
+                                    <div class="bar"><i :style="{ width: percentOf(chain) + '%' }"></i></div>
+
+                                    <TransitionGroup name="arrive" tag="div" class="steps">
+                                        <div
+                                            v-for="(step, index) in chain.steps"
+                                            :key="step.id"
+                                            class="step"
+                                            :class="{
+                                                current: step.status === 'run',
+                                                added: step.isNew,
+                                                last: index === chain.steps.length - 1
+                                            }"
+                                        >
+                                            <span class="glyph" :class="'glyph-' + step.status">
+                                                <template v-if="step.status === 'ok'">✓</template>
+                                            </span>
+                                            <div class="step-text">
+                                                <div>
+                                                    <span class="step-name">{{ step.name }}</span>
+                                                    <span class="step-status" :class="'status-' + step.status">
+                                                        {{ STATUS_LABELS[step.status] }}
+                                                    </span>
+                                                    <span v-if="step.isNew" class="badge badge-new">New</span>
+                                                </div>
+                                                <div v-if="step.chunk" class="step-meta">
+                                                    <span class="strip">
+                                                        <i
+                                                            v-for="(square, page) in squaresOf(chain)"
+                                                            :key="page"
+                                                            :class="'sq-' + square"
+                                                        ></i>
+                                                    </span>
+                                                    {{ pageSummaryOf(chain) }}
+                                                </div>
+                                                <div v-else-if="step.tag" class="step-meta">
+                                                    <span class="tag">{{ step.tag }}</span>
+                                                </div>
+                                                <div v-else-if="step.meta" class="step-meta">{{ step.meta }}</div>
+                                            </div>
+                                        </div>
+                                    </TransitionGroup>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </TransitionGroup>
 
                 <div class="chain-row">
                     <span class="chevron">›</span>
@@ -267,19 +315,6 @@ const pageSummary = computed(() =>
                     </div>
                     <span class="requeue">↻ 3</span>
                 </div>
-                <div class="chain-row">
-                    <span class="chevron">›</span>
-                    <div class="chain-text">
-                        <div>
-                            <span class="chain-name">Invoice export</span>
-                            <span class="badge badge-ok">✓ Completed</span>
-                        </div>
-                        <div class="chain-meta">
-                            <span class="dots"><i class="ok"></i><i class="ok"></i><i class="ok"></i></span>
-                            11 min ago · 3 steps
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div class="foot">
@@ -287,11 +322,12 @@ const pageSummary = computed(() =>
                 <span>by Beyond The Cloud</span>
             </div>
         </div>
-    </div>
+    </a>
 </template>
 
 <style scoped>
 .demo {
+    display: block;
     --ok: #2a7a44;
     --run: #016dc3;
     --bad: #ba0517;
@@ -316,10 +352,18 @@ const pageSummary = computed(() =>
     border-radius: 12px;
     background: #fff;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
-    transition: opacity 0.3s;
+    transition:
+        transform 0.2s,
+        box-shadow 0.2s;
 }
-.card.fading {
-    opacity: 0;
+.demo:hover .card {
+    transform: translateY(-3px);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+}
+.demo:focus-visible {
+    border-radius: 12px;
+    outline: 2px solid #0250d9;
+    outline-offset: 4px;
 }
 .head {
     display: flex;
@@ -404,6 +448,7 @@ const pageSummary = computed(() =>
     border-bottom: 0;
 }
 .chevron {
+    transition: transform 0.3s;
     width: 12px;
     color: #0250d9;
     font-size: 17px;
@@ -412,6 +457,18 @@ const pageSummary = computed(() =>
 }
 .chevron.down {
     transform: rotate(90deg);
+}
+.panel-slide {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.6s ease-in-out;
+}
+.panel-slide.open {
+    grid-template-rows: 1fr;
+}
+.panel-clip {
+    min-height: 0;
+    overflow: hidden;
 }
 .chain-text {
     flex: 1;
@@ -626,6 +683,17 @@ const pageSummary = computed(() =>
 }
 .arrive-enter-to {
     max-height: 70px;
+}
+.arrive-leave-active {
+    transition: all 0.4s;
+    overflow: hidden;
+}
+.arrive-leave-from {
+    max-height: 70px;
+}
+.arrive-leave-to {
+    max-height: 0;
+    opacity: 0;
 }
 .arrive-move {
     transition: transform 0.4s;

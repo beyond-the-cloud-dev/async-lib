@@ -882,6 +882,8 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     static void shouldScheduleBatchJobIn5Minutes() {
+        Datetime beforeScheduling = System.now();
+
         Test.startTest();
         Async.batchable(new AsyncTest())
             .scopeSize(100)
@@ -897,9 +899,12 @@ private class AsyncTest implements Database.Batchable<SObject> {
             WHERE CronJobDetail.Name = :TEST_SCHEDULABLE_JOB_NAME
         ];
         Assert.areEqual(1, triggers.size(), 'Should have one trigger scheduled.');
-        Assert.areEqual(
-            triggers[0].CreatedDate.addMinutes(5).minute(),
-            triggers[0].NextFireTime.minute(),
+        Set<Integer> minutesFiveFromScheduling = new Set<Integer>{
+            beforeScheduling.addMinutes(5).minute(),
+            triggers[0].CreatedDate.addMinutes(5).minute()
+        };
+        Assert.isTrue(
+            minutesFiveFromScheduling.contains(triggers[0].NextFireTime.minute()),
             'Next fire time should be in 5 minutes.'
         );
     }

@@ -97,4 +97,4 @@ JobSerializerClass__c = AsyncJobSerializer
 It must stay `global`. Async Lib resolves it by name from inside its own namespace, and
 `Type.forName` reaches nothing else across the boundary. The methods stay `public`.
 
-See [Requeue](https://async.beyondthecloud.dev/explanations/requeue).
+See [Requeue](https://async.beyondthecloud.dev/features/requeue).

@@ -32,6 +32,14 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static final String PRIMITIVE_VALUE_INITIAL = 'INITIAL_VALUE';
     private static final String CHUNK_PROCESSED = 'CHUNK_PROCESSED';
     private static final String LOGGER_CONSTRUCTOR_FAILURE = 'the logger needs a setting that is not there';
+    private static Integer dmlStatementsAfterLink;
+    private static List<String> runOrder = new List<String>();
+    private static List<Account> chunkSourceRecords;
+    private static String sequenceSnapshotTag;
+    private static Map<String, Integer> placeholderSequenceSeen = new Map<String, Integer>();
+    private static Map<String, List<String>> insertsByTag = new Map<String, List<String>>();
+    private static Map<String, String> priorityChainByTag = new Map<String, String>();
+    private static Async.JobContext capturedJobContext;
 
     @IsTest
     private static void shouldEnqueue60QueueablesSuccessfully() {
@@ -393,7 +401,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         job3.uniqueName = 'job3';
 
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 IsDisabled__c = true
@@ -422,7 +430,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest8 job8 = new QueueableJobTest8();
 
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             getClassNameWithNamespaceDotPrefix(
                 'AsyncTest.QueueableJobTest1'
             ) => new QueueableJobSetting__mdt(
@@ -473,7 +481,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest2 job2 = new QueueableJobTest2();
 
         QueueableChain chain1 = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             getClassNameWithNamespaceDotPrefix(
                 'AsyncTest.QueueableJobTest1'
             ) => new QueueableJobSetting__mdt(
@@ -482,7 +490,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
             )
         };
         QueueableChain chain2 = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             getClassNameWithNamespaceDotPrefix(
                 'AsyncTest.QueueableJobTest1'
             ) => new QueueableJobSetting__mdt(
@@ -2489,7 +2497,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldPreferAJobSpecificLoggerOverTheOrgWideDefault() {
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 LoggerClass__c = loggerName('RecordingLogger')
@@ -2736,7 +2744,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest1 job = new QueueableJobTest1();
 
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 MaxRetries__c = 3,
@@ -2759,7 +2767,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         job.maxRetries = 5;
 
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 MaxRetries__c = 3
@@ -3128,7 +3136,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         SuccessfulQueueableTest job = new SuccessfulQueueableTest();
 
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
         chain.addJob(job);
         QueueableManager.get().setChain(chain);
 
@@ -3158,7 +3166,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         SuccessfulQueueableTest jobB = new SuccessfulQueueableTest();
 
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
         chain.addJob(jobA);
         jobB.dependencies = new List<Async.Dependency>{
             dependencyOn(jobA.customJobId, Async.Outcome.SUCCESS)
@@ -3217,7 +3225,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 IsDisabled__c = true
             )
         );
-        QueueableChain.jobSettingByName = settings;
+        QueueableJobSettings.jobSettingByName = settings;
         chain.addJob(job);
 
         Test.startTest();
@@ -3249,7 +3257,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldRecordChainResultsEndToEnd() {
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
         QueueableManager.get().setChain(chain);
 
         Test.startTest();
@@ -3326,7 +3334,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldRecordRetryHistoryOnExhaustionEndToEnd() {
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
         QueueableManager.get().setChain(chain);
 
         Test.startTest();
@@ -3873,7 +3881,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldKeepEveryAttemptInRetryHistoryAfterDiscardingChainChanges() {
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
         QueueableManager.get().setChain(chain);
 
         Test.startTest();
@@ -3963,7 +3971,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldKeepChainRunningWhenOnFinalFailureThrows() {
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
         QueueableManager.get().setChain(chain);
 
         Test.startTest();
@@ -4102,7 +4110,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
         QueueableJobTest1 job = new QueueableJobTest1();
 
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
                 DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
                 MaxRetries__c = 2,
@@ -4521,7 +4529,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldCreateResultRowForChunk() {
         List<Account> accounts = createAccounts(3);
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
 
         Test.startTest();
         QueueableManager.get().setChain(chain);
@@ -4905,7 +4913,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldFailAJobFromAQueueableMock() {
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
         AsyncMock.whenQueueable('mocked-failure')
             .thenThrow(new CustomException(CUSTOM_ERROR_MESSAGE));
 
@@ -5000,7 +5008,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldFailAndRetryAPageWhenTheSourceThrows() {
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
 
         Test.startTest();
         QueueableManager.get().setChain(chain);
@@ -5424,7 +5432,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldRecordSummaryResultWhenRunHaltsOnFailure() {
         List<Account> accounts = accountsWithOneFailingRecord();
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
 
         Test.startTest();
         QueueableManager.get().setChain(chain);
@@ -5454,7 +5462,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldRecordSummaryResultWhenChainStopsDuringRun() {
         List<Account> accounts = createAccounts(6);
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = resultsEnabledForAll();
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
 
         Test.startTest();
         QueueableManager.get().setChain(chain);
@@ -5508,8 +5516,8 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldLetAJobRecordOptOutOfOrgWidePayloadStorage() {
         RequeueableJob job = new RequeueableJob('SENSITIVE');
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = payloadStorageOn();
-        QueueableChain.jobSettingByName.put(
+        QueueableJobSettings.jobSettingByName = payloadStorageOn();
+        QueueableJobSettings.jobSettingByName.put(
             job.className,
             new QueueableJobSetting__mdt(
                 QueueableJobName__c = job.className,
@@ -5527,7 +5535,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     private static void shouldNotStoreAPayloadForChunkJobs() {
-        QueueableChain.jobSettingByName = payloadStorageOn();
+        QueueableJobSettings.jobSettingByName = payloadStorageOn();
 
         Async.Result chunked = Async.chunk(
                 new StateCarryingChunkJob(),
@@ -5674,7 +5682,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldRequeueAStoredJobAndLinkItBackToTheOriginal() {
         RequeueableJob job = new RequeueableJob('REPLAYED');
         chainStoringPayloads().addJob(job);
-        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+        QueueableJobSettings.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
             .CreateResult__c = true;
         AsyncResult__c original = storedResultFor(job);
 
@@ -5755,7 +5763,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private static void shouldNotStoreAPayloadOnTheRowOfAJobThatSucceeded() {
         RequeueableJob job = new RequeueableJob('SUCCEEDED');
         QueueableChain chain = chainStoringPayloads();
-        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+        QueueableJobSettings.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
             .CreateResult__c = true;
         chain.addJob(job);
         QueueableManager.get().setChain(chain);
@@ -5783,7 +5791,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     private static void shouldKeepThePayloadThroughARetryThatRestoresEnqueuedState() {
-        QueueableChain.jobSettingByName = payloadStorageOn();
+        QueueableJobSettings.jobSettingByName = payloadStorageOn();
 
         Test.startTest();
         Async.queueable(new FailingRequeueableJob())
@@ -5809,7 +5817,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     @IsTest
     private static void shouldKeepThePayloadThroughADeepClonedRetry() {
-        QueueableChain.jobSettingByName = payloadStorageOn();
+        QueueableJobSettings.jobSettingByName = payloadStorageOn();
 
         Test.startTest();
         Async.queueable(new FailingRequeueableJob())
@@ -5861,7 +5869,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldDegradeWhenTheRegisteredSerializerReturnsNull() {
         QueueableChain chain = chainStoringPayloads();
-        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+        QueueableJobSettings.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
             .JobSerializerClass__c = loggerName('NullReturningJobSerializer');
         RequeueableJob job = new RequeueableJob('NULL-SERIALIZER');
 
@@ -5879,8 +5887,8 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldCaptureTheJobBeforeAnyChainBookkeepingLandsOnIt() {
         RequeueableJob job = new RequeueableJob('PRISTINE');
-        QueueableChain.jobSettingByName = payloadStorageOn();
-        QueueableChain.jobSettingByName.put(
+        QueueableJobSettings.jobSettingByName = payloadStorageOn();
+        QueueableJobSettings.jobSettingByName.put(
             job.className,
             new QueueableJobSetting__mdt(QueueableJobName__c = job.className, MaxRetries__c = 3)
         );
@@ -6071,7 +6079,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldRouteBothHalvesThroughARegisteredSerializer() {
         QueueableChain chain = chainStoringPayloads();
-        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+        QueueableJobSettings.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
             .JobSerializerClass__c = loggerName('RecordingJobSerializer');
         RequeueableJob job = new RequeueableJob('VIA-SERIALIZER');
         chain.addJob(job);
@@ -6094,7 +6102,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
     @IsTest
     private static void shouldRejectARegisteredClassThatIsNotASerializer() {
         QueueableChain chain = chainStoringPayloads();
-        QueueableChain.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+        QueueableJobSettings.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
             .JobSerializerClass__c = loggerName('RecordingLogger');
         RequeueableJob job = new RequeueableJob('NOT-A-SERIALIZER');
 
@@ -6740,6 +6748,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
                 new Map<String, Object>{
                     'attributes' => new Map<String, String>{ 'type' => 'BatchApexErrorEvent' },
                     'AsyncApexJobId' => FAILED_BATCH_JOB_ID,
+                    'ReplayId' => '1',
                     'Phase' => BatchFailureRecorder.PHASE_EXECUTE,
                     'ExceptionType' => exceptionType,
                     'Message' => AsyncTestBatch.FAILURE_MESSAGE,
@@ -6752,6 +6761,1342 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     private static String batchClassName() {
         return getClassNameWithNamespaceDotPrefix('AsyncTestBatch');
+    }
+
+    @IsTest
+    private static void shouldSortNextInChainJobsAfterFinalizersAndBeforePriority() {
+        QueueableJob finalizer = new StopChainFinalizer();
+        finalizer.parentCustomJobId = 'parent';
+        finalizer.chainSequence = 4;
+        QueueableJob prioritized = new SuccessfulQueueableTest();
+        prioritized.priority = 1;
+        prioritized.chainSequence = 3;
+        QueueableJob inserted = new SuccessfulQueueableTest();
+        inserted.nextInChain = true;
+        inserted.chainSequence = 9;
+        QueueableJob plain = new SuccessfulQueueableTest();
+        plain.chainSequence = 2;
+        List<QueueableJob> jobs = new List<QueueableJob>{ plain, inserted, prioritized, finalizer };
+
+        jobs.sort();
+
+        Assert.areEqual(
+            new List<Integer>{ 4, 9, 3, 2 },
+            chainSequencesOf(jobs),
+            'Order is finalizer, nextInChain, priority, sequence.'
+        );
+    }
+
+    @IsTest
+    private static void shouldDedupeLinksKeepingOrder() {
+        Id first = fakeAccountId(1);
+        Id second = fakeAccountId(2);
+        Id third = fakeAccountId(3);
+        QueueableJob job = new SuccessfulQueueableTest();
+
+        job.linkRecords(new List<Id>{ first, second, first, third });
+        job.linkRecords(new List<Id>{ second });
+        job.linkRecords(null);
+        job.linkExternalRecords(
+            new List<Async.RecordLink>{
+                new Async.RecordLink('NetSuite', 'Customer', '123'),
+                new Async.RecordLink('NetSuite', 'Customer', '123'),
+                new Async.RecordLink(null, null, '123')
+            }
+        );
+
+        Assert.areEqual(
+            new List<String>{ first, second, third, '123', '123' },
+            keysOf(job.links),
+            'Same key under another source is another link.'
+        );
+        Assert.areEqual(
+            new List<String>{ 'Salesforce', 'Salesforce', 'Salesforce', 'NetSuite', null },
+            sourcesOf(job.links)
+        );
+        Assert.areEqual('Account', job.links[0].objectName, 'Set from the Id for Salesforce.');
+        Assert.areEqual('Customer', job.links[3].objectName, 'As given for an external key.');
+    }
+
+    @IsTest
+    private static void shouldRejectAnExternalLinkWithoutAKey() {
+        String message;
+        try {
+            Async.queueable(new SuccessfulQueueableTest())
+                .linkExternalRecord('NetSuite', 'Customer', ' ');
+        } catch (IllegalArgumentException e) {
+            message = e.getMessage();
+        }
+        Assert.areEqual(QueueableManager.ERROR_MESSAGE_LINK_KEY_REQUIRED, message);
+    }
+
+    private static List<String> keysOf(List<Async.RecordLink> links) {
+        List<String> keys = new List<String>();
+        for (Async.RecordLink link : links) {
+            keys.add(link.key);
+        }
+        return keys;
+    }
+
+    private static List<String> sourcesOf(List<Async.RecordLink> links) {
+        List<String> sources = new List<String>();
+        for (Async.RecordLink link : links) {
+            sources.add(link.source);
+        }
+        return sources;
+    }
+
+    @IsTest
+    private static void shouldClampMaxRecordLinksAndWarn() {
+        QueueableJob job = new SuccessfulQueueableTest();
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                MaxRecordLinks__c = 9000
+            )
+        };
+
+        Integer limitApplied = QueueableManager.maxRecordLinksFor(job);
+
+        Assert.areEqual(QueueableManager.MAX_RECORD_LINKS_CAP, limitApplied);
+        Assert.areEqual(
+            String.format(
+                QueueableManager.WARNING_MAX_RECORD_LINKS_EXCEEDS_CAP,
+                new List<String>{
+                    '9000',
+                    job.className,
+                    String.valueOf(QueueableManager.MAX_RECORD_LINKS_CAP)
+                }
+            ),
+            job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldFallBackToDefaultMaxRecordLinks() {
+        QueueableJob job = new SuccessfulQueueableTest();
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>();
+
+        Assert.areEqual(
+            QueueableManager.DEFAULT_MAX_RECORD_LINKS,
+            QueueableManager.maxRecordLinksFor(job)
+        );
+
+        QueueableJobSettings.jobSettingByName.put(
+            job.className,
+            new QueueableJobSetting__mdt(
+                QueueableJobName__c = job.className,
+                MaxRecordLinks__c = 10
+            )
+        );
+
+        Assert.areEqual(10, QueueableManager.maxRecordLinksFor(job));
+        Assert.isNull(job.retryHistory, 'A value inside the cap records no warning.');
+    }
+
+    @IsTest
+    private static void shouldCarryNamesAndLinksOnTheJob() {
+        Async.Result result = Async.queueable(new SuccessfulQueueableTest())
+            .name('Reserve stock')
+            .chainName('Order pipeline')
+            .linkRecord(new Account(Id = fakeAccountId(1)))
+            .linkRecord(fakeAccountId(2))
+            .linkRecords(new List<SObject>{ new Account(Id = fakeAccountId(3)) })
+            .linkRecords(new List<Id>{ fakeAccountId(4) })
+            .linkRecords(new Set<Id>{ fakeAccountId(5) })
+            .chain();
+
+        Assert.areEqual('Reserve stock', result.job.jobName);
+        Assert.areEqual('Order pipeline', result.job.chainName);
+        Assert.areEqual(
+            new List<String>{
+                fakeAccountId(1),
+                fakeAccountId(2),
+                fakeAccountId(3),
+                fakeAccountId(4),
+                fakeAccountId(5)
+            },
+            keysOf(result.job.links)
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectPriorityCombinedWithNextInChain() {
+        String priorityFirst;
+        String nextInChainFirst;
+
+        try {
+            Async.queueable(new SuccessfulQueueableTest()).priority(1).nextInChain();
+        } catch (Exception ex) {
+            priorityFirst = ex.getMessage();
+        }
+        try {
+            Async.queueable(new SuccessfulQueueableTest()).nextInChain().priority(1);
+        } catch (Exception ex) {
+            nextInChainFirst = ex.getMessage();
+        }
+
+        Assert.areEqual(QueueableManager.ERROR_MESSAGE_PRIORITY_WITH_NEXT_IN_CHAIN, priorityFirst);
+        Assert.areEqual(
+            QueueableManager.ERROR_MESSAGE_PRIORITY_WITH_NEXT_IN_CHAIN,
+            nextInChainFirst
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectLinkRecordOutsideAJob() {
+        String message;
+
+        try {
+            Async.linkRecord(fakeAccountId(1));
+        } catch (Exception ex) {
+            message = ex.getMessage();
+        }
+
+        Assert.areEqual(QueueableManager.ERROR_MESSAGE_LINK_RECORD_OUTSIDE_JOB, message);
+    }
+
+    @IsTest
+    private static void shouldBufferLinkedRecordsOnTheCurrentJobWithoutDml() {
+        RecordLinkingJob job = new RecordLinkingJob();
+        job.toLink = fakeAccountId(7);
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+
+        Assert.areEqual(0, dmlStatementsAfterLink, 'Linking buffers ids, it never writes.');
+        Assert.areEqual(new List<String>{ fakeAccountId(7) }, keysOf(chain.getCurrentJob().links));
+    }
+
+    @IsTest
+    private static void shouldExposeNamesOnLifecycleContexts() {
+        Async.queueable(new ContextCapturingJob()).name('Named').chainName('Chain').chain();
+
+        Assert.areEqual('Named', capturedJobContext.jobName);
+        Assert.areEqual('Chain', capturedJobContext.chainName);
+    }
+
+    @IsTest
+    private static void shouldInsertNextInChainJobRightAfterTheCurrentOne() {
+        insertsByTag = new Map<String, List<String>>{ 'A' => new List<String>{ 'X' } };
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).chain(orderMarker('B')).chain(orderMarker('C')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'A', 'X', 'B', 'C' }, runOrder);
+    }
+
+    @IsTest
+    private static void shouldRunNestedNextInChainJobsInInsertionOrder() {
+        insertsByTag = new Map<String, List<String>>{
+            'A' => new List<String>{ 'X', 'Y' },
+            'X' => new List<String>{ 'Z' }
+        };
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).chain(orderMarker('B')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'A', 'X', 'Z', 'Y', 'B' }, runOrder);
+    }
+
+    @IsTest
+    private static void shouldRunNextInChainJobAfterTheCurrentChunkPage() {
+        List<Account> accounts = createAccounts(6);
+        insertsByTag = new Map<String, List<String>>{ 'page1' => new List<String>{ 'X' } };
+
+        Test.startTest();
+        Async.chunk(new OrderMarkerChunkJob(), ChunkSource.of(accounts)).chunkSize(2).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'page1', 'X', 'page2', 'page3' }, runOrder);
+    }
+
+    @IsTest
+    private static void shouldRejectNextInChainOutsideAChain() {
+        String message;
+
+        try {
+            Async.queueable(orderMarker('X')).nextInChain().enqueue();
+        } catch (Exception ex) {
+            message = ex.getMessage();
+        }
+
+        Assert.areEqual(QueueableManager.ERROR_MESSAGE_NEXT_IN_CHAIN_OUTSIDE_CHAIN, message);
+    }
+
+    @IsTest
+    private static void shouldNotLetPriorityOutrankNextInChain() {
+        insertsByTag = new Map<String, List<String>>{ 'A' => new List<String>{ 'X' } };
+        priorityChainByTag = new Map<String, String>{ 'A' => 'P' };
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).chain(orderMarker('B')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'A', 'X', 'P', 'B' }, runOrder);
+    }
+
+    @IsTest
+    private static void shouldResequencePlaceholdersAfterANextInChainInsert() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+        insertsByTag = new Map<String, List<String>>{ 'A' => new List<String>{ 'X' } };
+        sequenceSnapshotTag = 'X';
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).chain(orderMarker('B')).chain(orderMarker('C')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'A', 'X', 'B', 'C' }, runOrder);
+        Assert.areEqual(3, placeholderSequenceSeen.get('B'), 'B\'s placeholder moved behind X.');
+        Assert.areEqual(4, placeholderSequenceSeen.get('C'));
+    }
+
+    @IsTest
+    private static void shouldPlaceANextInChainChunkRunOnceForAllItsPages() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+        chunkSourceRecords = createAccounts(6);
+
+        Test.startTest();
+        Async.queueable(new ChunkInsertingJob())
+            .chain(orderMarker('B'))
+            .chain(orderMarker('C'))
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'A', 'page1', 'page2', 'page3', 'B', 'C' }, runOrder);
+        AsyncResult__c inserter = [
+            SELECT CustomJobId__c
+            FROM AsyncResult__c
+            WHERE ClassName__c LIKE '%ChunkInsertingJob'
+        ];
+        Map<String, AsyncResult__c> rowByName = new Map<String, AsyncResult__c>();
+        for (AsyncResult__c row : [
+            SELECT JobName__c, ChainSequence__c, AddedByCustomJobId__c, ChunkPage__c
+            FROM AsyncResult__c
+            WHERE JobName__c != NULL OR ChunkPage__c != NULL
+        ]) {
+            rowByName.put(row.JobName__c ?? 'page' + row.ChunkPage__c.intValue(), row);
+        }
+        Assert.areEqual(
+            3,
+            rowByName.get('B').ChainSequence__c,
+            'Queued jobs shift once, not once per page.'
+        );
+        Assert.areEqual(4, rowByName.get('C').ChainSequence__c);
+        for (Integer pageNumber = 1; pageNumber <= 3; pageNumber++) {
+            AsyncResult__c pageRow = rowByName.get('page' + pageNumber);
+            Assert.areEqual(2, pageRow.ChainSequence__c, 'Every page keeps the run slot.');
+            Assert.areEqual(inserter.CustomJobId__c, pageRow.AddedByCustomJobId__c);
+        }
+    }
+
+    @IsTest
+    private static void shouldRunAJobSerializedBeforeTheProgressFieldsExisted() {
+        Map<String, Object> serialized = (Map<String, Object>) JSON.deserializeUntyped(
+            JSON.serialize(new SuccessfulQueueableTest())
+        );
+        serialized.remove('nextInChain');
+        serialized.remove('recordLinksWritten');
+        SuccessfulQueueableTest legacy = (SuccessfulQueueableTest) JSON.deserialize(
+            JSON.serialize(serialized),
+            SuccessfulQueueableTest.class
+        );
+        Assert.isNull(legacy.nextInChain, 'Pre-3.2 chain state has no such field.');
+
+        Test.startTest();
+        Async.queueable(legacy)
+            .linkRecord(fakeAccountId(1))
+            .chain(new SuccessfulQueueableTest())
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(2, [SELECT COUNT() FROM Account]);
+        Assert.areEqual(1, [SELECT COUNT() FROM AsyncResultLink__c]);
+    }
+
+    @IsTest
+    private static void shouldReinsertTheResultWhenThePlaceholderWasDeletedMidFlight() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false)).chain(markerJob('B', false)).enqueue();
+        delete [SELECT Id FROM AsyncResult__c WHERE Status__c = :QueueableManager.STATUS_ENQUEUED];
+        Test.stopTest();
+
+        Assert.areEqual(2, [SELECT COUNT() FROM Account], 'The chain keeps running.');
+        List<AsyncResult__c> rows = [
+            SELECT Status__c, RetryHistory__c
+            FROM AsyncResult__c
+            WHERE Status__c = :QueueableManager.STATUS_COMPLETED
+        ];
+        Assert.areEqual(2, rows.size());
+        Assert.isTrue(
+            rows[0].RetryHistory__c.contains('could not be updated'),
+            'The replaced row says why: ' + rows[0].RetryHistory__c
+        );
+    }
+
+    @IsTest
+    private static void shouldNotDuplicateALinkWrittenWithThePlaceholder() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+        RecordLinkingJob job = new RecordLinkingJob();
+        job.toLink = fakeAccountId(7);
+
+        Test.startTest();
+        Async.queueable(job).linkRecord(fakeAccountId(7)).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(1, [SELECT COUNT() FROM AsyncResultLink__c]);
+    }
+
+    @IsTest
+    private static void shouldRecordTheDmlBudgetTruncationOnTheResultRow() {
+        AsyncResultWriter.dmlRowReserve = Limits.getLimitDmlRows() - 3;
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false))
+            .linkRecords(
+                new List<Id>{
+                    fakeAccountId(1),
+                    fakeAccountId(2),
+                    fakeAccountId(3),
+                    fakeAccountId(4)
+                }
+            )
+            .enqueue();
+        Test.stopTest();
+
+        AsyncResult__c row = [SELECT RetryHistory__c FROM AsyncResult__c];
+        Assert.isTrue(
+            row.RetryHistory__c?.contains('no DML rows left') == true,
+            'The row says links were dropped: ' + row.RetryHistory__c
+        );
+        Assert.isTrue([SELECT COUNT() FROM AsyncResultLink__c] < 4);
+    }
+
+    @IsTest
+    private static void shouldRemoveThePlaceholderWhenTheEnqueueFails() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+        AsyncOptions options = new AsyncOptions();
+        options.DuplicateSignature = QueueableDuplicateSignature.Builder()
+            .addString(TEST_SIGNATURE_NAME)
+            .build();
+        String message;
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false)).asyncOptions(options).enqueue();
+        Async.queueable(markerJob('B', false))
+            .asyncOptions(options)
+            .continueOnJobEnqueueFail()
+            .enqueue();
+        try {
+            Async.queueable(markerJob('C', false)).asyncOptions(options).enqueue();
+        } catch (Exception ex) {
+            message = ex.getMessage();
+        }
+        Integer placeholders = [
+            SELECT COUNT()
+            FROM AsyncResult__c
+            WHERE Status__c = :QueueableManager.STATUS_ENQUEUED
+        ];
+        Test.stopTest();
+
+        Assert.isNotNull(message, 'The duplicate signature rejects the third enqueue.');
+        Assert.areEqual(1, placeholders, 'Only the job that was really enqueued keeps its row.');
+    }
+
+    @IsTest
+    private static void shouldRecordAConfigurationWarningOnce() {
+        QueueableJob job = new SuccessfulQueueableTest();
+
+        job.recordConfigurationWarning('clamped');
+        job.recordConfigurationWarning('clamped');
+
+        Assert.areEqual('clamped', job.retryHistory);
+    }
+
+    @IsTest
+    private static void shouldWriteEnqueuedPlaceholdersAtEnqueueWhenTrackingProgress() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false))
+            .name('First')
+            .chainName('Chain')
+            .chain(markerJob('B', false))
+            .chain(markerJob('C', false))
+            .enqueue();
+        List<AsyncResult__c> placeholders = [
+            SELECT Status__c, SalesforceJobId__c, ChainSequence__c, JobName__c, ChainName__c
+            FROM AsyncResult__c
+            ORDER BY ChainSequence__c
+        ];
+        Test.stopTest();
+
+        Assert.areEqual(3, placeholders.size(), 'Every job of the chain gets a row at enqueue.');
+        for (AsyncResult__c placeholder : placeholders) {
+            Assert.areEqual(QueueableManager.STATUS_ENQUEUED, placeholder.Status__c);
+            Assert.areEqual('Chain', placeholder.ChainName__c);
+        }
+        Assert.isNotNull(placeholders[0].SalesforceJobId__c, 'The job handed to the platform.');
+        Assert.isNull(placeholders[1].SalesforceJobId__c, 'Not handed over yet.');
+        Assert.areEqual('First', placeholders[0].JobName__c);
+        Assert.areEqual(
+            new List<Decimal>{ 1, 2, 3 },
+            new List<Decimal>{
+                placeholders[0].ChainSequence__c,
+                placeholders[1].ChainSequence__c,
+                placeholders[2].ChainSequence__c
+            }
+        );
+    }
+
+    @IsTest
+    private static void shouldUpdateThePlaceholderInsteadOfInsertingASecondRow() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false)).chain(markerJob('B', false)).enqueue();
+        Test.stopTest();
+
+        List<AsyncResult__c> rows = [
+            SELECT Status__c, StartedAt__c, FinishedAt__c, SalesforceJobId__c, NextAttemptAt__c
+            FROM AsyncResult__c
+        ];
+        Assert.areEqual(2, rows.size(), 'The placeholder is updated, never duplicated.');
+        for (AsyncResult__c row : rows) {
+            Assert.areEqual(QueueableManager.STATUS_COMPLETED, row.Status__c);
+            Assert.isNotNull(row.StartedAt__c);
+            Assert.isTrue(row.FinishedAt__c >= row.StartedAt__c);
+            Assert.isNotNull(row.SalesforceJobId__c);
+            Assert.isNull(row.NextAttemptAt__c);
+        }
+    }
+
+    @IsTest
+    private static void shouldRecordRetryOnThePlaceholderRow() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+        MarkerJob job = markerJob('F', true);
+        job.rollbackOnJobExecuteFail = true;
+        job.maxRetries = 1;
+        job.backoff = Backoff.fixed(2);
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(job);
+        QueueableManager.get().setChain(chain);
+        chain.enqueueNextJobIfAny();
+
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+        chain.enqueueNextJobIfAnyFromFinalizer(
+            new AsyncMock.MockFinalizerContext().setResult(ParentJobResult.SUCCESS)
+        );
+
+        List<AsyncResult__c> rows = [
+            SELECT Status__c, RetryAttempts__c, NextAttemptAt__c, RetryHistory__c, DelayMinutes__c
+            FROM AsyncResult__c
+        ];
+        Assert.areEqual(1, rows.size());
+        Assert.areEqual(QueueableManager.STATUS_ENQUEUED, rows[0].Status__c);
+        Assert.areEqual(1, rows[0].RetryAttempts__c);
+        Assert.isTrue(rows[0].NextAttemptAt__c > System.now().addMinutes(1), 'Due in 2 minutes.');
+        Assert.isNull(rows[0].DelayMinutes__c, 'A backoff is not a delay the caller asked for.');
+        Assert.isTrue(rows[0].RetryHistory__c.contains('Attempt 1'));
+    }
+
+    @IsTest
+    private static void shouldKeepPlaceholderThroughRetryAndRecordAttempts() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+
+        Test.startTest();
+        Async.queueable(markerJob('F', true)).retry(2).rollbackOnJobExecuteFail().enqueue();
+        Test.stopTest();
+
+        List<AsyncResult__c> rows = [
+            SELECT Status__c, RetryAttempts__c, NextAttemptAt__c
+            FROM AsyncResult__c
+        ];
+        Assert.areEqual(1, rows.size(), 'One row for the job, across every attempt.');
+        Assert.areEqual(QueueableManager.STATUS_FAILED, rows[0].Status__c);
+        Assert.areEqual(2, rows[0].RetryAttempts__c);
+        Assert.isNull(rows[0].NextAttemptAt__c, 'Cleared once the job settles.');
+    }
+
+    @IsTest
+    private static void shouldWriteJunctionRowsForEnqueueTimeLinksAtPlaceholderTime() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+        Account linked = new Account(Name = 'Linked');
+        insert linked;
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false)).linkRecord(linked).enqueue();
+        Integer linksBeforeRun = [
+            SELECT COUNT()
+            FROM AsyncResultLink__c
+            WHERE Key__c = :linked.Id
+        ];
+        Test.stopTest();
+
+        Assert.areEqual(1, linksBeforeRun, 'Linked while still enqueued.');
+        List<AsyncResultLink__c> links = [
+            SELECT ObjectName__c, AsyncResult__r.Status__c
+            FROM AsyncResultLink__c
+            WHERE Key__c = :linked.Id
+        ];
+        Assert.areEqual(1, links.size(), 'The terminal write adds no second link.');
+        Assert.areEqual('Account', links[0].ObjectName__c);
+        Assert.areEqual(QueueableManager.STATUS_COMPLETED, links[0].AsyncResult__r.Status__c);
+    }
+
+    @IsTest
+    private static void shouldWriteJunctionRowsForRuntimeLinksAtTerminalTime() {
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>();
+        Account linked = new Account(Name = 'Linked');
+        insert linked;
+        RecordLinkingJob job = new RecordLinkingJob();
+        job.toLink = linked.Id;
+
+        Test.startTest();
+        Async.queueable(job).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            1,
+            [SELECT COUNT() FROM AsyncResultLink__c WHERE Key__c = :linked.Id],
+            'A runtime link forces the result row and lands with it.'
+        );
+    }
+
+    @IsTest
+    private static void shouldForceAResultRowForAJobWithRecordLinks() {
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>();
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false)).linkRecord(fakeAccountId(1)).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(
+            QueueableManager.STATUS_COMPLETED,
+            [SELECT Status__c FROM AsyncResult__c].Status__c,
+            'Linking a job to a record is opting into a row for it.'
+        );
+    }
+
+    @IsTest
+    private static void shouldWriteAnExternalLinkAsGiven() {
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>();
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false))
+            .linkExternalRecord('NetSuite', 'Customer', '4711')
+            .linkExternalRecord(null, null, '4711')
+            .enqueue();
+        Test.stopTest();
+
+        List<AsyncResultLink__c> links = [
+            SELECT Key__c, Source__c, ObjectName__c, UniqueKey__c, AsyncResult__c
+            FROM AsyncResultLink__c
+            ORDER BY CreatedDate, Id
+        ];
+        Assert.areEqual(2, links.size(), 'Same key under another source is another link.');
+        Assert.areEqual('NetSuite', links[0].Source__c);
+        Assert.areEqual('Customer', links[0].ObjectName__c);
+        Assert.areEqual('4711', links[0].Key__c);
+        Assert.isNull(links[1].Source__c, 'Nothing given, nothing stamped.');
+        Assert.isNull(links[1].ObjectName__c);
+        Assert.areEqual(59, links[0].UniqueKey__c.length(), 'Result id, colon, SHA1 hex.');
+        Assert.isTrue(links[0].UniqueKey__c.startsWith(links[0].AsyncResult__c + ':'));
+    }
+
+    @IsTest
+    private static void shouldCarryTheStoredLinksIntoTheReplay() {
+        QueueableChain capture = chainStoringPayloads();
+        RequeueableJob job = new RequeueableJob('ONE');
+        capture.addJob(job);
+        AsyncResult__c row = storedRowInChain(job, 1, null);
+        insert new List<AsyncResultLink__c>{
+            new AsyncResultLink__c(
+                AsyncResult__c = row.Id,
+                Key__c = fakeAccountId(1),
+                Source__c = QueueableManager.SOURCE_SALESFORCE,
+                ObjectName__c = 'Account',
+                UniqueKey__c = row.Id + ':a'
+            ),
+            new AsyncResultLink__c(
+                AsyncResult__c = row.Id,
+                Key__c = '4711',
+                Source__c = 'NetSuite',
+                ObjectName__c = 'Customer',
+                UniqueKey__c = row.Id + ':b'
+            )
+        };
+
+        Async.RequeueSummary summary = Async.requeue(new Set<Id>{ row.Id });
+
+        QueueableJob replay = summary.enqueueResult.queueableChainState.jobs[0];
+        Assert.areEqual(
+            new List<String>{ fakeAccountId(1), '4711' },
+            keysOf(replay.links),
+            'Links come from the stored rows, so runtime links replay too.'
+        );
+        Assert.areEqual(
+            new List<String>{ QueueableManager.SOURCE_SALESFORCE, 'NetSuite' },
+            sourcesOf(replay.links)
+        );
+    }
+
+    @IsTest
+    private static void shouldLinkARecordWhosePrefixHasNoApexType() {
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>();
+        Id noApexType = Id.valueOf(
+            CaseComment.SObjectType.getDescribe().getKeyPrefix() + '1'.leftPad(12, '0')
+        );
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false)).linkRecord(noApexType).enqueue();
+        Test.stopTest();
+
+        AsyncResultLink__c link = [
+            SELECT ObjectName__c
+            FROM AsyncResultLink__c
+            WHERE Key__c = :noApexType
+        ];
+        Assert.isNull(link.ObjectName__c, 'No type to name, the link is still written.');
+        Assert.areEqual(1, accountCount('A'), 'The chain was not harmed.');
+    }
+
+    @IsTest
+    private static void shouldTruncateRecordLinksAtTheConfiguredMaximumAndWarn() {
+        Map<String, QueueableJobSetting__mdt> settings = resultsEnabledForAll();
+        settings.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL).MaxRecordLinks__c = 3;
+        QueueableJobSettings.jobSettingByName = settings;
+        MarkerJob job = markerJob('A', false);
+
+        Test.startTest();
+        Async.queueable(job)
+            .linkRecords(
+                new List<Id>{
+                    fakeAccountId(1),
+                    fakeAccountId(2),
+                    fakeAccountId(3),
+                    fakeAccountId(4),
+                    fakeAccountId(5)
+                }
+            )
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(3, [SELECT COUNT() FROM AsyncResultLink__c]);
+        Assert.isTrue(
+            [SELECT RetryHistory__c FROM AsyncResult__c]
+                .RetryHistory__c.contains(
+                    String.format(
+                        QueueableManager.WARNING_RECORD_LINKS_TRUNCATED,
+                        new List<String>{ '3', job.className, '5' }
+                    )
+                )
+        );
+    }
+
+    @IsTest
+    private static void shouldStampChainNameFromTheLastJobThatSetIt() {
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false))
+            .chainName('First')
+            .chain(markerJob('B', false))
+            .chain(markerJob('C', false))
+            .chainName('Last')
+            .enqueue();
+        Test.stopTest();
+
+        for (AsyncResult__c row : [SELECT ChainName__c FROM AsyncResult__c]) {
+            Assert.areEqual('Last', row.ChainName__c);
+        }
+    }
+
+    @IsTest
+    private static void shouldRecordChunkRunIdAndPageNumbersOnPageRows() {
+        List<Account> accounts = createAccounts(6);
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
+
+        Test.startTest();
+        Async.chunk(new OrderMarkerChunkJob(), ChunkSource.of(accounts)).chunkSize(2).enqueue();
+        Test.stopTest();
+
+        List<AsyncResult__c> pages = [
+            SELECT ChunkRunId__c, ChunkPage__c, ChunkPages__c, CustomJobId__c
+            FROM AsyncResult__c
+            ORDER BY ChunkPage__c
+        ];
+        Assert.areEqual(3, pages.size());
+        Assert.areEqual(
+            pages[0].CustomJobId__c,
+            pages[0].ChunkRunId__c,
+            'The run id is the first page.'
+        );
+        for (Integer i = 0; i < 3; i++) {
+            Assert.areEqual(pages[0].ChunkRunId__c, pages[i].ChunkRunId__c);
+            Assert.areEqual(i + 1, pages[i].ChunkPage__c);
+            Assert.areEqual(3, pages[i].ChunkPages__c);
+        }
+    }
+
+    @IsTest
+    private static void shouldNumberAPrioritizedJobInTheOrderItRuns() {
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).chain();
+        Async.queueable(orderMarker('B')).chain();
+        Async.queueable(orderMarker('C')).priority(1).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'C', 'A', 'B' }, runOrder);
+        Map<String, AsyncResult__c> rowByName = rowsByJobName();
+        Assert.areEqual(1, rowByName.get('C').ChainSequence__c);
+        Assert.areEqual(2, rowByName.get('A').ChainSequence__c);
+        Assert.areEqual(3, rowByName.get('B').ChainSequence__c);
+    }
+
+    @IsTest
+    private static void shouldNumberARuntimePriorityJobRightAfterTheRunningOne() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+        priorityChainByTag = new Map<String, String>{ 'A' => 'P' };
+        sequenceSnapshotTag = 'P';
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).chain(orderMarker('B')).chain(orderMarker('C')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'A', 'P', 'B', 'C' }, runOrder);
+        Assert.areEqual(3, placeholderSequenceSeen.get('B'), 'B\'s placeholder moved behind P.');
+        Assert.areEqual(4, placeholderSequenceSeen.get('C'));
+        Map<String, AsyncResult__c> rowByName = rowsByJobName();
+        Assert.areEqual(1, rowByName.get('A').ChainSequence__c, 'The running job holds its place.');
+        Assert.areEqual(2, rowByName.get('P').ChainSequence__c);
+    }
+
+    @IsTest
+    private static void shouldNumberNextInChainAheadOfARuntimePriorityJob() {
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
+        insertsByTag = new Map<String, List<String>>{ 'A' => new List<String>{ 'X' } };
+        priorityChainByTag = new Map<String, String>{ 'A' => 'P' };
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).chain(orderMarker('B')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'A', 'X', 'P', 'B' }, runOrder);
+        Map<String, AsyncResult__c> rowByName = rowsByJobName();
+        Assert.areEqual(1, rowByName.get('A').ChainSequence__c);
+        Assert.areEqual(2, rowByName.get('X').ChainSequence__c);
+        Assert.areEqual(3, rowByName.get('P').ChainSequence__c);
+        Assert.areEqual(4, rowByName.get('B').ChainSequence__c);
+    }
+
+    @IsTest
+    private static void shouldKeepAChunkRunInOneSlotWhenAPriorityJobArrivesBetweenPages() {
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
+        chunkSourceRecords = createAccounts(6);
+        priorityChainByTag = new Map<String, String>{ 'page1' => 'P' };
+
+        Test.startTest();
+        Async.chunk(new OrderMarkerChunkJob(), ChunkSource.of(chunkSourceRecords))
+            .chunkSize(2)
+            .chain(orderMarker('B'))
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'page1', 'P', 'page2', 'page3', 'B' }, runOrder);
+        for (AsyncResult__c page : [
+            SELECT ChainSequence__c
+            FROM AsyncResult__c
+            WHERE ChunkPage__c != NULL
+        ]) {
+            Assert.areEqual(1, page.ChainSequence__c, 'Every page keeps the run slot.');
+        }
+        Map<String, AsyncResult__c> rowByName = rowsByJobName();
+        Assert.areEqual(2, rowByName.get('P').ChainSequence__c);
+        Assert.areEqual(3, rowByName.get('B').ChainSequence__c);
+    }
+
+    @IsTest
+    private static void shouldRecordWhichRunningJobAddedAPlainChainedJob() {
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
+
+        Test.startTest();
+        Async.queueable(new PlainChainingJob()).name('A').chain(orderMarker('B')).enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(new List<String>{ 'B', 'Y' }, runOrder);
+        Map<String, AsyncResult__c> rowByName = rowsByJobName();
+        Assert.areEqual(
+            rowByName.get('A').CustomJobId__c,
+            rowByName.get('Y').AddedByCustomJobId__c
+        );
+        Assert.areEqual(3, rowByName.get('Y').ChainSequence__c, 'A plain chain() appends.');
+        Assert.isNull(
+            rowByName.get('B').AddedByCustomJobId__c,
+            'Nothing was running when B was chained.'
+        );
+    }
+
+    @IsTest
+    private static void shouldStopAtTheCapAndResumeAfterTheLastHandledEvent() {
+        resultsAndLoggerForBatches(null);
+        Integer cap = BatchFailureRecorder.MAX_EVENTS_PER_DELIVERY;
+        List<BatchApexErrorEvent> events = batchFailureEvents(cap + 1);
+
+        BatchFailureRecorder.record(events);
+
+        Assert.areEqual(cap, [SELECT COUNT() FROM AsyncResult__c]);
+        Assert.areEqual(
+            events[cap - 1].ReplayId,
+            BatchFailureRecorder.resumeCheckpoint,
+            'The rest of the delivery has to come back.'
+        );
+    }
+
+    @IsTest
+    private static void shouldNotAskForRedeliveryWhenTheWholeDeliveryFits() {
+        resultsAndLoggerForBatches(null);
+        Integer cap = BatchFailureRecorder.MAX_EVENTS_PER_DELIVERY;
+
+        BatchFailureRecorder.record(batchFailureEvents(cap));
+
+        Assert.areEqual(cap, [SELECT COUNT() FROM AsyncResult__c]);
+        Assert.isNull(BatchFailureRecorder.resumeCheckpoint);
+    }
+
+    @IsTest
+    private static void shouldKeepTheRecordsWhenTheLoggerSpendsADmlOnEveryFailure() {
+        resultsAndLoggerForBatches(loggerName('DmlBatchFailureLogger'));
+
+        BatchFailureRecorder.record(batchFailureEvents(200));
+
+        Assert.areEqual(
+            BatchFailureRecorder.MAX_EVENTS_PER_DELIVERY,
+            [
+                SELECT COUNT()
+                FROM AsyncResult__c
+            ]
+        );
+    }
+
+    @IsTest
+    private static void shouldKeepTheDelayOnTheRowAndTheTimeOnlyOnceTheJobIsEnqueued() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).delay(5).chain(orderMarker('B')).delay(10).enqueue();
+        Map<String, AsyncResult__c> rowByName = delayRowsByJobName();
+        Test.stopTest();
+
+        Assert.areEqual(5, rowByName.get('A').DelayMinutes__c);
+        Assert.isTrue(
+            rowByName.get('A').NextAttemptAt__c > System.now().addMinutes(4),
+            'A is enqueued, so its start is known.'
+        );
+        Assert.areEqual(10, rowByName.get('B').DelayMinutes__c);
+        Assert.isNull(
+            rowByName.get('B').NextAttemptAt__c,
+            'B waits for A to finish, so its start is not known yet.'
+        );
+        AsyncResult__c settled = delayRowsByJobName().get('A');
+        Assert.areEqual(5, settled.DelayMinutes__c, 'Details still say what was asked for.');
+        Assert.isNull(settled.NextAttemptAt__c);
+    }
+
+    @IsTest
+    private static void shouldTreatADelayInAsyncOptionsLikeAnyOtherDelay() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+        AsyncOptions options = new AsyncOptions();
+        options.MinimumQueueableDelayInMinutes = 3;
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).asyncOptions(options).enqueue();
+        AsyncResult__c row = delayRowsByJobName().get('A');
+        Test.stopTest();
+
+        Assert.areEqual(3, row.DelayMinutes__c);
+        Assert.isNotNull(row.NextAttemptAt__c);
+    }
+
+    @IsTest
+    private static void shouldNotSetAStartTimeForAJobWithoutADelay() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).enqueue();
+        AsyncResult__c row = delayRowsByJobName().get('A');
+        Test.stopTest();
+
+        Assert.isNull(row.DelayMinutes__c);
+        Assert.isNull(row.NextAttemptAt__c);
+    }
+
+    @IsTest
+    private static void shouldRecordParentCustomJobIdOnFinalizerRows() {
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
+
+        Test.startTest();
+        Async.queueable(new FinalizerAttachingJob()).enqueue();
+        Test.stopTest();
+
+        AsyncResult__c parent = [
+            SELECT CustomJobId__c
+            FROM AsyncResult__c
+            WHERE ParentCustomJobId__c = NULL
+        ];
+        AsyncResult__c finalizer = [
+            SELECT ParentCustomJobId__c, AddedByCustomJobId__c
+            FROM AsyncResult__c
+            WHERE ParentCustomJobId__c != NULL
+        ];
+        Assert.areEqual(parent.CustomJobId__c, finalizer.ParentCustomJobId__c);
+        Assert.isNull(finalizer.AddedByCustomJobId__c, 'A finalizer already names its parent.');
+    }
+
+    @IsTest
+    private static void shouldRecordAddedByAndSequenceOnNextInChainRows() {
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
+        insertsByTag = new Map<String, List<String>>{ 'A' => new List<String>{ 'X' } };
+
+        Test.startTest();
+        Async.queueable(orderMarker('A')).priority(3).chain(orderMarker('B')).enqueue();
+        Test.stopTest();
+
+        Map<String, AsyncResult__c> rowByName = new Map<String, AsyncResult__c>();
+        for (AsyncResult__c row : [
+            SELECT JobName__c, CustomJobId__c, AddedByCustomJobId__c, ChainSequence__c, Priority__c
+            FROM AsyncResult__c
+        ]) {
+            rowByName.put(row.JobName__c, row);
+        }
+        Assert.areEqual(
+            rowByName.get('A').CustomJobId__c,
+            rowByName.get('X').AddedByCustomJobId__c
+        );
+        Assert.isNull(rowByName.get('B').AddedByCustomJobId__c);
+        Assert.areEqual(1, rowByName.get('A').ChainSequence__c);
+        Assert.areEqual(2, rowByName.get('X').ChainSequence__c);
+        Assert.areEqual(3, rowByName.get('B').ChainSequence__c, 'Shifted to make room.');
+        Assert.areEqual(3, rowByName.get('A').Priority__c);
+    }
+
+    @IsTest
+    private static void shouldStoreDependenciesJsonOnTheRow() {
+        QueueableJobSettings.jobSettingByName = resultsEnabledForAll();
+
+        Test.startTest();
+        Async.Result first = Async.queueable(markerJob('A', false)).chain();
+        Async.queueable(markerJob('B', false)).dependsOn(Async.after(first).succeeded()).enqueue();
+        Test.stopTest();
+
+        AsyncResult__c dependent = [
+            SELECT Dependencies__c
+            FROM AsyncResult__c
+            WHERE CustomJobId__c != :first.customJobId
+        ];
+        List<Async.Dependency> stored = (List<Async.Dependency>) JSON.deserialize(
+            dependent.Dependencies__c,
+            List<Async.Dependency>.class
+        );
+        Assert.areEqual(1, stored.size());
+        Assert.areEqual(first.customJobId, stored[0].resolvedTargetCustomJobId);
+        Assert.areEqual(Async.Outcome.SUCCESS, stored[0].requiredOutcome);
+    }
+
+    @IsTest
+    private static void shouldNotWriteAnythingNewWhenNothingIsOptedIn() {
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>();
+
+        Test.startTest();
+        Async.queueable(markerJob('A', false))
+            .name('Named anyway')
+            .chain(markerJob('B', false))
+            .enqueue();
+        Test.stopTest();
+
+        Assert.areEqual(0, [SELECT COUNT() FROM AsyncResult__c], 'Names alone write nothing.');
+        Assert.areEqual(0, [SELECT COUNT() FROM AsyncResultLink__c]);
+    }
+
+    @IsTest
+    private static void shouldRequeueRowsInChainOrderRegardlessOfInputOrder() {
+        QueueableChain capture = chainStoringPayloads();
+        RequeueableJob one = new RequeueableJob('ONE');
+        RequeueableJob two = new RequeueableJob('TWO');
+        RequeueableJob three = new RequeueableJob('THREE');
+        capture.addJob(one);
+        capture.addJob(two);
+        capture.addJob(three);
+        AsyncResult__c rowThree = storedRowInChain(three, 3, null);
+        AsyncResult__c rowOne = storedRowInChain(one, 1, null);
+        AsyncResult__c rowTwo = storedRowInChain(two, 2, null);
+
+        Async.RequeueSummary summary = Async.requeue(
+            new Set<Id>{ rowThree.Id, rowOne.Id, rowTwo.Id }
+        );
+
+        Assert.areEqual(
+            new List<String>{ 'ONE', 'TWO', 'THREE' },
+            tagsOf(summary.enqueueResult.queueableChainState.jobs),
+            'Replays run in the order the original chain had.'
+        );
+    }
+
+    @IsTest
+    private static void shouldRebuildDependencyBetweenRequeuedRows() {
+        QueueableChain capture = chainStoringPayloads();
+        RequeueableJob a = new RequeueableJob('A');
+        RequeueableJob b = new RequeueableJob('B');
+        capture.addJob(a);
+        capture.addJob(b);
+        AsyncResult__c rowA = storedRowInChain(a, 1, null);
+        AsyncResult__c rowB = storedRowInChain(
+            b,
+            2,
+            new List<Async.Dependency>{ dependencyOn(a.customJobId, Async.Outcome.SUCCESS) }
+        );
+
+        Test.startTest();
+        Async.RequeueSummary summary = Async.requeue(new Set<Id>{ rowA.Id, rowB.Id });
+        Test.stopTest();
+
+        List<QueueableJob> replay = summary.enqueueResult.queueableChainState.jobs;
+        Assert.areEqual(2, replay.size());
+        Assert.areEqual(
+            replay[0].customJobId,
+            replay[1].dependencies[0].resolvedTargetCustomJobId,
+            'B now depends on the replayed A.'
+        );
+        Assert.areEqual(Async.Outcome.SUCCESS, replay[1].dependencies[0].requiredOutcome);
+        Assert.isTrue(summary.droppedDependencyByResultId.isEmpty());
+        Assert.areEqual(1, accountCount('A'));
+        Assert.areEqual(1, accountCount('B'), 'A succeeded, so B ran.');
+    }
+
+    @IsTest
+    private static void shouldSkipDependentAgainWhenTheReplayedBlockerFailsAgain() {
+        QueueableChain capture = chainStoringPayloads();
+        QueueableJobSettings.jobSettingByName.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)
+            .CreateResult__c = true;
+        FailingRequeueableJob a = new FailingRequeueableJob();
+        a.continueOnJobExecuteFail = true;
+        RequeueableJob b = new RequeueableJob('B');
+        capture.addJob(a);
+        capture.addJob(b);
+        AsyncResult__c rowA = storedRowInChain(a, 1, null);
+        AsyncResult__c rowB = storedRowInChain(
+            b,
+            2,
+            new List<Async.Dependency>{ dependencyOn(a.customJobId, Async.Outcome.SUCCESS) }
+        );
+
+        Test.startTest();
+        Async.requeue(new Set<Id>{ rowA.Id, rowB.Id });
+        Test.stopTest();
+
+        Assert.areEqual(0, accountCount('B'), 'A failed again, so B was skipped again.');
+        Assert.areEqual(
+            QueueableManager.STATUS_SKIPPED_DEPENDENCY,
+            [SELECT Status__c FROM AsyncResult__c WHERE RequeuedFrom__c = :rowB.Id].Status__c
+        );
+    }
+
+    @IsTest
+    private static void shouldDropDependencyOnAJobOutsideTheSetThatSatisfiedIt() {
+        QueueableChain capture = chainStoringPayloads();
+        RequeueableJob b = new RequeueableJob('B');
+        capture.addJob(b);
+        insert new AsyncResult__c(
+            ClassName__c = 'CreateInvoiceJob',
+            CustomJobId__c = 'a-id',
+            ChainId__c = b.chainId,
+            ChainSequence__c = 1,
+            JobName__c = 'Create invoice',
+            Status__c = QueueableManager.STATUS_COMPLETED
+        );
+        AsyncResult__c rowB = storedRowInChain(
+            b,
+            2,
+            new List<Async.Dependency>{ dependencyOn('a-id', Async.Outcome.COMPLETED) }
+        );
+
+        Async.RequeueSummary summary = Async.requeue(rowB.Id);
+
+        Assert.areEqual(new List<Id>{ rowB.Id }, summary.requeued);
+        Assert.areEqual(
+            String.format(
+                QueueableManager.REQUEUE_DEPENDENCY_DROPPED,
+                new List<String>{ 'Create invoice', 'SUCCESS' }
+            ),
+            summary.droppedDependencyByResultId.get(rowB.Id)
+        );
+        Assert.isNull(summary.enqueueResult.queueableChainState.jobs[0].dependencies);
+    }
+
+    @IsTest
+    private static void shouldSkipRowWhoseDependencyOutsideTheSetWasNotMet() {
+        QueueableChain capture = chainStoringPayloads();
+        RequeueableJob b = new RequeueableJob('B');
+        capture.addJob(b);
+        insert new AsyncResult__c(
+            ClassName__c = 'CreateInvoiceJob',
+            CustomJobId__c = 'a-id',
+            ChainId__c = b.chainId,
+            ChainSequence__c = 1,
+            JobName__c = 'Create invoice',
+            Status__c = QueueableManager.STATUS_FAILED
+        );
+        AsyncResult__c rowB = storedRowInChain(
+            b,
+            2,
+            new List<Async.Dependency>{ dependencyOn('a-id', Async.Outcome.SUCCESS) }
+        );
+
+        Async.RequeueSummary summary = Async.requeue(rowB.Id);
+
+        Assert.isTrue(summary.requeued.isEmpty(), 'Nothing runs without its blocker.');
+        Assert.areEqual(
+            String.format(
+                QueueableManager.REQUEUE_SKIPPED_DEPENDENCY_UNMET,
+                new List<String>{ 'Create invoice', 'SUCCESS', 'FAILURE' }
+            ),
+            summary.skipReasonByResultId.get(rowB.Id)
+        );
+        Assert.isNull(summary.enqueueResult);
+        Assert.areEqual(
+            AsyncRequeue.STATUS_STORED,
+            [SELECT RequeueStatus__c FROM AsyncResult__c WHERE Id = :rowB.Id].RequeueStatus__c,
+            'A skipped row stays replayable.'
+        );
+    }
+
+    @IsTest
+    private static void shouldSkipRowWhoseDependencyTargetRowIsGone() {
+        QueueableChain capture = chainStoringPayloads();
+        RequeueableJob b = new RequeueableJob('B');
+        capture.addJob(b);
+        AsyncResult__c rowB = storedRowInChain(
+            b,
+            2,
+            new List<Async.Dependency>{ dependencyOn('gone-id', Async.Outcome.SUCCESS) }
+        );
+
+        Async.RequeueSummary summary = Async.requeue(rowB.Id);
+
+        Assert.isTrue(summary.requeued.isEmpty());
+        Assert.areEqual(
+            String.format(
+                QueueableManager.REQUEUE_SKIPPED_DEPENDENCY_UNKNOWN,
+                new List<String>{ 'gone-id' }
+            ),
+            summary.skipReasonByResultId.get(rowB.Id)
+        );
+    }
+
+    private static AsyncResult__c storedRowInChain(
+        QueueableJob capturedJob,
+        Integer sequence,
+        List<Async.Dependency> dependencies
+    ) {
+        AsyncResult__c stored = new AsyncResult__c(
+            ClassName__c = capturedJob.className,
+            CustomJobId__c = capturedJob.customJobId,
+            ChainId__c = capturedJob.chainId,
+            ChainSequence__c = sequence,
+            JobName__c = capturedJob.jobName,
+            Status__c = QueueableManager.STATUS_FAILED,
+            JobPayload__c = capturedJob.requeuePayload,
+            PayloadSize__c = capturedJob.requeuePayloadSize,
+            RequeueStatus__c = AsyncRequeue.STATUS_STORED,
+            Dependencies__c = dependencies == null ? null : JSON.serialize(dependencies)
+        );
+        insert stored;
+        return stored;
+    }
+
+    private static List<String> tagsOf(List<QueueableJob> jobs) {
+        List<String> tags = new List<String>();
+        for (QueueableJob job : jobs) {
+            tags.add(((RequeueableJob) job).tag);
+        }
+        return tags;
+    }
+
+    private static Map<String, QueueableJobSetting__mdt> trackProgressForAll() {
+        return new Map<String, QueueableJobSetting__mdt>{
+            QueueableManager.QUEUEABLE_JOB_SETTING_ALL => new QueueableJobSetting__mdt(
+                DeveloperName = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                QueueableJobName__c = QueueableManager.QUEUEABLE_JOB_SETTING_ALL,
+                TrackJobProgress__c = 'Yes'
+            )
+        };
+    }
+
+    private static void insertNextInChainFor(String tag) {
+        for (String next : insertsByTag.get(tag) ?? new List<String>()) {
+            Async.queueable(orderMarker(next)).nextInChain().enqueue();
+        }
+        String prioritized = priorityChainByTag.get(tag);
+        if (prioritized != null) {
+            Async.queueable(orderMarker(prioritized)).priority(1).enqueue();
+        }
+    }
+
+    private static Map<String, AsyncResult__c> rowsByJobName() {
+        Map<String, AsyncResult__c> rowByName = new Map<String, AsyncResult__c>();
+        for (AsyncResult__c row : [
+            SELECT JobName__c, CustomJobId__c, AddedByCustomJobId__c, ChainSequence__c
+            FROM AsyncResult__c
+        ]) {
+            rowByName.put(row.JobName__c, row);
+        }
+        return rowByName;
+    }
+
+    private static Map<String, AsyncResult__c> delayRowsByJobName() {
+        Map<String, AsyncResult__c> rowByName = new Map<String, AsyncResult__c>();
+        for (AsyncResult__c row : [
+            SELECT JobName__c, DelayMinutes__c, NextAttemptAt__c
+            FROM AsyncResult__c
+        ]) {
+            rowByName.put(row.JobName__c, row);
+        }
+        return rowByName;
+    }
+
+    private static List<BatchApexErrorEvent> batchFailureEvents(Integer count) {
+        List<BatchApexErrorEvent> events = new List<BatchApexErrorEvent>();
+        for (Integer i = 0; i < count; i++) {
+            events.add(batchFailureEvent('System.DmlException'));
+        }
+        return events;
+    }
+
+    private static OrderMarkerJob orderMarker(String tag) {
+        OrderMarkerJob job = new OrderMarkerJob();
+        job.tag = tag;
+        job.jobName = tag;
+        return job;
+    }
+
+    private static List<Integer> chainSequencesOf(List<QueueableJob> jobs) {
+        List<Integer> sequences = new List<Integer>();
+        for (QueueableJob job : jobs) {
+            sequences.add(job.chainSequence);
+        }
+        return sequences;
+    }
+
+    private static Id fakeAccountId(Integer index) {
+        return Id.valueOf('001' + String.valueOf(index).leftPad(12, '0'));
     }
 
     private static String loggerName(String simpleName) {
@@ -6835,7 +8180,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     private static QueueableChain chainWithSettings(QueueableJobSetting__mdt setting) {
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
+        QueueableJobSettings.jobSettingByName = new Map<String, QueueableJobSetting__mdt>{
             setting.QueueableJobName__c => setting
         };
         return chain;
@@ -6911,7 +8256,7 @@ private class AsyncTest implements Database.Batchable<SObject> {
 
     private static QueueableChain chainStoringPayloads() {
         QueueableChain chain = new QueueableChain();
-        QueueableChain.jobSettingByName = payloadStorageOn();
+        QueueableJobSettings.jobSettingByName = payloadStorageOn();
         return chain;
     }
 
@@ -7027,6 +8372,12 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
     }
 
+    public class DmlBatchFailureLogger implements Async.OnJobFailed {
+        public void onJobFailed(Async.FailureContext ctx) {
+            insert new Account(Name = 'Logged failure');
+        }
+    }
+
     public class ThrowingBatchFailureLogger implements Async.OnJobFailed {
         public void onJobFailed(Async.FailureContext ctx) {
             throw new CustomException('logger exploded');
@@ -7115,6 +8466,82 @@ private class AsyncTest implements Database.Batchable<SObject> {
         }
 
         public void resetBeforeRetry(Integer attempt) {
+        }
+    }
+
+    private class PlainChainingJob extends QueueableJob {
+        public override void work() {
+            Async.queueable(orderMarker('Y')).chain();
+        }
+    }
+
+    private class OrderMarkerJob extends QueueableJob {
+        public String tag;
+        public override void work() {
+            AsyncTest.runOrder.add(tag);
+            AsyncTest.insertNextInChainFor(tag);
+            if (tag == AsyncTest.sequenceSnapshotTag) {
+                for (AsyncResult__c row : [
+                    SELECT JobName__c, ChainSequence__c
+                    FROM AsyncResult__c
+                    WHERE Status__c = :QueueableManager.STATUS_ENQUEUED
+                ]) {
+                    AsyncTest.placeholderSequenceSeen.put(
+                        row.JobName__c,
+                        row.ChainSequence__c.intValue()
+                    );
+                }
+            }
+        }
+    }
+
+    private class OrderMarkerChunkJob extends ChunkJob implements Async.ChunkResettable {
+        public override void work(List<SObject> page) {
+            String tag = 'page' + getRun().currentPageNumber();
+            AsyncTest.runOrder.add(tag);
+            AsyncTest.insertNextInChainFor(tag);
+        }
+
+        public void resetBeforeNextChunk(Integer pageNumber) {
+        }
+    }
+
+    private class ChunkInsertingJob extends QueueableJob {
+        public override void work() {
+            AsyncTest.runOrder.add('A');
+            Async.chunk(new OrderMarkerChunkJob(), ChunkSource.of(AsyncTest.chunkSourceRecords))
+                .chunkSize(2)
+                .nextInChain()
+                .enqueue();
+        }
+    }
+
+    private class FinalizerAttachingJob extends QueueableJob {
+        public override void work() {
+            Async.queueable(new TaggingFinalizer()).attachFinalizer();
+        }
+    }
+
+    private class TaggingFinalizer extends QueueableJob.Finalizer {
+        public override void work() {
+            AsyncTest.runOrder.add('finalizer');
+        }
+    }
+
+    private class RecordLinkingJob extends QueueableJob {
+        public Id toLink;
+        public override void work() {
+            Async.linkRecord(toLink);
+            AsyncTest.dmlStatementsAfterLink = Limits.getDmlStatements();
+        }
+    }
+
+    private class ContextCapturingJob extends QueueableJob implements Async.OnJobEnqueued {
+        public override void work() {
+        }
+
+        public void onJobEnqueued(Async.JobContext ctx) {
+            AsyncTest.capturedJobContext = ctx;
         }
     }
 

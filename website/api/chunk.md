@@ -373,7 +373,23 @@ Cursor expiry, the daily cursor allocation, and the 2,000 record fetch ceiling a
 platform behaviours. They cannot be reproduced in a test, and faking them would
 test the fake rather than the framework.
 
-See [Testing Async Jobs](/explanations/testing-async-jobs) for worked examples.
+See [Testing Async Jobs](/features/testing-async-jobs) for worked examples.
+
+## Inside a page
+
+A page is a running `QueueableJob`, so everything under
+[Context](/api/queueable#context) and [Chain control](/api/queueable#chain-control) on the
+Queueable page works inside `work(List<SObject> chunk)` the same way:
+
+| Call | On a page |
+| ---- | --------- |
+| `Async.getQueueableJobContext()` | the context of the page that is running, `currentJob` is the page |
+| `Async.stopChain()` | stops the whole chain, the remaining pages included; the run records `SKIPPED_CHAIN_STOPPED` |
+| `Async.skipJob(customJobId)` | skips a job waiting after the run |
+| `Async.linkRecord(s)`, `Async.linkExternalRecord(s)` | links this page's records; the builder's links went on the first page |
+| `Async.queueable(...).nextInChain()` | runs right after this page, before the next one |
+| `Async.queueable(...).priority(n).chain()` | a higher priority than the run jumps the remaining pages, see [Placing a run in a chain](#placing-a-run-in-a-chain) |
+| `Async.requeue(...)` | from anywhere, not tied to the page; a chunk page itself stores no payload, so it is never replayable |
 
 ## Methods
 
@@ -623,6 +639,113 @@ This only affects what you can read from inside the run. Every page writes its o
 
 ```apex
 ChunkBuilder keepChunkPages();
+```
+
+#### name / chainName
+
+Display names for the record page timeline and `AsyncResult__c`. `name` labels the run, each
+page shows it with its page number; `chainName` applies to the whole chain, the last one set
+wins. Without a name the class name is shown. See [Job Timeline](/features/job-timeline).
+
+**Signature**
+
+```apex
+ChunkBuilder name(String jobName);
+ChunkBuilder chainName(String chainName);
+```
+
+**Example**
+
+```apex
+Async.chunk(new RepriceLinesJob(), ChunkSource.ofIds(lineIds))
+	.name('Reprice lines')
+	.chainName('Order fulfilment pipeline')
+	.enqueue();
+```
+
+#### linkRecord / linkRecords
+
+Links the run to the Salesforce record(s) it works on. The links are written once, on the
+first page, with `Source__c` `Salesforce` and `ObjectName__c` from the Id. Each page links
+its own records with `Async.linkRecords(...)` inside `work(...)`. A run shows as one step on
+the record page timeline, with a page strip. Capped by
+`QueueableJobSetting__mdt.MaxRecordLinks__c` like a queueable.
+
+**Signature**
+
+```apex
+ChunkBuilder linkRecord(SObject record);
+ChunkBuilder linkRecord(Id recordId);
+ChunkBuilder linkRecords(List<SObject> records);
+ChunkBuilder linkRecords(List<Id> recordIds);
+ChunkBuilder linkRecords(Set<Id> recordIds);
+```
+
+**Example**
+
+```apex
+Async.chunk(new RepriceLinesJob(), ChunkSource.ofIds(lineIds))
+	.name('Reprice lines')
+	.linkRecord(order)
+	.enqueue();
+
+public class RepriceLinesJob extends ChunkJob implements Async.ChunkResettable {
+	public override void work(List<SObject> page) {
+		Async.linkRecords(page);
+	}
+
+	public void resetBeforeNextChunk(Integer pageNumber) {
+	}
+}
+```
+
+#### linkExternalRecord / linkExternalRecords
+
+Links the run to a record in another system by its key, written on the first page like the
+builder's record links. `source` and `objectName` are stored as given, blank stays blank;
+only `key` is required. Inside `work(...)`, `Async.linkExternalRecord(...)` does the same for
+a page.
+
+**Signature**
+
+```apex
+ChunkBuilder linkExternalRecord(String source, String objectName, String key);
+ChunkBuilder linkExternalRecords(List<Async.RecordLink> links);
+```
+
+**Example**
+
+```apex
+Async.chunk(new SyncCustomersJob(), ChunkSource.ofIds(accountIds))
+	.name('Sync customers')
+	.linkExternalRecord('NetSuite', 'SyncBatch', batchNumber)
+	.enqueue();
+```
+
+#### nextInChain
+
+Only from inside a running job. Places the run right after the current job, before
+everything already waiting, whatever priority the waiting jobs carry; every page of the run
+then goes before the rest. Inside a chunk page the run goes after that page. Cannot be
+combined with `priority()`, and throws outside a running job. See
+[Queueable nextInChain](/api/queueable#nextinchain).
+
+**Signature**
+
+```apex
+ChunkBuilder nextInChain();
+```
+
+**Example**
+
+```apex
+public override void work() {
+	List<Id> lineIds = createLines();
+	Async.chunk(new RepriceLinesJob(), ChunkSource.ofIds(lineIds))
+		.chunkSize(200)
+		.nextInChain()
+		.enqueue();
+}
 ```
 
 ### Execute

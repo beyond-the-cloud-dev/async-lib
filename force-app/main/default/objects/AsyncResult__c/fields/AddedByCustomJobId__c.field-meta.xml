@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>AddedByCustomJobId__c</fullName>
+    <description>For a job added while another job was running, by chain(), enqueue() or nextInChain(), the Custom Job Id of the job that added it. Blank when nothing was running.</description>
+    <externalId>false</externalId>
+    <label>Added By Custom Job Id</label>
+    <length>36</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

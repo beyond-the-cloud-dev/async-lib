@@ -66,12 +66,12 @@ echo -e "${GREEN}Installed${NC}"
 
 echo -e "${BLUE}=== Deploying consumer classes ===${NC}"
 sf project deploy start \
-    --source-dir "$PROJECT_ROOT/package-tests/consumer-app/force-app" \
+    --source-dir "$PROJECT_ROOT/dev/package-tests/consumer-app/force-app" \
     --target-org "$ORG_ALIAS" \
     --wait 20 >/dev/null
 echo -e "${GREEN}Deployed${NC}"
 
-TEST_CLASSES=$(grep -l '^@IsTest' "$PROJECT_ROOT"/package-tests/consumer-app/force-app/main/default/classes/*.cls |
+TEST_CLASSES=$(grep -l '^@IsTest' "$PROJECT_ROOT"/dev/package-tests/consumer-app/force-app/main/default/classes/*.cls |
     while IFS= read -r f; do basename "$f" .cls; done)
 
 if [ -z "$TEST_CLASSES" ]; then

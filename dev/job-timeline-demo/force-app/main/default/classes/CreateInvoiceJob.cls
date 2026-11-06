@@ -1,0 +1,12 @@
+/**
+ * Copyright (c) 2026 Beyond The Cloud Sp. z o.o. (BeyondTheCloud.Dev)
+ * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
+ *
+ * v3.1.0
+ **/
+public class CreateInvoiceJob extends OrderStepJob {
+    public override void work() {
+        super.work();
+        Async.queueable(new WriteAuditTrail()).name('Write audit trail').attachFinalizer();
+    }
+}

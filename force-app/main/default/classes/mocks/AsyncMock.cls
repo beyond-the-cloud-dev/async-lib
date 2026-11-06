@@ -16,7 +16,7 @@ public class AsyncMock {
         for (QueueableJobSetting__mdt setting : settings) {
             settingByJobName.put(setting.QueueableJobName__c, setting);
         }
-        QueueableChain.jobSettingByName = settingByJobName;
+        QueueableJobSettings.jobSettingByName = settingByJobName;
     }
 
     public static FinalizerMockSetup whenFinalizer(String mockId) {
@@ -72,7 +72,7 @@ public class AsyncMock {
         queueableSetups.clear();
         defaultFinalizerSetup = null;
         defaultQueueableSetup = null;
-        QueueableChain.jobSettingByName = null;
+        QueueableJobSettings.jobSettingByName = null;
     }
 
     public class FinalizerMockSetup {

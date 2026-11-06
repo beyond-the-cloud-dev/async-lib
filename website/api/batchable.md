@@ -53,7 +53,7 @@ when a batch is still the right tool.
 
 Async Lib ships `AsyncResultCleanupBatch` for deleting old `AsyncResult__c`
 records, with separate retention for failed results and the rest. See
-[AsyncResult Cleanup](/explanations/asyncresult-cleanup).
+[AsyncResult Cleanup](/features/asyncresult-cleanup).
 
 :::
 
@@ -178,7 +178,7 @@ Returns `result.salesforceJobId` containing the Salesforce Job Id.
 
 A batch that implements `Database.RaisesPlatformEvents` has every failed scope recorded on
 `AsyncResult__c` and reported to your logger, governor limit errors included. The full story is on
-[Batch Failures](/explanations/batch-failures).
+[Batch Failures](/features/batch-failures).
 
 ```apex
 public class MyBatchJob implements Database.Batchable<SObject>, Database.RaisesPlatformEvents {

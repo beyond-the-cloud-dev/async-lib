@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs PMD over the Apex source with pmd/ruleset.xml.
+# Runs PMD over the Apex source with dev/pmd/ruleset.xml.
 #
 #   npm run pmd          report only, always exits 0
 #   npm run pmd:verify   exits 4 when anything is reported (the CI gate)
@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PMD_VERSION="7.5.0"
-RULESET="pmd/ruleset.xml"
+RULESET="dev/pmd/ruleset.xml"
 SOURCE_DIR="force-app"
 DIST_DIR=".pmd-dist"
 

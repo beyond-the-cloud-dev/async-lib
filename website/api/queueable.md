@@ -6,7 +6,7 @@ Apex classes `QueueableBuilder.cls`, `QueueableManager.cls`, and
 New to async jobs? See
 [Standard Apex vs Async Lib](/introduction/standard-apex-vs-async-lib#queueable)
 for how this maps to a plain `Queueable`. For testing patterns and best
-practices, see [Testing Async Jobs](/explanations/testing-async-jobs).
+practices, see [Testing Async Jobs](/features/testing-async-jobs).
 
 **Common QueueableJob class example:**
 
@@ -145,8 +145,8 @@ The following are methods for using Async with Queueable jobs:
 
 [**Chain control**](#chain-control)
 
-- [`stopChain()`](#stopchain)
-- [`skipJob(String customJobId)`](#skipjob)
+- [`Async.stopChain()`](#stopchain)
+- [`Async.skipJob(String customJobId)`](#skipjob)
 
 [**Override hooks**](#override-hooks) — methods you override on your
 `QueueableJob` subclass (not fluent builder calls)
@@ -236,6 +236,11 @@ Async.queueable(new MyQueueableJob())
 Sets a delay in minutes before the job executes. Cannot be used with
 asyncOptions().
 
+The delay starts when the job is enqueued. For a job later in a chain, that is
+when the job before it finishes, not when the chain was enqueued. The
+[Job Timeline](/features/job-timeline#delayed-jobs) shows the delay, and the
+clock time once it is known.
+
 **Signature**
 
 ```apex
@@ -246,7 +251,7 @@ QueueableBuilder delay(Integer delay);
 
 ```apex
 Async.queueable(new MyQueueableJob())
-	.delay(5);  // Execute in 5 minutes
+	.delay(5);  // Execute 5 minutes after it is enqueued
 ```
 
 #### priority
@@ -352,7 +357,7 @@ never retried. `maxRetries` must not exceed the framework safety limit of `10`.
 Passing a higher value to `retry(...)` throws. Configuring one on
 `QueueableJobSetting__mdt` clamps to the limit and records why, because a
 Custom Metadata mistake must never stop an org's jobs from running. See
-[Configuration Safety](/explanations/configuration-safety).
+[Configuration Safety](/features/configuration-safety).
 
 On each failed attempt the framework re-enqueues a fresh clone of the job with
 an incremented attempt counter. Jobs the failed attempt chained, and any
@@ -558,6 +563,74 @@ Async.queueable(new AlertOpsJob())
 	.enqueue();
 ```
 
+#### name / chainName
+
+Display names for the record page timeline and `AsyncResult__c`. `name` is this job's;
+`chainName` applies to the whole chain, the last one set wins. Both travel with the
+payload, so a requeued run keeps them. Without a name the class name is shown.
+See [Job Timeline](/features/job-timeline).
+
+**Signature**
+
+```apex
+QueueableBuilder name(String jobName);
+QueueableBuilder chainName(String chainName);
+```
+
+#### linkRecord / linkRecords
+
+Links the job to the Salesforce record(s) it works on. One `AsyncResultLink__c` row per
+result and record, with `Source__c` `Salesforce` and `ObjectName__c` from the Id, and a
+result row for the job whatever `CreateResult__c` says. Duplicates collapse, order is
+kept, a replay reads the links back from the rows. Capped by
+`QueueableJobSetting__mdt.MaxRecordLinks__c` (5000 by default and at most), with a
+warning in `RetryHistory__c` for anything dropped. See
+[Job Timeline](/features/job-timeline).
+
+**Signature**
+
+```apex
+QueueableBuilder linkRecord(SObject record);
+QueueableBuilder linkRecord(Id recordId);
+QueueableBuilder linkRecords(List<SObject> records);
+QueueableBuilder linkRecords(List<Id> recordIds);
+QueueableBuilder linkRecords(Set<Id> recordIds);
+```
+
+**Example**
+
+```apex
+Async.queueable(new CommissionSplitJob(order))
+	.name('Commission split')
+	.linkRecord(order)
+	.linkRecords(orderLineIds)
+	.enqueue();
+```
+
+#### linkExternalRecord / linkExternalRecords
+
+Links the job to a record in another system by its key. `source` and `objectName` are
+stored as given, blank stays blank; only `key` is required (`IllegalArgumentException`
+otherwise). The same key under two sources is two links. Counts against the same cap as
+`linkRecords`.
+
+**Signature**
+
+```apex
+QueueableBuilder linkExternalRecord(String source, String objectName, String key);
+QueueableBuilder linkExternalRecords(List<Async.RecordLink> links);
+```
+
+**Example**
+
+```apex
+Async.queueable(new SyncCustomerJob(account))
+	.name('Sync customer')
+	.linkRecord(account)
+	.linkExternalRecord('NetSuite', 'Customer', account.NetSuiteId__c)
+	.enqueue();
+```
+
 #### deepClone
 
 Clones provided QueueableJob by value for all the member variables. By default
@@ -591,7 +664,7 @@ Attaches arbitrary key/value metadata to the job. It arrives on every lifecycle
 context as `ctx.info`, and survives retries, chunk pages and serialization.
 
 Use it to route alerts by team, package or owner. See
-[Logging](/explanations/logging).
+[Logging](/features/logging).
 
 **Signature**
 
@@ -720,6 +793,29 @@ Async.queueable(new MyQueueableJob())
 	.chunkSize(200)
 	.chain(new MyOtherQueueableJob())
 	.enqueue();
+```
+
+#### nextInChain
+
+Only from inside a running job. Places this job right after the current one, before
+everything already waiting, whatever priority the waiting jobs carry. Finalizers of the
+current job still run first. Two calls from one job run in call order; a job inserted by
+an inserted job runs before its siblings; inside a chunk page the job runs after that
+page. Cannot be combined with `priority()`, and throws outside a running job.
+
+**Signature**
+
+```apex
+QueueableBuilder nextInChain();
+```
+
+**Example**
+
+```apex
+public override void work() {
+	Invoice__c invoice = createInvoice();
+	Async.queueable(new CalculateTaxJob(invoice)).nextInChain().enqueue();
+}
 ```
 
 #### asSchedulable
@@ -928,7 +1024,7 @@ public class GuardFinalizer extends QueueableJob.Finalizer {
 }
 ```
 
-#### stopChain
+#### Async.stopChain {#stopchain}
 
 Skips every remaining (unprocessed) job in the current chain. Nothing else runs.
 
@@ -949,7 +1045,7 @@ void stopChain();
 Async.stopChain();
 ```
 
-#### skipJob
+#### Async.skipJob {#skipjob}
 
 Skips the job with the given `customJobId` and any finalizers attached to it.
 Jobs that [`dependsOn`](#dependson) the skipped job are skipped in turn. Throws
@@ -971,15 +1067,70 @@ void skipJob(String customJobId);
 Async.skipJob(notificationsResult.customJobId);
 ```
 
+#### Async.linkRecord / Async.linkRecords {#linkrecord--linkrecords-1}
+
+Only from inside `work()`. Links the running job to Salesforce records it discovered, the
+way `linkRecord(...)` does on the builder, without any DML: the links are written with the
+result row when the job settles, so a callout after the call is fine. Throws outside a
+running job.
+
+**Signature**
+
+```apex
+void linkRecord(SObject record);
+void linkRecord(Id recordId);
+void linkRecords(List<SObject> records);
+void linkRecords(List<Id> recordIds);
+void linkRecords(Set<Id> recordIds);
+```
+
+**Example**
+
+```apex
+public override void work() {
+	Account parent = [SELECT Id FROM Account WHERE Id = :order.AccountId];
+	Async.linkRecord(parent);
+}
+```
+
+#### linkExternalRecord / linkExternalRecords
+
+Only from inside `work()`. Links the running job to a record in another system by its
+key, the way `linkExternalRecord(...)` does on the builder: `source` and `objectName` are
+stored as given, blank stays blank, only `key` is required. No DML until the job settles.
+Throws outside a running job.
+
+**Signature**
+
+```apex
+void linkExternalRecord(String source, String objectName, String key);
+void linkExternalRecords(List<Async.RecordLink> links);
+```
+
+**Example**
+
+```apex
+public override void work() {
+	String customerId = netSuite.upsertCustomer(account);
+	Async.linkExternalRecord('NetSuite', 'Customer', customerId);
+}
+```
+
 #### requeue
 
 Rebuilds jobs from the payload stored on their `AsyncResult__c` records and runs
 them again as one chain. Needs `QueueableJobSetting__mdt.StoreJobPayload__c = Yes`
 before the original run, and a registered `Async.JobSerializer` on a packaged
-install. See [Requeue](/explanations/requeue).
+install. See [Requeue](/features/requeue).
 
 Every result that could not be replayed comes back with a reason. Throws when the
 call asks for more than 2,000,000 characters of payload.
+
+Replays run in the order the original chain had (`ChainSequence__c`), whatever order
+the ids were passed in. A `dependsOn` stored on a row is rebuilt when its target is in
+the same call, dropped and reported when the target already satisfied it, and otherwise
+skips the dependent with a reason. See
+[Job Timeline](/features/job-timeline#requeue-from-the-timeline).
 
 ::: warning Requeue replays data, not intent
 
@@ -987,7 +1138,7 @@ The payload was written by the class as it was and is rebuilt by the class as it
 is now. A renamed field arrives `null`; a field that changed meaning replays the
 old data under the new meaning, silently. If the fix changed the job's own fields,
 enqueue it fresh. See
-[Requeue](/explanations/requeue#what-is-stored).
+[Requeue](/features/requeue#what-is-stored).
 
 :::
 
@@ -1002,6 +1153,7 @@ RequeueSummary requeue(Set<Id> resultIds);
 | ---------------- | ----- |
 | `List<Id> requeued` | replayed |
 | `Map<Id, String> skipReasonByResultId` | the rest, and why |
+| `Map<Id, String> droppedDependencyByResultId` | replayed without a dependency its target had already satisfied, and which one |
 | `Async.Result enqueueResult` | the chain they run in, `null` when nothing was replayed |
 
 **Example**
@@ -1164,7 +1316,7 @@ public class ImportJob extends QueueableJob implements Async.OnJobFailed {
 A listener that throws never affects the job. Adding a fifth event later is a new
 interface, so existing listeners keep compiling.
 
-See [Logging](/explanations/logging) for org-wide registration, the `global`
+See [Logging](/features/logging) for org-wide registration, the `global`
 requirement and a Nebula adapter.
 
 #### ~~resetForRetry~~ <Badge type="danger" text="DEPRECATED" /> {#resetforretry}
@@ -1246,7 +1398,7 @@ public virtual void onFinalFailure(Async.FailureContext failureCtx);
 | `retryHistory` | `String`                  | One line per attempt with its exception type and message.                |
 | `asyncType`    | `Async.AsyncType`         | `QUEUEABLE` here. `BATCHABLE` when a logger receives a batch failure.    |
 | `salesforceJobId` | `Id`                   | The `AsyncApexJob` id of the job that failed.                            |
-| `batchPhase`, `batchScope`, `batchScopeTruncated` | `String`, `String`, `Boolean` | Filled for a batch failure only. See [Batch Failures](/explanations/batch-failures#logging). |
+| `batchPhase`, `batchScope`, `batchScopeTruncated` | `String`, `String`, `Boolean` | Filled for a batch failure only. See [Batch Failures](/features/batch-failures#logging). |
 
 **`Async.RetryOutcome`**
 

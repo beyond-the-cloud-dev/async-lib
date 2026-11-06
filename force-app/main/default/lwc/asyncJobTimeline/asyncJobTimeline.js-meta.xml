@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>66.0</apiVersion>
+    <isExposed>true</isExposed>
+    <masterLabel>Async Jobs</masterLabel>
+    <description>Every async job that ran, runs or will run for this record, with requeue for failed steps.</description>
+    <targets>
+        <target>lightning__RecordPage</target>
+        <target>lightningCommunity__Page</target>
+        <target>lightningCommunity__Default</target>
+    </targets>
+    <targetConfigs>
+        <targetConfig targets="lightning__RecordPage">
+            <property name="cardTitle" type="String" label="Card title" default="Async Jobs"/>
+            <property
+                name="daysBack"
+                type="Integer"
+                label="Default range in days"
+                default="7"
+                min="1"
+                max="365"
+                description="Range selected when the card opens; the viewer can switch to 24 hours, 7 days, 30 days or all time. Blank means 7."/>
+            <property
+                name="chainsPerPage"
+                type="Integer"
+                label="Sequences per page"
+                default="0"
+                min="0"
+                max="50"
+                description="Chains shown per page. 0 fits as many collapsed chains as the height allows, so a page never scrolls until you open a chain."/>
+            <property
+                name="maxHeight"
+                type="Integer"
+                label="Max height in pixels"
+                default="600"
+                min="0"
+                max="4000"
+                description="The list scrolls inside the card above this height. 0 lets the card grow."/>
+            <property
+                name="liveRefreshOff"
+                type="Boolean"
+                label="Turn off live refresh"
+                default="false"
+                description="By default the card polls while a chain is in flight: every 3 seconds while a job runs, every 10 seconds while queued, never when idle. Turn on to load once and refresh by hand only."/>
+            <property
+                name="followNewRuns"
+                type="Boolean"
+                label="Follow new runs"
+                default="false"
+                description="When on, a chain that enters in flight opens by itself and the others collapse, for a card left open on a screen. Off: the new chain is only flagged. The viewer can switch it for the session."/>
+        </targetConfig>
+        <targetConfig targets="lightningCommunity__Default">
+            <property
+                name="recordId"
+                type="String"
+                label="Record Id"
+                default="{!recordId}"
+                description="Leave as {!recordId} on a record page."/>
+            <property name="cardTitle" type="String" label="Card title" default="Async Jobs"/>
+            <property
+                name="daysBack"
+                type="Integer"
+                label="Default range in days"
+                default="7"
+                min="1"
+                max="365"/>
+            <property
+                name="chainsPerPage"
+                type="Integer"
+                label="Sequences per page"
+                default="0"
+                min="0"
+                max="50"/>
+            <property
+                name="maxHeight"
+                type="Integer"
+                label="Max height in pixels"
+                default="600"
+                min="0"
+                max="4000"/>
+            <property
+                name="liveRefreshOff"
+                type="Boolean"
+                label="Turn off live refresh"
+                default="false"/>
+            <property name="followNewRuns" type="Boolean" label="Follow new runs" default="false"/>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>

@@ -64,7 +64,7 @@ for the features you use and rename them however you like.
 Callouts are a marker, not a base class, so `implements Database.AllowsCallouts` works on any of
 them. Why the base classes exist is in
 [Deep Clone in Packages](/explanations/deep-clone-in-packages), and the serializer in
-[Requeue](/explanations/requeue).
+[Requeue](/features/requeue).
 
 ### 4. Declare `global` on anything you register by name
 
@@ -79,16 +79,27 @@ must be `global`, or the name resolves to nothing. Only the class needs it, the 
 
 A name that does not resolve degrades rather than throws: no logging, or `NotSerializable` on the
 result, plus a warning in `RetryHistory__c` naming the field. It never stops a job. See
-[Configuration Safety](/explanations/configuration-safety).
+[Configuration Safety](/features/configuration-safety).
 
 ### 5. Assign the permission set
 
 `btcdev__AsyncResultAccess` grants read on `btcdev__AsyncResult__c` and every field on it, for
-admins and reports. The framework writes those records in system context and does not need it
-itself.
+admins and reports, and access to the `Async Jobs` component for viewers. The framework writes
+those records in system context and does not need it itself.
 
 `JobPayload__c` is part of that set. If you turn `StoreJobPayload__c` on, whoever holds the set can
-read whatever data your jobs carried, so review it first.
+read whatever data your jobs carried, so review it first. The set also covers
+`btcdev__AsyncResultLink__c`, the links between results and the records a job worked on, in
+Salesforce or elsewhere.
+
+`btcdev__AsyncRequeueAccess` grants the `AsyncRequeue` custom permission, which shows the requeue
+actions on the `Async Jobs` record page component. Assign it to operators only.
+
+### 6. Place the record page component
+
+`Async Jobs` is in App Builder under custom components, for Lightning record pages and Aura-based
+Experience site record pages. Drop it on any record page; the viewer needs
+`btcdev__AsyncResultAccess`. See [Job Timeline](/features/job-timeline).
 
 ## Feature by feature
 
@@ -103,6 +114,9 @@ What each feature needs on a packaged install, and nothing more.
 | `LoggerClass__c` | your logger class, declared `global` |
 | `Async.requeue()` | `AsyncJobSerializer`, copied and registered |
 | batch failure records, `Async.requeueBatchFailures()`, `Async.BatchRecordLoader` | the prefix |
+| `name`, `chainName`, `linkRecord(s)`, `linkExternalRecord(s)`, `Async.linkRecord(s)`, `nextInChain()` | the prefix |
+| `AsyncResultCleanupBatch`, scheduled or ad hoc | the prefix on the batch, `Async` and `CronBuilder`; see [AsyncResult Cleanup](/features/asyncresult-cleanup#on-a-packaged-install) |
+| the `Async Jobs` record page component | `btcdev__AsyncResultAccess` for viewers, `btcdev__AsyncRequeueAccess` plus `AsyncJobSerializer` for requeue |
 
 ## Writing tests against the package
 

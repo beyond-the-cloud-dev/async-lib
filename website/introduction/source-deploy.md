@@ -96,7 +96,7 @@ are not in the repository and are untouched either way.
    framework writes those records in system context and does not need it.
 2. Open `QueueableJobSetting__mdt` and decide what `All` should say. Nothing is on by default: no
    result rows, no retry, no logger, no payload storage. See
-   [Configuration Safety](/explanations/configuration-safety) for what a wrong value does.
+   [Configuration Safety](/features/configuration-safety) for what a wrong value does.
 3. Write your first job. [Getting Started](/getting-started).
 
 ## Switching to the package later

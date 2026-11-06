@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Dependencies__c</fullName>
+    <description>The dependsOn(...) rules of the job as JSON: the Custom Job Id each one targets and the outcome it requires. Async.requeue() rebuilds them when the target is requeued in the same call.</description>
+    <externalId>false</externalId>
+    <label>Dependencies</label>
+    <length>32768</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>LongTextArea</type>
+    <visibleLines>5</visibleLines>
+</CustomField>

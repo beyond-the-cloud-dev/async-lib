@@ -86,7 +86,7 @@ Async.batchable(new AccountCleanupBatch()).scopeSize(200).execute();
 - **Run the failed records again**, through the batch's own `execute()`, with
   `Async.requeueBatchFailures(...)`.
 
-All three are on [Batch Failures](/explanations/batch-failures).
+All three are on [Batch Failures](/features/batch-failures).
 
 What it will not do: retry a batch scope on its own, call a hook when a batch finishes, or put a
 batch inside a Queueable chain. If you need those, that is the sign the work wants to be a

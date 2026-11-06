@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>NextAttemptAt__c</fullName>
+    <description>When the next run of the job is due: a retry waiting for its next attempt, or a delayed job that is already enqueued. Blank for a delayed job still waiting for its turn, because its delay starts when the job before it finishes. Cleared when the job settles.</description>
+    <externalId>false</externalId>
+    <label>Next Attempt At</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>DateTime</type>
+</CustomField>

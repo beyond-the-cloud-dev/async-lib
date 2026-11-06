@@ -6,9 +6,13 @@
  *
  * PMD False Positives:
  * - ExcessivePublicCount: one fluent method per job option
+ * - CyclomaticComplexity / CognitiveComplexity: one guard clause per fluent method, and the most
+ *   complex member scores 8
  * - EmptyStatementBlock: Apex requires an explicit no-arg constructor once another exists
  **/
-@SuppressWarnings('PMD.ExcessivePublicCount,PMD.EmptyStatementBlock')
+@SuppressWarnings(
+    'PMD.ExcessivePublicCount,PMD.CyclomaticComplexity,PMD.CognitiveComplexity,PMD.EmptyStatementBlock'
+)
 public inherited sharing class QueueableBuilder {
     private QueueableJob job;
     private String lastChainedCustomJobId;
@@ -65,7 +69,68 @@ public inherited sharing class QueueableBuilder {
     }
 
     public QueueableBuilder priority(Integer priority) {
+        if (job.nextInChain) {
+            throw new IllegalArgumentException(
+                QueueableManager.ERROR_MESSAGE_PRIORITY_WITH_NEXT_IN_CHAIN
+            );
+        }
         job.priority = priority;
+        return this;
+    }
+
+    public QueueableBuilder name(String jobName) {
+        job.jobName = jobName;
+        return this;
+    }
+
+    public QueueableBuilder chainName(String chainName) {
+        job.chainName = chainName;
+        return this;
+    }
+
+    public QueueableBuilder linkRecord(SObject record) {
+        return linkRecord(record?.Id);
+    }
+
+    public QueueableBuilder linkRecord(Id recordId) {
+        job.linkRecords(new List<Id>{ recordId });
+        return this;
+    }
+
+    public QueueableBuilder linkRecords(List<SObject> records) {
+        job.linkRecords(QueueableManager.idsOf(records));
+        return this;
+    }
+
+    public QueueableBuilder linkRecords(List<Id> recordIds) {
+        job.linkRecords(recordIds);
+        return this;
+    }
+
+    public QueueableBuilder linkRecords(Set<Id> recordIds) {
+        job.linkRecords(recordIds == null ? null : new List<Id>(recordIds));
+        return this;
+    }
+
+    public QueueableBuilder linkExternalRecord(String source, String objectName, String key) {
+        job.linkExternalRecords(
+            new List<Async.RecordLink>{ new Async.RecordLink(source, objectName, key) }
+        );
+        return this;
+    }
+
+    public QueueableBuilder linkExternalRecords(List<Async.RecordLink> links) {
+        job.linkExternalRecords(links);
+        return this;
+    }
+
+    public QueueableBuilder nextInChain() {
+        if (job.priority != null) {
+            throw new IllegalArgumentException(
+                QueueableManager.ERROR_MESSAGE_PRIORITY_WITH_NEXT_IN_CHAIN
+            );
+        }
+        job.nextInChain = true;
         return this;
     }
 

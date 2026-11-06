@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ChainName__c</fullName>
+    <description>Display name given with chainName(...) on any job of the chain; the last one set wins and every result in the chain carries it. Blank when the chain was not named.</description>
+    <externalId>false</externalId>
+    <label>Chain Name</label>
+    <length>80</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

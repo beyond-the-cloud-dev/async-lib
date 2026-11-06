@@ -74,6 +74,17 @@ sf project deploy start --source-dir force-app --target-org your-org
 
 No namespace, nothing extra to set up, upgrades by redeploying the next tag. Guide: [Deploying the Source](https://async.beyondthecloud.dev/introduction/source-deploy).
 
+## What's in this repo
+
+| Folder | For | What it is |
+| --- | --- | --- |
+| `force-app` | everyone | the library |
+| `extras` | packaged installs | optional classes you copy into your org |
+| `website` | everyone | the docs site |
+| `release-notes` | everyone | what changed in each version |
+| `scripts`, `config` | maintainers | release, PMD and header scripts, scratch org definition |
+| `dev` | maintainers | tests, demos and rules for working on the library. You don't need it to use Async Lib |
+
 ## Contributors
 
 <a href="https://github.com/beyond-the-cloud-dev/async-lib/graphs/contributors">

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ChunkRunId__c</fullName>
+    <description>For a chunk page, the id shared by every page of the same run (the Custom Job Id of the first page). Group by this to see a run as one step.</description>
+    <externalId>false</externalId>
+    <label>Chunk Run Id</label>
+    <length>36</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

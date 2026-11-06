@@ -56,6 +56,14 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
     public FinalizerContext finalizerCtx;
     public String mockId;
 
+    public String jobName;
+    public String chainName;
+    public List<Async.RecordLink> links;
+    public Boolean nextInChain = false;
+    public String addedByCustomJobId;
+    public Datetime startedAt;
+    public Integer recordLinksWritten = 0;
+
     @TestVisible
     private QueueableChain chain;
     @TestVisible
@@ -86,7 +94,7 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
     /**
      * Superseded by Async.Retryable.resetBeforeRetry(Integer). Nothing calls this any more.
      * It cannot be deleted: dropping a global member makes the package install fail in every
-     * subscriber org that referenced it, before any of our code runs. See docs/api-evolution.md.
+     * subscriber org that referenced it, before any of our code runs. See dev/docs/api-evolution.md.
      **/
     public virtual void resetForRetry() {
     }
@@ -132,6 +140,9 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         if (!isFinalizer && compareToJob.isFinalizer) {
             return 1;
         }
+        if (isNextInChain() != compareToJob.isNextInChain()) {
+            return isNextInChain() ? -1 : 1;
+        }
         if (priority != null && compareToJob.priority == null) {
             return -1;
         }
@@ -142,6 +153,10 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
             return compareChainSequence(compareToJob);
         }
         return priority - compareToJob.priority;
+    }
+
+    private Boolean isNextInChain() {
+        return nextInChain == true;
     }
 
     // List.sort() does not define the order of equal elements, so equal priority needs an
@@ -159,6 +174,52 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         } else {
             salesforceJobId = System.enqueueJob(this);
         }
+    }
+
+    public void linkRecords(List<Id> recordIds) {
+        List<Async.RecordLink> salesforceLinks = new List<Async.RecordLink>();
+        for (Id recordId : recordIds ?? new List<Id>()) {
+            if (recordId != null) {
+                salesforceLinks.add(salesforceLinkOf(recordId));
+            }
+        }
+        addLinks(salesforceLinks);
+    }
+
+    public void linkExternalRecords(List<Async.RecordLink> externalLinks) {
+        for (Async.RecordLink link : externalLinks ?? new List<Async.RecordLink>()) {
+            if (link != null && String.isBlank(link.key)) {
+                throw new IllegalArgumentException(
+                    QueueableManager.ERROR_MESSAGE_LINK_KEY_REQUIRED
+                );
+            }
+        }
+        addLinks(externalLinks);
+    }
+
+    public void addLinks(List<Async.RecordLink> toAdd) {
+        if (toAdd == null || toAdd.isEmpty()) {
+            return;
+        }
+        links = links ?? new List<Async.RecordLink>();
+        Set<String> known = new Set<String>();
+        for (Async.RecordLink link : links) {
+            known.add(QueueableManager.linkIdentityOf(link));
+        }
+        for (Async.RecordLink link : toAdd) {
+            if (link != null && known.add(QueueableManager.linkIdentityOf(link))) {
+                links.add(link);
+            }
+        }
+    }
+
+    private static Async.RecordLink salesforceLinkOf(Id recordId) {
+        Schema.SObjectType type = QueueableManager.sobjectTypeOrNull(recordId);
+        return new Async.RecordLink(
+            QueueableManager.SOURCE_SALESFORCE,
+            type == null ? null : String.valueOf(type),
+            recordId
+        );
     }
 
     public void setMainAttributes() {
@@ -295,6 +356,8 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         restored.restoreStateOnRetry = restoreStateOnRetry;
         restored.restoreStateOnNextChunk = restoreStateOnNextChunk;
         restored.retryHistory = retryHistory;
+        restored.links = links;
+        restored.recordLinksWritten = recordLinksWritten;
         restored.carryFrameworkStateFrom(this);
         return restored;
     }
@@ -307,6 +370,8 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
      * - `backoff` / `dependencies` / `failure` are Async Lib types, and JSON.serialize refuses any
      *   graph crossing a namespace, so a subscriber's override hits "Type cannot be serialized"
      * - `requeuePayload` would otherwise nest the previous payload inside every new one
+     * - `links` are read back from the stored link rows on requeue, which also covers the ones
+     *   added inside work()
      * Stripping a shallow copy rather than this job also covers subclass overrides.
      **/
     public QueueableJob copyWithoutRuntimeState() {
@@ -319,6 +384,11 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         stripped.failure = null;
         stripped.enqueuedState = null;
         stripped.requeuePayload = null;
+        stripped.links = null;
+        stripped.startedAt = null;
+        stripped.addedByCustomJobId = null;
+        stripped.nextInChain = false;
+        stripped.recordLinksWritten = 0;
         stripped.clearFrameworkStateForCopy();
         return stripped;
     }
@@ -330,6 +400,7 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
         copy.backoff = this.backoff;
         copy.dependencies = deepCopyOf(this.dependencies);
         copy.failure = deepCopyOf(this.failure);
+        copy.addedByCustomJobId = this.addedByCustomJobId;
         return copy;
     }
 
@@ -376,6 +447,9 @@ public without sharing abstract class QueueableJob implements Queueable, Compara
 
     @SuppressWarnings('PMD.AvoidDebugStatements')
     public void recordConfigurationWarning(String warning) {
+        if (retryHistory?.contains(warning) == true) {
+            return;
+        }
         appendRetryHistoryLine(warning);
         System.debug(LoggingLevel.ERROR, warning);
     }

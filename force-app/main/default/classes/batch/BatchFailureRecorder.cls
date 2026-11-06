@@ -11,6 +11,10 @@
 @SuppressWarnings('PMD.AvoidDebugStatements')
 public inherited sharing class BatchFailureRecorder {
     public static final String PHASE_EXECUTE = 'EXECUTE';
+    public static final Integer MAX_EVENTS_PER_DELIVERY = 50;
+
+    @TestVisible
+    private static String resumeCheckpoint;
 
     private static final Integer MAX_EXCEPTION_MESSAGE_LENGTH = 32768;
     private static final String RESULT_UNHANDLED_EXCEPTION = 'UNHANDLED_EXCEPTION';
@@ -18,10 +22,30 @@ public inherited sharing class BatchFailureRecorder {
 
     public static void record(List<BatchApexErrorEvent> events) {
         try {
-            recordAndNotify(events);
+            List<BatchApexErrorEvent> handledNow = firstEventsOf(events);
+            recordAndNotify(handledNow);
+            if (handledNow.size() < events.size()) {
+                resumeAfter(handledNow[handledNow.size() - 1]);
+            }
         } catch (Exception recordingFailure) {
             reportWithoutLosingTheOtherFailuresInThisDelivery(recordingFailure);
         }
+    }
+
+    private static List<BatchApexErrorEvent> firstEventsOf(List<BatchApexErrorEvent> events) {
+        List<BatchApexErrorEvent> first = new List<BatchApexErrorEvent>();
+        for (BatchApexErrorEvent event : events) {
+            if (first.size() == MAX_EVENTS_PER_DELIVERY) {
+                break;
+            }
+            first.add(event);
+        }
+        return first;
+    }
+
+    private static void resumeAfter(BatchApexErrorEvent lastHandled) {
+        resumeCheckpoint = lastHandled.ReplayId;
+        EventBus.TriggerContext.currentContext().setResumeCheckpoint(resumeCheckpoint);
     }
 
     private static void reportWithoutLosingTheOtherFailuresInThisDelivery(
@@ -107,7 +131,7 @@ public inherited sharing class BatchFailureRecorder {
     }
 
     private static Boolean createResultEnabledFor(String className) {
-        Map<String, QueueableJobSetting__mdt> settings = QueueableChain.jobSettingByName;
+        Map<String, QueueableJobSetting__mdt> settings = QueueableJobSettings.jobSettingByName;
         return settings.get(QueueableManager.QUEUEABLE_JOB_SETTING_ALL)?.CreateResult__c == true ||
             settings.get(className)?.CreateResult__c == true;
     }

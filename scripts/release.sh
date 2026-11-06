@@ -5,7 +5,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # The CLI's update banner goes to stderr; the `--json 2>&1` calls below would feed
-# it to jq, which then fails to parse. Suppress it (same guard as package-tests/run.sh).
+# it to jq, which then fails to parse. Suppress it (same guard as dev/package-tests/run.sh).
 export SF_SKIP_NEW_VERSION_CHECK=true
 
 # sf package version create resolves the dev hub from config, which is not set in

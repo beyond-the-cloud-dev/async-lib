@@ -3,7 +3,11 @@
  * Licensed under the MIT License (https://github.com/beyond-the-cloud-dev/async-lib/blob/main/LICENSE)
  *
  * v3.1.0
+ *
+ * PMD False Positives:
+ * - CyclomaticComplexity: one guard clause per requeue rule, and the most complex member scores 7
  **/
+@SuppressWarnings('PMD.CyclomaticComplexity')
 public inherited sharing class AsyncRequeue {
     public static final String STATUS_STORED = 'Stored';
     public static final String STATUS_TOO_LARGE = 'TooLarge';
@@ -44,6 +48,10 @@ public inherited sharing class AsyncRequeue {
         job.requeuePayload = payload;
     }
 
+    public static void releasePayload(QueueableJob job) {
+        job.requeuePayload = null;
+    }
+
     public static Boolean storesPayload(QueueableJob job) {
         return QueueableManager.settingFor(
                 job.className,
@@ -59,11 +67,11 @@ public inherited sharing class AsyncRequeue {
         List<AsyncResult__c> replayable = replayableOrExplained(resultIds, summary);
         assertPayloadsWillFitInHeap(replayable);
 
-        QueueableBuilder replay = chainRebuilt(readPayloads(replayable), summary);
-        if (summary.requeued.isEmpty()) {
+        QueueableJob lastChained = chainRebuilt(readPayloads(replayable), summary);
+        if (lastChained == null) {
             return summary;
         }
-        summary.enqueueResult = replay.enqueue();
+        summary.enqueueResult = QueueableManager.get().enqueue(lastChained);
         markRequeued(summary.requeued);
         return summary;
     }
@@ -87,21 +95,49 @@ public inherited sharing class AsyncRequeue {
         return replayable;
     }
 
-    private static QueueableBuilder chainRebuilt(
-        List<AsyncResult__c> lockedRows,
+    private static QueueableJob chainRebuilt(
+        List<AsyncResult__c> rows,
         Async.RequeueSummary summary
     ) {
-        QueueableBuilder replay = Async.queueable();
-        for (AsyncResult__c row : lockedRows) {
+        rows.sort(new ChainOrder());
+        AsyncRequeueDependencies dependencies = new AsyncRequeueDependencies(rows, summary);
+        Map<Id, List<Async.RecordLink>> linksByResultId = storedLinksOf(rows);
+        QueueableJob lastChained;
+        for (AsyncResult__c row : rows) {
             QueueableJob job = rebuildOrExplain(row, summary);
             if (job == null) {
                 continue;
             }
+            List<Async.Dependency> rebuilt = dependencies.rebuiltFor(row);
+            if (rebuilt == null) {
+                continue;
+            }
+            job.dependencies = rebuilt.isEmpty() ? null : rebuilt;
+            job.addLinks(linksByResultId.get(row.Id));
             job.requeuedFromResultId = row.Id;
-            replay.chain(job);
+            Async.Result chained = Async.queueable(job).chain();
+            dependencies.remember(row.CustomJobId__c, chained.customJobId);
             summary.requeued.add(row.Id);
+            lastChained = chained.job;
         }
-        return replay;
+        return lastChained;
+    }
+
+    private static Map<Id, List<Async.RecordLink>> storedLinksOf(List<AsyncResult__c> rows) {
+        Map<Id, List<Async.RecordLink>> linksByResultId = new Map<Id, List<Async.RecordLink>>();
+        for (AsyncResultLink__c stored : [
+            SELECT AsyncResult__c, Source__c, ObjectName__c, Key__c
+            FROM AsyncResultLink__c
+            WHERE AsyncResult__c IN :rows
+            WITH SYSTEM_MODE
+            ORDER BY CreatedDate, Id
+        ]) {
+            List<Async.RecordLink> links = linksByResultId.get(stored.AsyncResult__c) ??
+                new List<Async.RecordLink>();
+            links.add(new Async.RecordLink(stored.Source__c, stored.ObjectName__c, stored.Key__c));
+            linksByResultId.put(stored.AsyncResult__c, links);
+        }
+        return linksByResultId;
     }
 
     private static void recordNotSerializable(QueueableJob job, String cause) {
@@ -126,11 +162,37 @@ public inherited sharing class AsyncRequeue {
 
     private static List<AsyncResult__c> readPayloads(List<AsyncResult__c> lockedRows) {
         return [
-            SELECT Id, ClassName__c, JobPayload__c
+            SELECT
+                Id,
+                ClassName__c,
+                JobPayload__c,
+                ChainId__c,
+                ChainSequence__c,
+                CustomJobId__c,
+                Dependencies__c,
+                CreatedDate
             FROM AsyncResult__c
             WHERE Id IN :lockedRows
             WITH SYSTEM_MODE
         ];
+    }
+
+    private class ChainOrder implements Comparator<AsyncResult__c> {
+        public Integer compare(AsyncResult__c first, AsyncResult__c second) {
+            Integer byChain = (first.ChainId__c ?? '').compareTo(second.ChainId__c ?? '');
+            if (byChain != 0) {
+                return byChain;
+            }
+            Decimal firstSequence = first.ChainSequence__c ?? Decimal.valueOf(2147483647L);
+            Decimal secondSequence = second.ChainSequence__c ?? Decimal.valueOf(2147483647L);
+            if (firstSequence != secondSequence) {
+                return firstSequence < secondSequence ? -1 : 1;
+            }
+            if (first.CreatedDate == second.CreatedDate) {
+                return 0;
+            }
+            return first.CreatedDate < second.CreatedDate ? -1 : 1;
+        }
     }
 
     private static Set<Id> missingIds(

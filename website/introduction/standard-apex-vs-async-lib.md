@@ -314,7 +314,7 @@ result tracking on top.
 Retry, finalizers and chaining are Queueable features, and Async Lib keeps them
 there on purpose. For new work over many records, a [chunk run](/api/chunk) is
 the recommended path. [Batch or Chunk?](/explanations/batch-or-chunk) has the
-reasoning, and [Batch Failures](/explanations/batch-failures) covers what a
+reasoning, and [Batch Failures](/features/batch-failures) covers what a
 batch does get: recorded failures, logging and requeue.
 
 **Standard Apex**

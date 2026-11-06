@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>ChainSequence__c</fullName>
+    <description>Position of the job inside its chain, in the order the chain runs. Can change only while the job waits, when a job that runs earlier is added. Order by Chain Id, then this, to read a chain as a timeline. Async.requeue() replays rows in this order.</description>
+    <externalId>false</externalId>
+    <label>Chain Sequence</label>
+    <precision>9</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

@@ -2,5 +2,112 @@
   "buildCommand": "npm run docs:build",
   "outputDirectory": "website/.vitepress/dist",
   "installCommand": "npm install",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/explanations/job-timeline",
+      "destination": "/features/job-timeline",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/job-timeline.md",
+      "destination": "/features/job-timeline.md",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/job-timeline.html",
+      "destination": "/features/job-timeline",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/requeue",
+      "destination": "/features/requeue",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/requeue.md",
+      "destination": "/features/requeue.md",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/requeue.html",
+      "destination": "/features/requeue",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/batch-failures",
+      "destination": "/features/batch-failures",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/batch-failures.md",
+      "destination": "/features/batch-failures.md",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/batch-failures.html",
+      "destination": "/features/batch-failures",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/logging",
+      "destination": "/features/logging",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/logging.md",
+      "destination": "/features/logging.md",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/logging.html",
+      "destination": "/features/logging",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/configuration-safety",
+      "destination": "/features/configuration-safety",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/configuration-safety.md",
+      "destination": "/features/configuration-safety.md",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/configuration-safety.html",
+      "destination": "/features/configuration-safety",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/asyncresult-cleanup",
+      "destination": "/features/asyncresult-cleanup",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/asyncresult-cleanup.md",
+      "destination": "/features/asyncresult-cleanup.md",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/asyncresult-cleanup.html",
+      "destination": "/features/asyncresult-cleanup",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/testing-async-jobs",
+      "destination": "/features/testing-async-jobs",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/testing-async-jobs.md",
+      "destination": "/features/testing-async-jobs.md",
+      "statusCode": 301
+    },
+    {
+      "source": "/explanations/testing-async-jobs.html",
+      "destination": "/features/testing-async-jobs",
+      "statusCode": 301
+    }
+  ]
 }

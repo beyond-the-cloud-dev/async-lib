@@ -8,9 +8,10 @@
  * - ApexAssertionsShouldIncludeMessage: not every assertion needs a message
  * - ExcessiveParameterList: the seed helpers take the row shape as arguments
  * - EmptyStatementBlock: a queueable that does nothing is the fixture
+ * - CyclomaticComplexity: flat tests, the class total only counts how many there are
  **/
 @SuppressWarnings(
-    'PMD.ApexAssertionsShouldIncludeMessage,PMD.ExcessiveParameterList,PMD.EmptyStatementBlock'
+    'PMD.ApexAssertionsShouldIncludeMessage,PMD.ExcessiveParameterList,PMD.EmptyStatementBlock,PMD.CyclomaticComplexity'
 )
 @IsTest
 private class AsyncJobTimelineControllerTest {
@@ -542,6 +543,109 @@ private class AsyncJobTimelineControllerTest {
             classAccess.size(),
             'A viewer without class access cannot call load at all'
         );
+    }
+
+    @IsTest
+    private static void shouldTellAViewerWithoutAccessWhenPolling() {
+        User outsider = userWith('tlpol', new List<String>());
+        Account order = new Account(Name = 'Order');
+        insert order;
+        String message;
+
+        System.runAs(outsider) {
+            try {
+                AsyncJobTimelineController.poll(order.Id, new List<String>{ 'chain' });
+            } catch (AuraHandledException ex) {
+                message = ex.getMessage();
+            }
+        }
+
+        Assert.areEqual(AsyncJobTimelineController.ERROR_MESSAGE_NO_ACCESS, message);
+    }
+
+    @IsTest
+    private static void shouldReportARequeueThatThrowsWithItsOwnMessage() {
+        String message;
+
+        System.runAs(operator()) {
+            try {
+                AsyncJobTimelineController.requeue(null);
+            } catch (AuraHandledException ex) {
+                message = ex.getMessage();
+            }
+        }
+
+        Assert.isNotNull(message);
+        Assert.areNotEqual('Script-thrown exception', message);
+    }
+
+    @IsTest
+    private static void shouldNameTheRecordsItCanAndSkipAPrefixWithNoType() {
+        Account order = new Account(Name = 'Order');
+        insert order;
+        Id noApexType = idOfPrefix(CaseComment.SObjectType.getDescribe().getKeyPrefix());
+
+        Map<Id, String> nameById = AsyncJobTimelineNames.of(new Set<Id>{ order.Id, noApexType });
+
+        Assert.areEqual(new Map<Id, String>{ order.Id => 'Order' }, nameById);
+    }
+
+    @IsTest
+    private static void shouldSkipATypeWithNoNameField() {
+        Account order = new Account(Name = 'Order');
+        insert order;
+        Id noNameField = idOfPrefix(AccountShare.SObjectType.getDescribe().getKeyPrefix());
+
+        Map<Id, String> nameById = AsyncJobTimelineNames.of(new Set<Id>{ order.Id, noNameField });
+
+        Assert.areEqual(new Map<Id, String>{ order.Id => 'Order' }, nameById);
+    }
+
+    @IsTest
+    private static void shouldLookUpNamesForAtMostTenTypes() {
+        Set<Id> oneIdPerType = new Set<Id>();
+        for (
+            Schema.SObjectType type : new List<Schema.SObjectType>{
+                Account.SObjectType,
+                Contact.SObjectType,
+                Lead.SObjectType,
+                Opportunity.SObjectType,
+                Case.SObjectType,
+                User.SObjectType,
+                Campaign.SObjectType,
+                Product2.SObjectType,
+                Pricebook2.SObjectType,
+                Contract.SObjectType,
+                Order.SObjectType
+            }
+        ) {
+            oneIdPerType.add(idOfPrefix(type.getDescribe().getKeyPrefix()));
+        }
+
+        Integer queriesBefore = Limits.getQueries();
+        AsyncJobTimelineNames.of(oneIdPerType);
+
+        Assert.areEqual(10, Limits.getQueries() - queriesBefore);
+    }
+
+    @IsTest
+    private static void shouldReturnNoNameForATypeTheViewerCannotRead() {
+        User outsider = userWith('tlnam', new List<String>());
+        AsyncResult__c row = new AsyncResult__c(Status__c = QueueableManager.STATUS_COMPLETED);
+        insert row;
+        Set<Id> ids = new Set<Id>{ row.Id };
+        Map<Id, String> seenByOutsider;
+
+        System.runAs(outsider) {
+            seenByOutsider = AsyncJobTimelineNames.of(ids);
+        }
+
+        Assert.isTrue(AsyncJobTimelineNames.of(ids).containsKey(row.Id));
+        Assert.isTrue(seenByOutsider.isEmpty());
+    }
+
+    private static Id idOfPrefix(String keyPrefix) {
+        return Id.valueOf(keyPrefix + '1'.leftPad(12, '0'));
     }
 
     private static User operator() {

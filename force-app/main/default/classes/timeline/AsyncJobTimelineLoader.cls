@@ -229,9 +229,6 @@ public with sharing class AsyncJobTimelineLoader {
     }
 
     private static String firstStepNameOf(AsyncJobTimelineController.Sequence sequence) {
-        if (sequence.steps.isEmpty()) {
-            return null;
-        }
         AsyncJobTimelineController.Step first = sequence.steps[0];
         return first.jobName ?? first.className;
     }

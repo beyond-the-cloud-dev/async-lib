@@ -6921,6 +6921,292 @@ private class AsyncTest implements Database.Batchable<SObject> {
     }
 
     @IsTest
+    private static void shouldCarryNamesAndEveryLinkFormOnAChunkJob() {
+        Async.Result result = Async.chunk(
+                new OrderMarkerChunkJob(),
+                ChunkSource.of(createAccounts(1))
+            )
+            .name('Reprice')
+            .chainName('Nightly')
+            .linkRecord(new Account(Id = fakeAccountId(1)))
+            .linkRecord(fakeAccountId(2))
+            .linkRecords(new List<SObject>{ new Account(Id = fakeAccountId(3)) })
+            .linkRecords(new List<Id>{ fakeAccountId(4) })
+            .linkRecords(new Set<Id>{ fakeAccountId(5) })
+            .linkExternalRecord('NetSuite', 'Customer', '4711')
+            .linkExternalRecords(
+                new List<Async.RecordLink>{ new Async.RecordLink('SAP', 'Order', '42') }
+            )
+            .chain();
+
+        Assert.areEqual('Reprice', result.job.jobName);
+        Assert.areEqual('Nightly', result.job.chainName);
+        Assert.areEqual(
+            new List<String>{
+                fakeAccountId(1),
+                fakeAccountId(2),
+                fakeAccountId(3),
+                fakeAccountId(4),
+                fakeAccountId(5),
+                '4711',
+                '42'
+            },
+            keysOf(result.job.links)
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectPriorityCombinedWithNextInChainOnAChunkJob() {
+        String priorityFirst;
+        String nextInChainFirst;
+
+        try {
+            Async.chunk(new UngatedChunkJob(), ChunkSource.of(createAccounts(1)))
+                .priority(1)
+                .nextInChain();
+        } catch (Exception ex) {
+            priorityFirst = ex.getMessage();
+        }
+        try {
+            Async.chunk(new UngatedChunkJob(), ChunkSource.of(createAccounts(1)))
+                .nextInChain()
+                .priority(1);
+        } catch (Exception ex) {
+            nextInChainFirst = ex.getMessage();
+        }
+
+        Assert.areEqual(QueueableManager.ERROR_MESSAGE_PRIORITY_WITH_NEXT_IN_CHAIN, priorityFirst);
+        Assert.areEqual(
+            QueueableManager.ERROR_MESSAGE_PRIORITY_WITH_NEXT_IN_CHAIN,
+            nextInChainFirst
+        );
+    }
+
+    @IsTest
+    private static void shouldTakeAListOfExternalLinksOnTheQueueableBuilder() {
+        Async.Result result = Async.queueable(new SuccessfulQueueableTest())
+            .linkExternalRecords(
+                new List<Async.RecordLink>{ new Async.RecordLink('SAP', 'Order', '42') }
+            )
+            .chain();
+
+        Assert.areEqual(new List<String>{ '42' }, keysOf(result.job.links));
+        Assert.areEqual(new List<String>{ 'SAP' }, sourcesOf(result.job.links));
+    }
+
+    @IsTest
+    private static void shouldBufferEveryLinkFormFromInsideARunningJob() {
+        QueueableChain chain = new QueueableChain();
+        chain.addJob(new EveryLinkFormJob());
+        QueueableManager.get().setChain(chain);
+
+        chain.executeCurrentJob(new AsyncMock.MockQueueableContext());
+
+        Assert.areEqual(
+            new List<String>{
+                fakeAccountId(1),
+                fakeAccountId(2),
+                fakeAccountId(3),
+                fakeAccountId(4),
+                '4711',
+                '42'
+            },
+            keysOf(chain.getCurrentJob().links)
+        );
+    }
+
+    @IsTest
+    private static void shouldRejectAnExternalLinkOutsideAJob() {
+        String message;
+
+        try {
+            Async.linkExternalRecord('NetSuite', 'Customer', '4711');
+        } catch (Exception ex) {
+            message = ex.getMessage();
+        }
+
+        Assert.areEqual(QueueableManager.ERROR_MESSAGE_LINK_RECORD_OUTSIDE_JOB, message);
+    }
+
+    @IsTest
+    private static void shouldHaveNoOutcomeForAStatusThatIsNotFinal() {
+        Assert.isNull(QueueableManager.outcomeOf(QueueableManager.STATUS_ENQUEUED));
+    }
+
+    @IsTest
+    private static void shouldKeepEachChainTogetherWhenRequeueingSeveral() {
+        QueueableChain firstCapture = chainStoringPayloads();
+        QueueableChain secondCapture = chainStoringPayloads();
+        RequeueableJob firstOfA = new RequeueableJob('A1');
+        RequeueableJob secondOfA = new RequeueableJob('A2');
+        RequeueableJob firstOfB = new RequeueableJob('B1');
+        RequeueableJob secondOfB = new RequeueableJob('B2');
+        firstCapture.addJob(firstOfA);
+        firstCapture.addJob(secondOfA);
+        secondCapture.addJob(firstOfB);
+        secondCapture.addJob(secondOfB);
+        Set<Id> rowIds = new Set<Id>{
+            storedRowInChain(secondOfB, 2, null).Id,
+            storedRowInChain(secondOfA, 2, null).Id,
+            storedRowInChain(firstOfB, 1, null).Id,
+            storedRowInChain(firstOfA, 1, null).Id
+        };
+
+        Async.RequeueSummary summary = Async.requeue(rowIds);
+
+        Assert.areNotEqual(firstOfA.chainId, firstOfB.chainId);
+        Boolean chainAFirst = firstOfA.chainId.compareTo(firstOfB.chainId) < 0;
+        Assert.areEqual(
+            chainAFirst
+                ? new List<String>{ 'A1', 'A2', 'B1', 'B2' }
+                : new List<String>{ 'B1', 'B2', 'A1', 'A2' },
+            tagsOf(summary.enqueueResult.queueableChainState.jobs)
+        );
+    }
+
+    @IsTest
+    private static void shouldRequeueOldestFirstWhenRowsShareASequence() {
+        QueueableChain capture = chainStoringPayloads();
+        RequeueableJob newer = new RequeueableJob('NEWER');
+        RequeueableJob older = new RequeueableJob('OLDER');
+        capture.addJob(newer);
+        capture.addJob(older);
+        AsyncResult__c newerRow = storedRowInChain(newer, 1, null);
+        AsyncResult__c olderRow = storedRowInChain(older, 1, null);
+        Test.setCreatedDate(newerRow.Id, System.now().addHours(-1));
+        Test.setCreatedDate(olderRow.Id, System.now().addHours(-2));
+
+        Async.RequeueSummary summary = Async.requeue(new Set<Id>{ newerRow.Id, olderRow.Id });
+
+        Assert.areEqual(
+            new List<String>{ 'OLDER', 'NEWER' },
+            tagsOf(summary.enqueueResult.queueableChainState.jobs)
+        );
+    }
+
+    @IsTest
+    private static void shouldNotThrowWhenAFrameworkFailureCannotBeRecordedEither() {
+        new AsyncResultWriter()
+            .recordFrameworkFailure(
+                tooLongForChainId(),
+                null,
+                new DmlException('Original failure')
+            );
+
+        Assert.areEqual(0, [SELECT COUNT() FROM AsyncResult__c]);
+    }
+
+    @IsTest
+    private static void shouldNotRecordAJobThatAlreadyHasAResult() {
+        RequeueableJob job = trackedJob();
+        job.resultCreated = true;
+
+        new AsyncResultWriter()
+            .recordResults(new List<QueueableJob>{ job }, new Map<String, Async.Outcome>());
+
+        Assert.areEqual(0, [SELECT COUNT() FROM AsyncResult__c]);
+    }
+
+    @IsTest
+    private static void shouldWarnAndCarryOnWhenTheEnqueuedRowCannotBeInserted() {
+        RequeueableJob job = trackedJob();
+        job.chainId = tooLongForChainId();
+
+        new AsyncResultWriter().createEnqueuedPlaceholders(new List<QueueableJob>{ job }, null);
+
+        Assert.isTrue(
+            hasWarning(job, QueueableManager.WARNING_PROGRESS_ROW_NOT_WRITTEN),
+            job.retryHistory
+        );
+        Assert.areEqual(0, [SELECT COUNT() FROM AsyncResult__c]);
+    }
+
+    @IsTest
+    private static void shouldWarnWhenAResequencedRowCannotBeUpdated() {
+        RequeueableJob job = trackedJob();
+        AsyncResultWriter writer = writerWhoseEnqueuedRowWasDeleted(job);
+        writer.markResequenced(job.customJobId);
+
+        writer.createEnqueuedPlaceholders(new List<QueueableJob>{ job }, null);
+
+        Assert.isTrue(
+            hasWarning(job, QueueableManager.WARNING_PROGRESS_ROW_NOT_WRITTEN),
+            job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldWarnWhenAnEnqueuedRowCannotBeDeleted() {
+        RequeueableJob job = trackedJob();
+        AsyncResultWriter writer = writerWhoseEnqueuedRowWasDeleted(job);
+
+        writer.deletePlaceholdersOfUnprocessedJobs(new List<QueueableJob>{ job }, job);
+
+        Assert.isTrue(
+            hasWarning(job, QueueableManager.WARNING_PROGRESS_ROW_NOT_WRITTEN),
+            job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldWarnWhenTheEnqueuedRowCannotBeMovedToTheNextAttempt() {
+        RequeueableJob job = trackedJob();
+        AsyncResultWriter writer = writerWhoseEnqueuedRowWasDeleted(job);
+
+        writer.updatePlaceholderForRetry(job, 1, 0);
+
+        Assert.isTrue(
+            hasWarning(job, QueueableManager.WARNING_PROGRESS_ROW_NOT_WRITTEN),
+            job.retryHistory
+        );
+    }
+
+    @IsTest
+    private static void shouldWarnAndKeepTheRowWhenARecordLinkCannotBeWritten() {
+        RequeueableJob job = trackedJob();
+        job.linkExternalRecords(
+            new List<Async.RecordLink>{
+                new Async.RecordLink('NetSuite', 'Customer', 'k'.repeat(256))
+            }
+        );
+
+        new AsyncResultWriter().createEnqueuedPlaceholders(new List<QueueableJob>{ job }, null);
+
+        Assert.isTrue(
+            hasWarning(job, QueueableManager.WARNING_RECORD_LINKS_NOT_WRITTEN),
+            job.retryHistory
+        );
+        Assert.areEqual(1, [SELECT COUNT() FROM AsyncResult__c]);
+        Assert.areEqual(0, [SELECT COUNT() FROM AsyncResultLink__c]);
+    }
+
+    private static RequeueableJob trackedJob() {
+        QueueableJobSettings.jobSettingByName = trackProgressForAll();
+        RequeueableJob job = new RequeueableJob('TRACKED');
+        new QueueableChain().addJob(job);
+        return job;
+    }
+
+    private static AsyncResultWriter writerWhoseEnqueuedRowWasDeleted(QueueableJob job) {
+        AsyncResultWriter writer = new AsyncResultWriter();
+        writer.createEnqueuedPlaceholders(new List<QueueableJob>{ job }, null);
+        delete [SELECT Id FROM AsyncResult__c];
+        return writer;
+    }
+
+    private static String tooLongForChainId() {
+        return 'x'.repeat(AsyncResult__c.ChainId__c.getDescribe().getLength() + 1);
+    }
+
+    private static Boolean hasWarning(QueueableJob job, String warningTemplate) {
+        String expectedStart = String.format(
+            warningTemplate.substringBefore('{1}'),
+            new List<String>{ job.className }
+        );
+        return job.retryHistory?.contains(expectedStart) == true;
+    }
+
+    @IsTest
     private static void shouldRejectPriorityCombinedWithNextInChain() {
         String priorityFirst;
         String nextInChainFirst;
@@ -8525,6 +8811,19 @@ private class AsyncTest implements Database.Batchable<SObject> {
     private class TaggingFinalizer extends QueueableJob.Finalizer {
         public override void work() {
             AsyncTest.runOrder.add('finalizer');
+        }
+    }
+
+    private class EveryLinkFormJob extends QueueableJob {
+        public override void work() {
+            Async.linkRecord(new Account(Id = fakeAccountId(1)));
+            Async.linkRecords(new List<SObject>{ new Account(Id = fakeAccountId(2)) });
+            Async.linkRecords(new List<Id>{ fakeAccountId(3) });
+            Async.linkRecords(new Set<Id>{ fakeAccountId(4) });
+            Async.linkExternalRecord('NetSuite', 'Customer', '4711');
+            Async.linkExternalRecords(
+                new List<Async.RecordLink>{ new Async.RecordLink('SAP', 'Order', '42') }
+            );
         }
     }
 

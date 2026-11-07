@@ -1,6 +1,6 @@
 import USER_LOCALE from '@salesforce/i18n/locale';
 
-export const VERSION = '3.1.0';
+export const VERSION = '3.2.0';
 export const SOURCE_SALESFORCE = 'Salesforce';
 
 export const CAPS = {

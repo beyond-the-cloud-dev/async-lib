@@ -219,7 +219,10 @@ private class AsyncJobTimelineControllerTest {
         Account otherOrder = new Account(Name = 'Other order');
         insert otherOrder;
         seedChain(otherOrder, 'elsewhere', 'Elsewhere run', 1, System.now().addHours(-1));
-        AsyncJobTimelineChains chains = new AsyncJobTimelineChains(order.Id, 7);
+        AsyncJobTimelineChains chains;
+        System.runAs(operator()) {
+            chains = new AsyncJobTimelineChains(order.Id, 7);
+        }
         live[1].Status__c = QueueableManager.STATUS_COMPLETED;
         update live[1];
 

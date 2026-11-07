@@ -102,6 +102,24 @@ public with sharing class AsyncJobTimelineChains {
         return chainIds;
     }
 
+    public void refreshFrom(List<AsyncResult__c> rows) {
+        Map<String, ChainOrder> chainById = new Map<String, ChainOrder>();
+        for (ChainOrder chain : chains) {
+            chainById.put(chain.chainId, chain);
+        }
+        Set<String> refreshed = new Set<String>();
+        for (AsyncResult__c row : rows) {
+            ChainOrder chain = chainById.get(row.ChainId__c);
+            if (chain == null) {
+                continue;
+            }
+            if (refreshed.add(chain.chainId)) {
+                chain.status = STATUS_COMPLETED;
+            }
+            chain.absorb(chainStatusFor(row.Status__c));
+        }
+    }
+
     public Map<String, Integer> counts() {
         Map<String, Integer> counts = new Map<String, Integer>{
             'all' => chains.size(),

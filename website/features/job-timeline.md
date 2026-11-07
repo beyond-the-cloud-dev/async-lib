@@ -124,7 +124,7 @@ A chunk run that still misses pages but has been quiet for ten minutes counts as
 
 ## The record page component
 
-`Async Jobs` targets any record page, in Lightning and in Aura-based Experience sites. One card per
+`Async Jobs` targets any Lightning record page. One card per
 chain, newest first by the time the chain was created. A chain never moves when it finishes, so the
 row you are watching stays where it is, and only a new run shifts the list. The `In flight` chip turns
 blue with a pulsing dot while something runs: click it to see only those chains. A chain that finishes
@@ -232,6 +232,8 @@ What the card refuses to render without a way out:
 
 The viewer needs read on `AsyncResult__c` and `AsyncResultLink__c` plus access to the controller
 class. The `AsyncResultAccess` permission set grants all of it. Without it the card says so by name.
+It is read on every result in the org, with View All, so the card is not a sharing boundary: give
+it to people who may see every job, not only the ones for the record in front of them.
 
 ## Requeue from the timeline
 

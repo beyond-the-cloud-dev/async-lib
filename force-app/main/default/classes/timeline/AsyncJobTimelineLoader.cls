@@ -21,15 +21,20 @@ public with sharing class AsyncJobTimelineLoader {
         AsyncJobTimelineController.TimelinePage page = new AsyncJobTimelineController.TimelinePage();
         page.hasMore = chainIds.size() > chainOffset + chainLimit;
         page.totalChainCount = chainIds.size();
+        page.fingerprint = fingerprintOf(recordId, pageChainIds);
+        List<AsyncResult__c> rows = rowsOf(pageChainIds);
+        chains.refreshFrom(rows);
         page.counts = chains.counts();
         page.olderChainCount = chains.olderCount();
-        page.sequences = sequencesOf(pageChainIds);
-        page.fingerprint = fingerprintOf(recordId, pageChainIds);
+        page.sequences = sequencesOf(pageChainIds, rows);
         page.loadedAt = System.now();
         return page;
     }
 
-    private static List<AsyncJobTimelineController.Sequence> sequencesOf(List<String> chainIds) {
+    private static List<AsyncJobTimelineController.Sequence> sequencesOf(
+        List<String> chainIds,
+        List<AsyncResult__c> rows
+    ) {
         Map<String, AsyncJobTimelineController.Sequence> byChain = new Map<String, AsyncJobTimelineController.Sequence>();
         for (String chainId : chainIds) {
             byChain.put(chainId, new AsyncJobTimelineController.Sequence(chainId));
@@ -37,7 +42,6 @@ public with sharing class AsyncJobTimelineLoader {
         if (chainIds.isEmpty()) {
             return byChain.values();
         }
-        List<AsyncResult__c> rows = rowsOf(chainIds);
         Map<String, String> apexJobStatusById = apexJobStatusesFor(enqueuedJobIdsOf(rows));
         Map<Id, String> nameById = AsyncJobTimelineNames.of(linkedRecordIdsOf(rows));
         Map<Id, AsyncResult__c> replayBySourceId = replaysOf(rows);

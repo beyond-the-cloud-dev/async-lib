@@ -6,8 +6,6 @@
     <description>Every async job that ran, runs or will run for this record, with requeue for failed steps.</description>
     <targets>
         <target>lightning__RecordPage</target>
-        <target>lightningCommunity__Page</target>
-        <target>lightningCommunity__Default</target>
     </targets>
     <targetConfigs>
         <targetConfig targets="lightning__RecordPage">
@@ -48,42 +46,6 @@
                 label="Follow new runs"
                 default="false"
                 description="When on, a chain that enters in flight opens by itself and the others collapse, for a card left open on a screen. Off: the new chain is only flagged. The viewer can switch it for the session."/>
-        </targetConfig>
-        <targetConfig targets="lightningCommunity__Default">
-            <property
-                name="recordId"
-                type="String"
-                label="Record Id"
-                default="{!recordId}"
-                description="Leave as {!recordId} on a record page."/>
-            <property name="cardTitle" type="String" label="Card title" default="Async Jobs"/>
-            <property
-                name="daysBack"
-                type="Integer"
-                label="Default range in days"
-                default="7"
-                min="1"
-                max="365"/>
-            <property
-                name="chainsPerPage"
-                type="Integer"
-                label="Sequences per page"
-                default="0"
-                min="0"
-                max="50"/>
-            <property
-                name="maxHeight"
-                type="Integer"
-                label="Max height in pixels"
-                default="600"
-                min="0"
-                max="4000"/>
-            <property
-                name="liveRefreshOff"
-                type="Boolean"
-                label="Turn off live refresh"
-                default="false"/>
-            <property name="followNewRuns" type="Boolean" label="Follow new runs" default="false"/>
         </targetConfig>
     </targetConfigs>
 </LightningComponentBundle>

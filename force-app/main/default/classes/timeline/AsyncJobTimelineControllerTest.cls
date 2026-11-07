@@ -204,6 +204,37 @@ private class AsyncJobTimelineControllerTest {
     }
 
     @IsTest
+    private static void shouldCountAPageChainByTheRowsReadForThePage() {
+        Account order = new Account(Name = 'Order');
+        insert order;
+        List<AsyncResult__c> live = seedChain(
+            order,
+            'live',
+            'Live run',
+            2,
+            System.now().addHours(-1)
+        );
+        live[1].Status__c = QueueableManager.STATUS_ENQUEUED;
+        update live[1];
+        Account otherOrder = new Account(Name = 'Other order');
+        insert otherOrder;
+        seedChain(otherOrder, 'elsewhere', 'Elsewhere run', 1, System.now().addHours(-1));
+        AsyncJobTimelineChains chains = new AsyncJobTimelineChains(order.Id, 7);
+        live[1].Status__c = QueueableManager.STATUS_COMPLETED;
+        update live[1];
+
+        chains.refreshFrom([SELECT ChainId__c, Status__c FROM AsyncResult__c]);
+
+        Assert.areEqual(
+            0,
+            chains.counts().get('inflight'),
+            'The step finished after the snapshot.'
+        );
+        Assert.areEqual(1, chains.counts().get('completed'));
+        Assert.areEqual(1, chains.counts().get('all'), 'Rows of another record are ignored.');
+    }
+
+    @IsTest
     private static void shouldLinkARequeuedRowToItsReplay() {
         Account order = new Account(Name = 'Order');
         insert order;

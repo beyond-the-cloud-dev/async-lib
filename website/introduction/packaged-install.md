@@ -97,8 +97,8 @@ actions on the `Async Jobs` record page component. Assign it to operators only.
 
 ### 6. Place the record page component
 
-`Async Jobs` is in App Builder under custom components, for Lightning record pages and Aura-based
-Experience site record pages. Drop it on any record page; the viewer needs
+`Async Jobs` is in App Builder under custom components, for Lightning record pages. Drop it on any
+record page; the viewer needs
 `btcdev__AsyncResultAccess`. See [Job Timeline](/features/job-timeline).
 
 ## Feature by feature

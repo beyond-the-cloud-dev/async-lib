@@ -219,7 +219,8 @@ In tests, inject them: `AsyncMock.jobSettings(new List<QueueableJobSetting__mdt>
 One row per job, written after its last attempt, when `CreateResult__c` is on, a payload is
 stored, or the job is linked to a record; written at enqueue instead when `TrackJobProgress__c` is
 `Yes`. A batch writes one row per failed scope and nothing for a successful one. Read access through
-the `AsyncResultAccess` permission set, which also covers `AsyncResultLink__c` (one row per result
+the `AsyncResultAccess` permission set (View All: every result in the org, the record page card is
+not a sharing boundary), which also covers `AsyncResultLink__c` (one row per result
 and linked record: `Key__c` indexed, `Source__c` `Salesforce` or whatever `linkExternalRecord`
 was given, `ObjectName__c`). The requeue actions on the record page need the
 `AsyncRequeue` custom permission from the `AsyncRequeueAccess` permission set.
